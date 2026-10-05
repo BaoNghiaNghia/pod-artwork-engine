@@ -8,8 +8,11 @@ import uvicorn
 
 from . import __version__
 from .api import create_app
+from .contracts import DatasetSplit
+from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .hardware import detect_hardware
+from .historical_import import HistoricalImporter
 from .logging_config import LoggingRuntime
 from .settings import Settings
 from .storage import StorageManager
@@ -26,9 +29,30 @@ def main() -> None:
     sub.add_parser("cleanup")
     sub.add_parser("update-check")
     sub.add_parser("update-stage")
+    sub.add_parser("dataset-list")
 
     diagnostics = sub.add_parser("diagnostics")
     diagnostics.add_argument("--output", type=Path)
+
+    historical = sub.add_parser("historical-import")
+    historical.add_argument("--source-dir", type=Path)
+    historical.add_argument("--target-dir", type=Path)
+    historical.add_argument("--manifest", type=Path)
+    historical.add_argument("--dataset-name", default="historical")
+    historical.add_argument("--id-regex")
+    historical.add_argument("--seed", default="foundation-v1")
+    historical.add_argument("--no-visual-fallback", action="store_true")
+
+    dataset_show = sub.add_parser("dataset-show")
+    dataset_show.add_argument("dataset_id")
+
+    dataset_members = sub.add_parser("dataset-members")
+    dataset_members.add_argument("dataset_id")
+    dataset_members.add_argument(
+        "--split",
+        choices=[split.value for split in DatasetSplit],
+    )
+    dataset_members.add_argument("--retrieval-only", action="store_true")
 
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -57,6 +81,62 @@ def main() -> None:
         print(json.dumps({"version": manifest.version, "release_dir": str(path)}, indent=2))
     elif args.command == "diagnostics":
         print(build_diagnostic_bundle(settings, args.output))
+    elif args.command == "historical-import":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        importer = HistoricalImporter(registry)
+        if args.manifest:
+            if args.source_dir or args.target_dir:
+                parser.error("--manifest cannot be combined with --source-dir/--target-dir")
+            report = importer.import_manifest(
+                args.manifest,
+                dataset_name=args.dataset_name,
+                seed=args.seed,
+            )
+        else:
+            if not args.source_dir or not args.target_dir:
+                parser.error("historical-import requires --manifest or both --source-dir and --target-dir")
+            report = importer.import_folders(
+                args.source_dir,
+                args.target_dir,
+                dataset_name=args.dataset_name,
+                id_regex=args.id_regex,
+                seed=args.seed,
+                allow_visual_fallback=not args.no_visual_fallback,
+            )
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    elif args.command == "dataset-list":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        print(
+            json.dumps(
+                [dataset.model_dump(mode="json") for dataset in registry.list_datasets()],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif args.command == "dataset-show":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        dataset = registry.get_dataset(args.dataset_id)
+        if dataset is None:
+            parser.error(f"dataset not found: {args.dataset_id}")
+        print(json.dumps(dataset.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "dataset-members":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        dataset = registry.get_dataset(args.dataset_id)
+        if dataset is None:
+            parser.error(f"dataset not found: {args.dataset_id}")
+        split = DatasetSplit(args.split) if args.split else None
+        members = registry.list_members(
+            args.dataset_id,
+            split=split,
+            retrieval_only=args.retrieval_only,
+        )
+        print(
+            json.dumps(
+                [member.model_dump(mode="json") for member in members],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
 
 
 if __name__ == "__main__":

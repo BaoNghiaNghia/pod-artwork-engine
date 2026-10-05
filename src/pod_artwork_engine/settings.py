@@ -63,6 +63,7 @@ class Settings:
             self.logs_dir,
             self.updates_dir,
             self.artifacts_dir,
+            self.datasets_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -85,6 +86,10 @@ class Settings:
     @property
     def artifacts_dir(self) -> Path:
         return self.data_root / "artifacts"
+
+    @property
+    def datasets_dir(self) -> Path:
+        return self.data_root / "datasets"
 
     @property
     def database_path(self) -> Path:

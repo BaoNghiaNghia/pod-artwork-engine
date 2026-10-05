@@ -63,6 +63,17 @@ class ArtworkType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class HistoricalAssetRole(StrEnum):
+    SOURCE = "source"
+    TARGET = "target"
+
+
+class DatasetSplit(StrEnum):
+    TRAIN = "train"
+    VALIDATION = "validation"
+    GOLDEN_HOLDOUT = "golden_holdout"
+
+
 class BoundingBox(StrictModel):
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
@@ -142,3 +153,54 @@ class StorageStatus(StrictModel):
     logs_bytes: int = Field(ge=0)
     updates_bytes: int = Field(ge=0)
     state: str
+
+
+class HistoricalAsset(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    asset_id: str
+    role: HistoricalAssetRole
+    path: str
+    sha256: str
+    normalized_hash: str
+    visual_hash: str
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    file_size_bytes: int = Field(ge=0)
+    has_alpha: bool = False
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class HistoricalPair(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    pair_id: str
+    pair_key: str
+    artwork_identity: str
+    target_asset_id: str
+    source_asset_ids: list[str] = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DatasetRecord(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    dataset_id: str
+    name: str
+    version: int = Field(ge=1)
+    seed: str
+    train_ratio: float = Field(ge=0, le=1)
+    validation_ratio: float = Field(ge=0, le=1)
+    golden_ratio: float = Field(ge=0, le=1)
+    pair_count: int = Field(ge=0)
+    artwork_count: int = Field(ge=0)
+    split_counts: dict[str, int] = Field(default_factory=dict)
+    manifest_path: str
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DatasetMember(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    dataset_id: str
+    pair_id: str
+    artwork_identity: str
+    split: DatasetSplit
+    retrieval_eligible: bool

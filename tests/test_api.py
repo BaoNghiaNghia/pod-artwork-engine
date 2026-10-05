@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from pod_artwork_engine.api import create_app
+from pod_artwork_engine.dataset_registry import DatasetRegistry
 from pod_artwork_engine.settings import Settings, StorageLimits
 
 
@@ -55,3 +56,33 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
         time.sleep(0.05)
 
     assert checkpoint.exists()
+
+
+def test_dataset_read_api(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path)
+    source = tmp_path / "source.png"
+    target = tmp_path / "target.png"
+    Image.new("RGB", (32, 32), (20, 30, 40)).save(source)
+    Image.new("RGB", (32, 32), (180, 70, 30)).save(target)
+
+    registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+    registry.register_pair("design-api", [source], target)
+    dataset = registry.create_dataset("historical-api")
+
+    client = TestClient(create_app(settings))
+
+    datasets = client.get("/datasets")
+    assert datasets.status_code == 200
+    assert any(item["dataset_id"] == dataset.dataset_id for item in datasets.json())
+
+    members = client.get(f"/datasets/{dataset.dataset_id}/members")
+    assert members.status_code == 200
+    assert len(members.json()) == 1
+
+    pairs = client.get("/historical/pairs")
+    assert pairs.status_code == 200
+    assert pairs.json()[0]["pair_key"] == "design-api"
+
+    status = client.get("/status").json()
+    assert status["dataset_count"] == 1
+    assert status["historical_pair_count"] == 1

@@ -14,7 +14,7 @@ Standalone Windows tool for reconstructing clean 2D POD artwork from product/moc
 
 ## Current implementation stage
 
-**Stage 1 — Standalone Foundation**
+### Phase 0A — Standalone Foundation
 
 The repository currently establishes:
 
@@ -31,7 +31,33 @@ The repository currently establishes:
 - Windows startup/build scripts;
 - a verified Windows release executable that automatically starts the engine sidecar.
 
-Stage 1 standalone foundation is now closed for the local runtime: the independent `PODArtworkTool.exe` bootstrap seeds the current release, checks/stages updates, launches the candidate release, verifies the engine version through `/health`, activates only on success, and automatically rolls back to the previous healthy release on failure. Release-manifest hosting/signing policy remains a deployment concern rather than a runtime blocker.
+Phase 0A standalone foundation is now closed for the local runtime: the independent `PODArtworkTool.exe` bootstrap seeds the current release, checks/stages updates, launches the candidate release, verifies the engine version and per-launch instance token through `/health`, activates only on success, and automatically rolls back to the previous healthy release on failure. Release-manifest hosting/signing policy remains a deployment concern rather than a runtime blocker.
+
+### Phase 0B — Historical Data Foundation
+
+Implemented:
+
+- historical source/final importer;
+- filename grouping for one-to-many reference sets;
+- optional SKU/design extraction with `--id-regex`;
+- explicit JSON pairing manifests;
+- exact source deduplication plus alias-path tracking;
+- conservative normalized/perceptual target deduplication;
+- stable `artwork_identity`;
+- SQLite Dataset Registry;
+- versioned dataset manifests that reference original files rather than copying them;
+- deterministic artwork-level train / validation / Golden Holdout splits;
+- Golden Holdout exclusion from retrieval eligibility;
+- dataset and historical-pair read APIs.
+
+Folder import example:
+
+```powershell
+python -m pod_artwork_engine historical-import --source-dir "D:\\historical\\inputs" --target-dir "D:\\historical\\finals" --dataset-name historical
+python -m pod_artwork_engine dataset-list
+```
+
+Explicit pairing can use a JSON manifest with `design_id`, `target`, `sources[]` and optional `metadata`.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 

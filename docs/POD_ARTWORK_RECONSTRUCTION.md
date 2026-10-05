@@ -1257,6 +1257,23 @@ Build:
 
 ### Phase 0B — Historical data foundation
 
+**Status: implemented and locally verified.** The engine now imports historical source/final pairs without copying the original image corpus, assigns stable artwork identities, deduplicates exact sources and conservative visual-equivalent targets, writes versioned Dataset Registry snapshots, and splits strictly by `artwork_identity`. Golden Holdout members are marked non-retrieval-eligible so later learning/retrieval code cannot consume them accidentally.
+
+Implemented foundation:
+
+- folder importer with filename-based grouping for one-to-many reference sets;
+- optional SKU/design-ID extraction by regex;
+- explicit JSON pairing manifests for cases that filenames cannot resolve;
+- exact SHA-256 source deduplication and alias-location tracking;
+- normalized + conservative perceptual target matching for artwork identity;
+- SQLite historical asset/pair/artwork registry;
+- immutable dataset manifest snapshots referencing original paths/hashes;
+- deterministic train / validation / Golden Holdout allocation at artwork level;
+- persistent split assignment per `artwork_identity`, so an existing Golden identity cannot silently move into train in a later dataset version;
+- dataset/historical-pair read APIs and CLI inspection.
+
+The visual fallback is intentionally conservative. It is suitable for near-equivalent clean artwork/reference images, not for assuming that a garment mockup and a clean master are the same design. Semantic source→target visual pairing remains a later analyzer capability.
+
 Build:
 
 - historical input/final importer;
