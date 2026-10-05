@@ -37,6 +37,7 @@ class Settings:
     remote_provider_token: str = ""
     remote_provider_name: str = "remote"
     remote_provider_timeout_seconds: float = 120.0
+    provider_recipe_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -63,6 +64,11 @@ class Settings:
             remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", "remote"),
             remote_provider_timeout_seconds=float(
                 os.environ.get("POD_REMOTE_PROVIDER_TIMEOUT_SECONDS", "120")
+            ),
+            provider_recipe_path=(
+                Path(os.environ["POD_PROVIDER_RECIPE_PATH"]).expanduser()
+                if os.environ.get("POD_PROVIDER_RECIPE_PATH")
+                else None
             ),
         )
 

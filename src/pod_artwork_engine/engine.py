@@ -18,6 +18,7 @@ from .contracts import (
     JobRecord,
     JobState,
     PreflightResult,
+    ProviderAction,
     ProviderRequest,
     ProviderResult,
     QCResult,
@@ -25,6 +26,7 @@ from .contracts import (
     RouteDecision,
 )
 from .exporter import export_master
+from .geometry import GeometryRenderUnavailable, geometry_to_svg, render_geometry_master
 from .job_store import JobStore
 from .logging_config import log_event
 from .preflight import inspect_image, sha256_file
@@ -40,7 +42,12 @@ from .resources import capture_resources
 from .router import choose_route
 from .settings import Settings
 from .storage import StorageLimitExceeded, StorageManager
-from .typography import TypographyRenderUnavailable, render_typography_master
+from .typography import (
+    TypographyRenderUnavailable,
+    overlay_typography,
+    render_typography_master,
+    replace_mixed_typography,
+)
 
 
 logger = logging.getLogger("pod_engine")
@@ -213,7 +220,7 @@ class Engine:
             try:
                 provider_result = self.provider.execute(
                     ProviderRequest(
-                        action="analyze",
+                        action=ProviderAction.ANALYZE,
                         job_id=job.job_id,
                         quality_mode=job.quality_mode,
                         source_paths=[str(path) for path in source_paths],
@@ -328,8 +335,59 @@ class Engine:
             and design_spec.typography is not None
             and bool(design_spec.typography.lines)
         )
+        deterministic_geometry = (
+            route.deterministic_finish
+            and design_spec.artwork_type is ArtworkType.LOGO
+            and design_spec.geometry is not None
+            and bool(design_spec.geometry.primitives)
+        )
+        deterministic_complete = False
+        deterministic_attempt_failed = False
 
-        if deterministic_typography:
+        if deterministic_geometry:
+            try:
+                rendered_path = render_geometry_master(
+                    design_spec.geometry,
+                    temp_dir / "deterministic-geometry.png",
+                )
+                if design_spec.exact_text:
+                    if design_spec.typography is None or not design_spec.typography.lines:
+                        raise GeometryRenderUnavailable(
+                            "logo exact text requires typography evidence"
+                        )
+                    rendered_path, recognized_text = overlay_typography(
+                        rendered_path,
+                        design_spec.typography,
+                        self.settings,
+                        temp_dir / "deterministic-logo.png",
+                    )
+                geometry_to_svg(
+                    design_spec.geometry,
+                    self._job_dir(job.job_id) / "master" / "vector" / "geometry.svg",
+                )
+                candidate = normalize_candidate(
+                    rendered_path,
+                    temp_dir / "candidate.png",
+                    source_path=source_paths[0],
+                )
+                deterministic_complete = True
+                self._log_stage(
+                    job,
+                    "deterministic_geometry_rendered",
+                    stage="reconstructing",
+                    route=route.route.value,
+                )
+            except (GeometryRenderUnavailable, TypographyRenderUnavailable) as exc:
+                deterministic_attempt_failed = True
+                self._log_stage(
+                    job,
+                    "deterministic_geometry_unavailable",
+                    stage="reconstructing",
+                    failure_reason=str(exc),
+                    route=route.route.value,
+                )
+
+        if not deterministic_complete and deterministic_typography:
             try:
                 rendered_path = render_typography_master(
                     design_spec.typography,
@@ -344,6 +402,7 @@ class Engine:
                 recognized_text = [
                     line.text for line in design_spec.typography.lines
                 ]
+                deterministic_complete = True
                 self._log_stage(
                     job,
                     "deterministic_typography_rendered",
@@ -351,6 +410,7 @@ class Engine:
                     route=route.route.value,
                 )
             except TypographyRenderUnavailable as exc:
+                deterministic_attempt_failed = True
                 self._log_stage(
                     job,
                     "deterministic_typography_unavailable",
@@ -358,13 +418,16 @@ class Engine:
                     failure_reason=str(exc),
                     route=route.route.value,
                 )
-                deterministic_typography = False
 
-        if not deterministic_typography and route.use_remote_provider and self.provider.available:
+        use_remote_reconstruction = (
+            self.provider.available
+            and (route.use_remote_provider or deterministic_attempt_failed)
+        )
+        if not deterministic_complete and use_remote_reconstruction:
             try:
                 provider_result = self.provider.execute(
                     ProviderRequest(
-                        action="reconstruct",
+                        action=ProviderAction.RECONSTRUCT,
                         job_id=job.job_id,
                         quality_mode=job.quality_mode,
                         source_paths=[str(path) for path in source_paths],
@@ -400,13 +463,52 @@ class Engine:
                     design_spec,
                     temp_dir / "candidate.png",
                 )
-        elif not deterministic_typography:
+        elif not deterministic_complete:
             candidate = reconstruct_local_baseline(
                 source_paths,
                 preflights,
                 design_spec,
                 temp_dir / "candidate.png",
             )
+
+        if (
+            design_spec.artwork_type is ArtworkType.MIXED
+            and design_spec.typography is not None
+            and design_spec.typography.lines
+        ):
+            try:
+                refined_path, replaced_text = replace_mixed_typography(
+                    candidate.path,
+                    design_spec.typography,
+                    self.settings,
+                    temp_dir / "mixed-text-refined.png",
+                )
+                candidate = normalize_candidate(
+                    refined_path,
+                    temp_dir / "candidate-precision.png",
+                    source_path=candidate.source_path,
+                )
+                expected = list(design_spec.exact_text)
+                if expected and replaced_text == expected:
+                    recognized_text = expected
+                else:
+                    for text_value in replaced_text:
+                        if text_value not in recognized_text:
+                            recognized_text.append(text_value)
+                self._log_stage(
+                    job,
+                    "mixed_typography_refined",
+                    stage="reconstructing",
+                    route=route.route.value,
+                )
+            except TypographyRenderUnavailable as exc:
+                self._log_stage(
+                    job,
+                    "mixed_typography_skipped",
+                    stage="reconstructing",
+                    failure_reason=str(exc),
+                    route=route.route.value,
+                )
 
         self.checkpoints.write(
             job.job_id,
@@ -466,7 +568,7 @@ class Engine:
         try:
             result = self.provider.execute(
                 ProviderRequest(
-                    action="judge",
+                    action=ProviderAction.JUDGE,
                     job_id=job.job_id,
                     quality_mode=job.quality_mode,
                     source_paths=[str(path) for path in source_paths],
@@ -527,29 +629,41 @@ class Engine:
         qc2: QCResult,
         provider_result: ProviderResult | None,
     ) -> Path:
+        artifacts = [
+            ArtifactRef(
+                kind="semantic_master",
+                path=str(semantic_master),
+                sha256=sha256_file(semantic_master),
+                size_bytes=semantic_master.stat().st_size,
+            ),
+            ArtifactRef(
+                kind="final_master",
+                path=str(final_path),
+                sha256=sha256_file(final_path),
+                size_bytes=final_path.stat().st_size,
+            ),
+        ]
+        geometry_svg = self._job_dir(job.job_id) / "master" / "vector" / "geometry.svg"
+        if geometry_svg.is_file():
+            artifacts.append(
+                ArtifactRef(
+                    kind="geometry_svg",
+                    path=str(geometry_svg),
+                    sha256=sha256_file(geometry_svg),
+                    size_bytes=geometry_svg.stat().st_size,
+                )
+            )
+
         manifest = ArtifactManifest(
             job_id=job.job_id,
             source_hashes=[item.sha256 for item in preflights],
-            artifacts=[
-                ArtifactRef(
-                    kind="semantic_master",
-                    path=str(semantic_master),
-                    sha256=sha256_file(semantic_master),
-                    size_bytes=semantic_master.stat().st_size,
-                ),
-                ArtifactRef(
-                    kind="final_master",
-                    path=str(final_path),
-                    sha256=sha256_file(final_path),
-                    size_bytes=final_path.stat().st_size,
-                ),
-            ],
+            artifacts=artifacts,
             model_versions=(
                 {provider_result.provider: provider_result.model_version}
                 if provider_result and provider_result.model_version
                 else {}
             ),
-            policy_version="phase1-v1",
+            policy_version="phase1c-v1",
             export_profile="default_pod",
             qc_report={
                 "semantic": qc1.model_dump(mode="json"),

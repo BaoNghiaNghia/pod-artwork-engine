@@ -80,9 +80,28 @@ class RouteKind(StrEnum):
     HYBRID = "hybrid"
 
 
+class ProviderAction(StrEnum):
+    ANALYZE = "analyze"
+    RECONSTRUCT = "reconstruct"
+    JUDGE = "judge"
+
+
 class QCGate(StrEnum):
     SEMANTIC = "semantic"
     TECHNICAL = "technical"
+
+
+class RegionReplacementMode(StrEnum):
+    NONE = "none"
+    OVERLAY = "overlay"
+    REPLACE_SOLID = "replace_solid"
+
+
+class GeometryKind(StrEnum):
+    RECT = "rect"
+    ELLIPSE = "ellipse"
+    LINE = "line"
+    POLYGON = "polygon"
 
 
 class BoundingBox(StrictModel):
@@ -102,12 +121,36 @@ class TypographyLine(StrictModel):
     stroke_width_ratio: float = Field(default=0, ge=0, le=0.1)
     rotation_degrees: float = Field(default=0, ge=-180, le=180)
     confidence: float = Field(default=0, ge=0, le=1)
+    replacement_mode: RegionReplacementMode = RegionReplacementMode.NONE
+    replacement_fill: str | None = None
 
 
 class TypographySpec(StrictModel):
     lines: list[TypographyLine] = Field(default_factory=list)
     line_order_confidence: float = Field(default=0, ge=0, le=1)
     font_match_confidence: float = Field(default=0, ge=0, le=1)
+    evidence_provider: str = ""
+    evidence_version: str = ""
+
+
+class NormalizedPoint(StrictModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class GeometryPrimitive(StrictModel):
+    kind: GeometryKind
+    bbox: BoundingBox | None = None
+    points: list[NormalizedPoint] = Field(default_factory=list)
+    fill: str | None = None
+    stroke: str | None = None
+    stroke_width_ratio: float = Field(default=0.004, ge=0, le=0.1)
+    confidence: float = Field(default=0, ge=0, le=1)
+
+
+class GeometrySpec(StrictModel):
+    primitives: list[GeometryPrimitive] = Field(default_factory=list)
+    confidence: float = Field(default=0, ge=0, le=1)
 
 
 class SemanticJudgeResult(StrictModel):
@@ -127,6 +170,7 @@ class DesignSpec(StrictModel):
     artwork_bbox: BoundingBox | None = None
     exact_text: list[str] = Field(default_factory=list)
     typography: TypographySpec | None = None
+    geometry: GeometrySpec | None = None
     objects: list[str] = Field(default_factory=list)
     dominant_colors: list[str] = Field(default_factory=list)
     texture_classes: list[str] = Field(default_factory=list)
@@ -164,9 +208,29 @@ class RouteDecision(StrictModel):
     deterministic_finish: bool = True
 
 
+class ProviderActionRecipe(StrictModel):
+    action: ProviderAction
+    enabled: bool = True
+    model_alias: str = ""
+    max_reference_long_edge: int = Field(default=1600, ge=512, le=4096)
+    timeout_seconds: float | None = Field(default=None, gt=0, le=600)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProviderRecipe(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    recipe_id: str = "default"
+    version: str = "1"
+    provider_name: str = "remote"
+    actions: list[ProviderActionRecipe] = Field(default_factory=list)
+
+    def for_action(self, action: ProviderAction) -> ProviderActionRecipe | None:
+        return next((item for item in self.actions if item.action is action), None)
+
+
 class ProviderRequest(StrictModel):
     schema_version: str = SCHEMA_VERSION
-    action: str
+    action: ProviderAction
     job_id: str
     quality_mode: QualityMode
     source_paths: list[str] = Field(min_length=1)

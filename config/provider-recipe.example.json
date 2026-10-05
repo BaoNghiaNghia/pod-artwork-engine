@@ -1,0 +1,37 @@
+{
+  "recipe_id": "remote-balanced-v1",
+  "version": "1",
+  "provider_name": "remote",
+  "actions": [
+    {
+      "action": "analyze",
+      "enabled": true,
+      "model_alias": "vision_reasoning",
+      "max_reference_long_edge": 1600,
+      "timeout_seconds": 90,
+      "parameters": {
+        "quality": "balanced"
+      }
+    },
+    {
+      "action": "reconstruct",
+      "enabled": true,
+      "model_alias": "image_reconstruction",
+      "max_reference_long_edge": 2048,
+      "timeout_seconds": 180,
+      "parameters": {
+        "quality": "high"
+      }
+    },
+    {
+      "action": "judge",
+      "enabled": true,
+      "model_alias": "vision_judge",
+      "max_reference_long_edge": 1600,
+      "timeout_seconds": 90,
+      "parameters": {
+        "strict_text": true
+      }
+    }
+  ]
+}

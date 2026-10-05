@@ -11,20 +11,30 @@ from pod_artwork_engine.contracts import (
     ArtworkType,
     BoundingBox,
     DesignSpec,
+    GeometryKind,
+    GeometryPrimitive,
+    GeometrySpec,
     JobState,
+    NormalizedPoint,
     ProviderResult,
     QualityMode,
+    RegionReplacementMode,
     RouteKind,
     SemanticJudgeResult,
     TypographyLine,
     TypographySpec,
 )
 from pod_artwork_engine.engine import Engine
+from pod_artwork_engine.geometry import geometry_to_svg, render_geometry_master
 from pod_artwork_engine.preflight import inspect_image
 from pod_artwork_engine.router import choose_route
 from pod_artwork_engine.settings import Settings
 from pod_artwork_engine.typed_control import TypedBoundaryError, validate_typed_payload
-from pod_artwork_engine.typography import render_typography_master, resolve_font
+from pod_artwork_engine.typography import (
+    render_typography_master,
+    replace_mixed_typography,
+    resolve_font,
+)
 
 
 def _transparent_art(path: Path, size: int = 1200) -> Path:
@@ -358,3 +368,176 @@ def test_quick_typography_uses_deterministic_redraw_when_font_matches(
     assert candidate["used_remote"] is False
     assert candidate["recognized_text"] == ["HELLO POD"]
     assert candidate["alpha_method"] == "provider_or_existing_alpha"
+
+
+def test_mixed_text_replacement_changes_only_explicit_safe_region(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "mixed-data")
+    settings.ensure_directories()
+    if resolve_font(settings, "Arial") is None:
+        pytest.skip("Arial is not available on this host")
+
+    candidate_path = tmp_path / "mixed-candidate.png"
+    base = Image.new("RGBA", (800, 600), (30, 110, 70, 255))
+    draw = ImageDraw.Draw(base)
+    draw.ellipse((40, 40, 220, 220), fill=(220, 80, 90, 255))
+    base.save(candidate_path)
+
+    spec = TypographySpec(
+        line_order_confidence=0.98,
+        font_match_confidence=0.94,
+        evidence_provider="fixture",
+        evidence_version="1",
+        lines=[
+            TypographyLine(
+                text="SAFE TEXT",
+                bbox=BoundingBox(x=0.40, y=0.38, width=0.45, height=0.18),
+                font_family="Arial",
+                font_weight=700,
+                fill="#111111",
+                confidence=0.97,
+                replacement_mode=RegionReplacementMode.REPLACE_SOLID,
+                replacement_fill="#ffffff",
+            )
+        ],
+    )
+
+    output, processed = replace_mixed_typography(
+        candidate_path,
+        spec,
+        settings,
+        tmp_path / "mixed-refined.png",
+    )
+
+    with Image.open(candidate_path) as before, Image.open(output) as after:
+        before = before.convert("RGBA")
+        after = after.convert("RGBA")
+        assert before.getpixel((80, 80)) == after.getpixel((80, 80))
+        assert before.getpixel((325, 235)) != after.getpixel((325, 235))
+
+    assert processed == ["SAFE TEXT"]
+
+
+def test_geometry_renderer_creates_raster_and_svg_master(tmp_path: Path) -> None:
+    spec = GeometrySpec(
+        confidence=0.96,
+        primitives=[
+            GeometryPrimitive(
+                kind=GeometryKind.RECT,
+                bbox=BoundingBox(x=0.15, y=0.18, width=0.70, height=0.18),
+                fill="#111111",
+                confidence=0.98,
+            ),
+            GeometryPrimitive(
+                kind=GeometryKind.ELLIPSE,
+                bbox=BoundingBox(x=0.30, y=0.42, width=0.40, height=0.40),
+                fill="#f2c94c",
+                stroke="#111111",
+                confidence=0.97,
+            ),
+            GeometryPrimitive(
+                kind=GeometryKind.LINE,
+                points=[
+                    NormalizedPoint(x=0.25, y=0.88),
+                    NormalizedPoint(x=0.75, y=0.88),
+                ],
+                stroke="#111111",
+                stroke_width_ratio=0.01,
+                confidence=0.99,
+            ),
+        ],
+    )
+
+    png = render_geometry_master(
+        spec,
+        tmp_path / "geometry.png",
+        canvas_size=(1200, 1200),
+    )
+    svg = geometry_to_svg(
+        spec,
+        tmp_path / "geometry.svg",
+        view_box=(1200, 1200),
+    )
+
+    with Image.open(png) as image:
+        assert image.mode == "RGBA"
+        assert image.getchannel("A").getbbox() is not None
+
+    svg_text = svg.read_text(encoding="utf-8")
+    assert "<rect " in svg_text
+    assert "<ellipse " in svg_text
+    assert "<line " in svg_text
+
+
+def test_quick_logo_uses_deterministic_geometry_after_remote_analysis(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = _transparent_art(tmp_path / "logo-reference.png")
+    settings = Settings(
+        data_root=tmp_path / "logo-data",
+        remote_provider_url="http://provider.invalid/gateway",
+        remote_provider_name="test-provider",
+    )
+    engine = Engine(settings)
+    calls: list[str] = []
+
+    geometry = GeometrySpec(
+        confidence=0.97,
+        primitives=[
+            GeometryPrimitive(
+                kind=GeometryKind.ELLIPSE,
+                bbox=BoundingBox(x=0.20, y=0.20, width=0.60, height=0.60),
+                fill="#111111",
+                confidence=0.98,
+            ),
+            GeometryPrimitive(
+                kind=GeometryKind.ELLIPSE,
+                bbox=BoundingBox(x=0.28, y=0.28, width=0.44, height=0.44),
+                fill="#ffffff",
+                confidence=0.98,
+            ),
+        ],
+    )
+    remote_spec = DesignSpec(
+        artwork_type=ArtworkType.LOGO,
+        artwork_bbox=BoundingBox(x=0.15, y=0.12, width=0.70, height=0.76),
+        geometry=geometry,
+        confidence=0.97,
+        required_capabilities=["need_vector"],
+    )
+
+    def fake_execute(request):
+        calls.append(request.action)
+        assert request.action == "analyze"
+        return ProviderResult(
+            provider="test-provider",
+            model_version="test-logo-v1",
+            design_spec=remote_spec,
+        )
+
+    monkeypatch.setattr(engine.provider, "execute", fake_execute)
+
+    job = engine.create_job([source], QualityMode.QUICK_2D)
+    result = engine.run_job(job.job_id)
+
+    assert calls == ["analyze"]
+    assert result.state is JobState.COMPLETED
+    candidate = engine.checkpoints.payload(job.job_id, "candidate")
+    assert candidate["used_remote"] is False
+
+    geometry_svg = (
+        engine.settings.jobs_dir
+        / job.job_id
+        / "master"
+        / "vector"
+        / "geometry.svg"
+    )
+    assert geometry_svg.is_file()
+
+    manifest = (
+        engine.settings.jobs_dir
+        / job.job_id
+        / "master"
+        / "artifact_manifest.json"
+    ).read_text(encoding="utf-8")
+    assert "geometry_svg" in manifest

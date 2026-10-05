@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from .contracts import ProviderRequest, ProviderResult
+from .contracts import ProviderActionRecipe, ProviderRecipe, ProviderRequest, ProviderResult
 from .settings import Settings
 from .typed_control import TypedBoundaryError, validate_typed_payload
 
@@ -49,21 +49,61 @@ class RemoteProvider:
     def available(self) -> bool:
         return bool(self.settings.remote_provider_url.strip())
 
+    def _recipe(self) -> ProviderRecipe:
+        path = self.settings.provider_recipe_path
+        if path is None:
+            return ProviderRecipe(provider_name=self.settings.remote_provider_name)
+        resolved = path.expanduser().resolve()
+        if not resolved.is_file():
+            raise ProviderProtocolError(f"provider recipe not found: {resolved}")
+        try:
+            return validate_typed_payload(
+                ProviderRecipe,
+                resolved.read_text(encoding="utf-8"),
+            )
+        except (OSError, TypedBoundaryError) as exc:
+            raise ProviderProtocolError(f"invalid provider recipe: {exc}") from exc
+
+    def _action_recipe(self, request: ProviderRequest) -> tuple[ProviderRecipe, ProviderActionRecipe]:
+        recipe = self._recipe()
+        action_recipe = recipe.for_action(request.action)
+        if action_recipe is None:
+            action_recipe = ProviderActionRecipe(action=request.action)
+        if not action_recipe.enabled:
+            raise ProviderUnavailable(
+                f"provider action disabled by recipe: {request.action.value}"
+            )
+        return recipe, action_recipe
+
     def execute(self, request: ProviderRequest) -> ProviderResult:
         if not self.available:
             raise ProviderUnavailable("remote provider URL is not configured")
 
+        recipe, action_recipe = self._action_recipe(request)
         payload = request.model_dump(mode="json")
+        payload["provider_recipe"] = {
+            "recipe_id": recipe.recipe_id,
+            "version": recipe.version,
+            "provider_name": recipe.provider_name,
+            "model_alias": action_recipe.model_alias,
+            "parameters": action_recipe.parameters,
+        }
         # Local filesystem paths are not sent to remote providers.
         payload["source_paths"] = [Path(path).name for path in request.source_paths]
         payload["images"] = [
-            _encode_reference(Path(path))
+            _encode_reference(
+                Path(path),
+                long_edge=action_recipe.max_reference_long_edge,
+            )
             for path in request.source_paths
         ]
         if request.candidate_path:
             candidate = Path(request.candidate_path)
             payload["candidate_path"] = candidate.name
-            payload["candidate_image"] = _encode_reference(candidate)
+            payload["candidate_image"] = _encode_reference(
+                candidate,
+                long_edge=action_recipe.max_reference_long_edge,
+            )
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -79,10 +119,15 @@ class RemoteProvider:
             headers=headers,
             method="POST",
         )
+        timeout = (
+            action_recipe.timeout_seconds
+            if action_recipe.timeout_seconds is not None
+            else self.settings.remote_provider_timeout_seconds
+        )
         try:
             with urllib.request.urlopen(
                 http_request,
-                timeout=self.settings.remote_provider_timeout_seconds,
+                timeout=timeout,
             ) as response:
                 raw = response.read()
         except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:

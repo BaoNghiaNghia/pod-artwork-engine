@@ -143,11 +143,14 @@ POD_REMOTE_PROVIDER_URL=
 POD_REMOTE_PROVIDER_TOKEN=
 POD_REMOTE_PROVIDER_NAME=remote
 POD_REMOTE_PROVIDER_TIMEOUT_SECONDS=120
+POD_PROVIDER_RECIPE_PATH=config/provider-recipe.example.json
 ```
+
+`ProviderRecipe` keeps model/provider selection outside core pipeline code. Each `analyze`, `reconstruct` and `judge` action can define a model alias, image transfer size, timeout and provider parameters. The example intentionally uses capability aliases such as `vision_reasoning`, `image_reconstruction` and `vision_judge`; real GPT or other provider model names should be selected from Harness evidence rather than hard-coded into the engine.
 
 The configured gateway receives typed `analyze`, `reconstruct` and, when policy requires it, `judge` requests. Local filesystem paths are never sent to the provider; references/candidates are normalized and transferred as encoded images. If the gateway is unavailable or returns invalid structured data, the engine falls back deterministically and records the reason.
 
-Phase 1A does **not** claim exact typography reconstruction yet. OCR/font/layout rebuild, concrete production provider mappings and stronger semantic Judge integration remain the next Phase 1 work.
+Phase 1A establishes the operational pipeline. Exact typography, semantic judging and deterministic vector/geometry precision are layered on top in the later Phase 1 increments below.
 
 ### Phase 1B — Text Fidelity + Semantic Judge
 
@@ -163,12 +166,26 @@ Implemented foundation:
 - exact text remains a hard Print Ready / Max Fidelity gate;
 - Harness candidate manifests can carry semantic Judge evidence so `semantic.object_fidelity` has measurable coverage instead of being silently omitted.
 
+### Phase 1C — Deterministic Precision Foundation
+
+Implemented:
+
+- typed provider actions (`analyze`, `reconstruct`, `judge`) instead of free-form action strings;
+- typography evidence provenance fields for OCR/font-identification adapters;
+- explicit mixed-art text replacement policy: only regions marked `replace_solid` with a known replacement fill may be destructively replaced;
+- illustration pixels outside approved replacement boxes remain untouched;
+- deterministic typography failure escalates to the configured remote provider rather than silently substituting a different font;
+- typed high-confidence logo geometry primitives for rectangle, ellipse, line and polygon;
+- deterministic raster rendering for those primitives plus an SVG geometry master;
+- geometry SVG is recorded in the final artifact manifest;
+- geometry/text reconstruction refuses low-confidence primitives or missing evidence rather than guessing.
+
 Still pending in Phase 1:
 
-- production OCR/font-identification adapter and font-family normalization;
-- deterministic vector/logo geometry reconstruction;
-- mixed-art text replacement/masking rather than pure-typography-only deterministic redraw;
-- concrete GPT-6/provider gateway recipe and benchmark-selected model mapping;
+- a concrete production OCR/font-identification backend and font-family normalization database;
+- more logo primitives/Bezier paths and complex shape tracing;
+- mixed-art masks beyond safe solid-background text regions;
+- provider recipe infrastructure is implemented; concrete GPT-6/provider aliases and benchmark-selected model mappings remain deployment/benchmark configuration;
 - real historical Smoke/Regression/Golden benchmark runs and threshold calibration.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.

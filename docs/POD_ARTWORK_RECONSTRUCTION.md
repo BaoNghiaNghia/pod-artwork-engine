@@ -1317,7 +1317,7 @@ Build:
 
 ### Phase 1 — Reconstruction V1
 
-**Status: Phase 1A implemented; Phase 1B text-fidelity/Judge foundation implemented and locally verified.** The tool now executes an end-to-end reconstruction pipeline from uploaded references to a 4500×5400 RGBA PNG instead of stopping after pre-flight. The operational pipeline is separated from provider selection and deterministic precision stages.
+**Status: Phase 1A implemented; Phase 1B text-fidelity/Judge foundation implemented; Phase 1C deterministic precision foundation implemented and locally verified.** The tool now executes an end-to-end reconstruction pipeline from uploaded references to a 4500×5400 RGBA PNG instead of stopping after pre-flight. The operational pipeline is separated from provider selection and deterministic precision stages.
 
 Implemented in Phase 1A:
 
@@ -1363,22 +1363,34 @@ Phase 1B text-fidelity/Judge foundation:
 - exact text remains a hard Print Ready / Max Fidelity gate;
 - Harness candidate manifests can carry semantic Judge evidence so `semantic.object_fidelity` becomes measurable and its coverage is visible in scorecards.
 
+Phase 1C deterministic precision foundation:
+
+- provider actions are a typed enum (`analyze`, `reconstruct`, `judge`) rather than an open string contract;
+- typography evidence carries provider/version provenance so OCR/font-identification backends remain replaceable;
+- mixed artwork supports deterministic text replacement only for explicitly approved `replace_solid` regions with a known replacement fill;
+- replacement is region-bounded: pixels outside those approved text boxes are preserved exactly by the deterministic stage;
+- lines without safe replacement evidence are skipped rather than erased or guessed;
+- deterministic typography/geometry failures can escalate to the configured semantic provider;
+- logo geometry uses typed high-confidence rectangle, ellipse, line and polygon primitives;
+- geometry can be rendered to a high-resolution raster master and retained as a reusable SVG geometry artifact;
+- low-confidence or structurally incomplete geometry is rejected instead of being presented as recovered vector truth.
+
 Current truthfulness limits:
 
 - the local analyzer is still not a full OCR/VLM replacement;
 - exact typography redraw requires a sufficiently confident layout plus an actually matched font; the system must not silently substitute a visually different font;
-- mixed-art text replacement still needs masking/compositing so deterministic text can replace generative text without damaging illustration regions;
-- logo geometry reconstruction is not yet a full SVG/vector tracer;
+- mixed-art destructive replacement is intentionally limited to safe solid-background regions; complex illustration-aware inpainting/masks remain later work;
+- current logo geometry covers deterministic primitives but is not yet a general Bezier/SVG tracer;
 - border-color alpha extraction is a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
 - `REVIEW_REQUIRED` is expected when semantic reconstruction is required but no acceptable remote result exists;
 - concrete production GPT-6/provider mapping stays configurable until Harness evidence selects it.
 
 Remaining Phase 1 work:
 
-- production OCR/font-identification adapter and font-family normalization;
-- mixed-art deterministic text replacement/masking;
-- richer logo/geometry reconstruction;
-- concrete GPT-6/provider gateway recipes and fallback mappings;
+- concrete production OCR/font-identification backend and font-family normalization database;
+- Bezier/complex logo tracing and richer shape reconstruction;
+- mixed-art masks for non-solid or illustration-overlapping text regions;
+- provider recipe infrastructure is implemented; concrete GPT-6/provider aliases and fallback mappings still require Harness-backed selection;
 - run Smoke/Regression/Golden benchmarks against real historical pairs;
 - calibrate semantic/technical thresholds from those results rather than hand-tuning them.
 
