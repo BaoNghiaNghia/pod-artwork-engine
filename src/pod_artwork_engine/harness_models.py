@@ -7,8 +7,9 @@ from uuid import uuid4
 
 from pydantic import Field, model_validator
 
-from .contracts import QualityMode, SCHEMA_VERSION, SemanticJudgeResult, StrictModel, utc_now
+from .contracts import ArtworkType, QualityMode, RouteKind, SCHEMA_VERSION, SemanticJudgeResult, StrictModel, utc_now
 from .qc_policy import QCModePolicy, QCPolicy
+from .router_policy import RouterPolicy
 
 
 class BenchmarkTier(StrEnum):
@@ -52,6 +53,9 @@ class RunProvenance(StrictModel):
     dataset_manifest_sha256: str = ""
     qc_policy_id: str = ""
     qc_policy_version: str = ""
+    router_policy_id: str = ""
+    router_policy_version: str = ""
+    route_override: RouteKind | None = None
     provider_recipe_id: str = ""
 
 
@@ -105,6 +109,17 @@ class PrecisionEvidence(StrictModel):
     precision_ops: list[str] = Field(default_factory=list)
 
 
+class RouteEvidence(StrictModel):
+    selected_route: RouteKind | None = None
+    requested_override: RouteKind | None = None
+    used_remote: bool = False
+    remote_available: bool = False
+    design_confidence: float | None = Field(default=None, ge=0, le=1)
+    artwork_type: ArtworkType | None = None
+    required_capabilities: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class RuntimeQCEvidence(StrictModel):
     semantic_score: float | None = Field(default=None, ge=0, le=1)
     technical_score: float | None = Field(default=None, ge=0, le=1)
@@ -145,6 +160,7 @@ class BenchmarkCaseResult(StrictModel):
     technical: TechnicalMetrics = Field(default_factory=TechnicalMetrics)
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
     precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
+    route: RouteEvidence = Field(default_factory=RouteEvidence)
     runtime_qc: RuntimeQCEvidence = Field(default_factory=RuntimeQCEvidence)
     semantic_score: float | None = Field(default=None, ge=0, le=1)
     technical_score: float | None = Field(default=None, ge=0, le=1)
@@ -298,12 +314,128 @@ class QCPolicyCalibrationProposal(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class RoutePreference(StrEnum):
+    DETERMINISTIC = "deterministic"
+    REMOTE = "remote"
+    TIE = "tie"
+    UNUSABLE = "unusable"
+
+
+class RouteMatrixSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str = Field(default_factory=lambda: "route_matrix_" + uuid4().hex)
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_path: str
+    quality_mode: QualityMode = QualityMode.PRINT_READY
+    routes: list[RouteKind] = Field(
+        default_factory=lambda: [RouteKind.DETERMINISTIC, RouteKind.HYBRID],
+        min_length=2,
+    )
+    limit: int | None = Field(default=None, ge=1)
+    min_quality_gain: float = Field(default=0.02, ge=0, le=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def validate_routes(self) -> "RouteMatrixSpec":
+        unique = list(dict.fromkeys(self.routes))
+        if len(unique) != len(self.routes):
+            raise ValueError("route matrix routes must be unique")
+        if RouteKind.DETERMINISTIC not in unique:
+            raise ValueError("route matrix requires deterministic baseline")
+        if not any(
+            route in {RouteKind.HYBRID, RouteKind.REMOTE_SEMANTIC}
+            for route in unique
+        ):
+            raise ValueError("route matrix requires at least one remote-capable route")
+        return self
+
+
+class RouteMatrixRun(StrictModel):
+    route: RouteKind
+    run_id: str
+    scorecard_id: str
+    status: HarnessRunStatus
+
+
+class RouteCaseComparison(StrictModel):
+    pair_id: str
+    artwork_identity: str
+    design_confidence: float | None = Field(default=None, ge=0, le=1)
+    artwork_type: ArtworkType | None = None
+    required_capabilities: list[str] = Field(default_factory=list)
+    deterministic_quality: float | None = Field(default=None, ge=0, le=1)
+    remote_quality: float | None = Field(default=None, ge=0, le=1)
+    remote_route: RouteKind | None = None
+    quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    deterministic_latency_ms: float = Field(default=0, ge=0)
+    remote_latency_ms: float = Field(default=0, ge=0)
+    remote_used: bool = False
+    preference: RoutePreference = RoutePreference.UNUSABLE
+    reasons: list[str] = Field(default_factory=list)
+
+
+class RouteMatrixReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_id: str
+    recipe_version: str
+    quality_mode: QualityMode
+    min_quality_gain: float = Field(ge=0, le=1)
+    dataset_manifest_sha256: str = ""
+    router_policy_id: str = ""
+    router_policy_version: str = ""
+    runs: list[RouteMatrixRun] = Field(default_factory=list)
+    comparisons: list[RouteCaseComparison] = Field(default_factory=list)
+    comparable_case_count: int = Field(default=0, ge=0)
+    remote_preferred_count: int = Field(default=0, ge=0)
+    deterministic_preferred_count: int = Field(default=0, ge=0)
+    tie_count: int = Field(default=0, ge=0)
+    incomplete_count: int = Field(default=0, ge=0)
+    requires_human_approval: bool = True
+    auto_applied: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class RouterThresholdCalibrationMetric(StrictModel):
+    metric: str
+    sample_count: int = Field(ge=0)
+    prefer_remote_count: int = Field(ge=0)
+    prefer_deterministic_count: int = Field(ge=0)
+    current_threshold: float = Field(ge=0, le=1)
+    recommended_threshold: float | None = Field(default=None, ge=0, le=1)
+    false_local_rate: float | None = Field(default=None, ge=0, le=1)
+    unnecessary_remote_rate: float | None = Field(default=None, ge=0, le=1)
+    sufficient_evidence: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class RouterPolicyCalibrationProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(default_factory=lambda: "router_cal_" + uuid4().hex)
+    source_matrix_ids: list[str] = Field(min_length=1)
+    source_tiers: list[BenchmarkTier] = Field(default_factory=list)
+    current_policy: RouterPolicy
+    candidate_policy: RouterPolicy
+    metrics: dict[str, RouterThresholdCalibrationMetric] = Field(default_factory=dict)
+    min_quality_gain: float = Field(default=0.02, ge=0, le=1)
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class CandidateManifestEntry(StrictModel):
     result_path: str
     recognized_text: list[str] = Field(default_factory=list)
     semantic_judge: SemanticJudgeResult | None = None
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
     precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
+    route: RouteEvidence = Field(default_factory=RouteEvidence)
     runtime_qc: RuntimeQCEvidence = Field(default_factory=RuntimeQCEvidence)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

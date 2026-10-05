@@ -233,6 +233,12 @@ class HarnessStore:
     def calibration_dir(self, proposal_id: str) -> Path:
         return self.root / "calibration" / proposal_id
 
+    def route_matrix_dir(self, matrix_id: str) -> Path:
+        return self.root / "route-matrices" / matrix_id
+
+    def router_calibration_dir(self, proposal_id: str) -> Path:
+        return self.root / "router-calibration" / proposal_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:
@@ -327,6 +333,7 @@ class HarnessRunner:
                         error="candidate file not found",
                         operational=entry.operational,
                         precision=entry.precision,
+                        route=entry.route,
                         runtime_qc=entry.runtime_qc,
                         cohorts=case.cohorts,
                     )
@@ -364,6 +371,7 @@ class HarnessRunner:
                             technical=technical,
                             operational=entry.operational,
                             precision=entry.precision,
+                            route=entry.route,
                             runtime_qc=entry.runtime_qc,
                             semantic_score=semantic_score,
                             technical_score=technical_score,
@@ -381,6 +389,7 @@ class HarnessRunner:
                             error=f"{type(exc).__name__}: {exc}",
                             operational=entry.operational,
                             precision=entry.precision,
+                            route=entry.route,
                             runtime_qc=entry.runtime_qc,
                             cohorts=case.cohorts,
                         )

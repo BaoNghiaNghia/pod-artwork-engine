@@ -247,14 +247,48 @@ python -m pod_artwork_engine harness-calibrate <golden-run-id> <another-golden-r
 
 Outputs are stored under `<data-root>/harness/suites/<suite-id>/` and `<data-root>/harness/calibration/<proposal-id>/`. A calibration proposal is evidence only. To test it, explicitly point `POD_QC_POLICY_PATH` or a benchmark recipe at the generated candidate file and run the Harness again.
 
+### Phase 1F — Counterfactual Router Evidence + Safe Router Calibration
+
+Implemented:
+
+- routing thresholds now live in a typed `RouterPolicy` instead of being hard-coded in `router.py`;
+- `POD_ROUTER_POLICY_PATH` can explicitly select a candidate policy; `config/router-policy.example.json` documents the built-in defaults and the built-in policy preserves the previous Phase 1 behavior;
+- production runs record router-policy identity in the final artifact manifest and Harness provenance;
+- Harness recipes may use `harness_route_override` to force `deterministic`, `hybrid`, or `remote_semantic` **only inside Harness execution**;
+- per-case Harness results record selected route, requested override, design confidence, artwork type, capabilities, provider availability and whether a remote reconstruction actually executed;
+- `harness-route-matrix` runs the same benchmark cases through deterministic and remote-capable routes and compares target quality case-by-case;
+- a forced remote route that falls back locally is marked unusable for router learning, so fallback output is never mislabeled as remote evidence;
+- `harness-router-calibrate` derives bounded confidence-threshold proposals only from valid counterfactual comparisons;
+- router calibration uses a configurable false-local ceiling, where a false-local means choosing deterministic on a case where the measured remote route was materially better;
+- Golden Holdout evidence is required by default; generated `candidate-router-policy.json` files are review-only and are never applied automatically;
+- complex-route enable/disable booleans are intentionally not auto-learned yet; only thresholds with sufficient counterfactual evidence may change.
+
+Create a deterministic-vs-hybrid route matrix:
+
+```powershell
+python -m pod_artwork_engine harness-route-matrix historical-v1 `
+  --tier golden `
+  --recipe config/benchmark-recipe.remote.example.json `
+  --quality-mode print_ready `
+  --route deterministic `
+  --route hybrid
+```
+
+Generate a review-only RouterPolicy proposal:
+
+```powershell
+python -m pod_artwork_engine harness-router-calibrate <route-matrix-id>
+```
+
+Route matrix artifacts are stored under `<data-root>/harness/route-matrices/<matrix-id>/`; router proposals are stored under `<data-root>/harness/router-calibration/<proposal-id>/`. A working remote provider is required for genuine remote counterfactual evidence.
+
 Still pending in Phase 1:
 
-- import/run the user's real historical source/final pairs through the new suite and establish the first measured champion;
+- import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
 - choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
 - visual font identification beyond provider hints plus exact installed-family normalization;
 - multi-subpath/compound Bezier tracing and more complex logo topology;
 - illustration-aware/inpainting masks for text that overlaps non-solid artwork;
-- calibrate router thresholds only after counterfactual route evidence exists; the current QC calibrator intentionally does not guess router policy from non-counterfactual data;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.

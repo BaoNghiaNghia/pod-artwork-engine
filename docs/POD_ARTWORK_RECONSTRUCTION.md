@@ -1431,6 +1431,37 @@ Example review-only calibration after Golden runs:
 python -m pod_artwork_engine harness-calibrate <golden-run-id> <golden-run-id-2>
 ```
 
+Phase 1F counterfactual router evidence and safe router calibration:
+
+- routing thresholds are versioned in a typed `RouterPolicy`; the default policy preserves the earlier Phase 1 routing behavior;
+- production can explicitly load a policy through `POD_ROUTER_POLICY_PATH`, while benchmark recipes may use a relative `router_policy_path`;
+- Harness-only `harness_route_override` can force deterministic, hybrid or remote-semantic reconstruction without exposing a production API override;
+- each production-engine benchmark case records selected route, requested override, design confidence, artwork type, required capabilities, provider availability, route reasons and whether remote reconstruction actually executed;
+- `harness-route-matrix` runs the same cases through a deterministic baseline plus one or more remote-capable counterfactual routes;
+- counterfactual comparisons are considered valid only when the remote reconstruction really executed; provider fallback-to-local is marked unusable rather than counted as remote evidence;
+- route matrices measure per-case quality delta and latency while retaining the exact dataset fingerprint, quality mode and RouterPolicy identity;
+- `harness-router-calibrate` proposes bounded confidence-threshold updates from measured deterministic-vs-remote winners;
+- calibration prioritizes avoiding `false local` decisions, where deterministic routing would be selected for a case whose measured remote reconstruction was materially better;
+- Golden Holdout matrices are required by default, thresholds need evidence on both sides of the decision boundary, and boolean routing features are not auto-learned;
+- generated `candidate-router-policy.json` is review-only, never activated automatically, and must be re-benchmarked before production use.
+
+Example route matrix:
+
+```powershell
+python -m pod_artwork_engine harness-route-matrix historical-v1 `
+  --tier golden `
+  --recipe config/benchmark-recipe.remote.example.json `
+  --quality-mode print_ready `
+  --route deterministic `
+  --route hybrid
+```
+
+Example review-only router calibration:
+
+```powershell
+python -m pod_artwork_engine harness-router-calibrate <route-matrix-id>
+```
+
 Current truthfulness limits:
 
 - local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
@@ -1439,20 +1470,20 @@ Current truthfulness limits:
 - font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
 - polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
 - Bezier support currently allows one guarded subpath per primitive; compound paths/holes/general SVG tracing remain later work;
-- calibration currently tunes QC thresholds only; router-threshold learning is intentionally deferred because valid router calibration needs counterfactual route outcomes, not just one chosen route per case;
-- a generated `candidate-qc-policy.json` is not production policy until explicitly configured and benchmarked again;
+- route-matrix evidence is not valid as remote evidence when the provider was unavailable and the engine fell back locally;
+- router calibration currently changes confidence thresholds only; `quick_2d_remote_first` and `remote_complex_enabled` remain explicit human-controlled policy fields;
+- generated QC/router candidate policies are not production policy until explicitly configured and benchmarked again;
 - border-color alpha extraction remains a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
 - `REVIEW_REQUIRED` remains expected when semantic reconstruction is needed but no acceptable provider/local result exists;
 - concrete GPT/provider model aliases remain configurable until Golden Holdout evidence selects them.
 
 Remaining Phase 1 work:
 
-- import and run the user's real historical source/final pairs through the suite and establish the first measured champion;
+- import and run the user's real historical source/final pairs through the suite and route matrix, then establish the first measured champion and RouterPolicy;
 - choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
 - add visual font identification/ranking beyond provider hints and exact installed-family normalization;
 - add compound/multi-subpath Bezier topology and richer logo tracing;
 - add illustration-aware/inpainting masks for text overlapping non-solid art;
-- use repeated challenger evidence to calibrate router policy once counterfactual outcomes exist;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 
 Build:

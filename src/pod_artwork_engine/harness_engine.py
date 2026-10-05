@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from . import __version__
-from .contracts import JobState, ProviderResult, QualityMode, RegionReplacementMode
+from .contracts import DesignSpec, JobState, ProviderResult, QualityMode, RegionReplacementMode, RouteDecision, RouteKind
 from .engine import Engine
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore
 from .harness_models import (
@@ -16,6 +16,7 @@ from .harness_models import (
     CandidateManifestEntry,
     OperationalMetrics,
     PrecisionEvidence,
+    RouteEvidence,
     RunProvenance,
     RuntimeQCEvidence,
 )
@@ -65,6 +66,13 @@ class HarnessEngineRunner:
                 path = recipe_base / path
             overrides["qc_policy_path"] = path.resolve()
 
+        router_policy = metadata.get("router_policy_path")
+        if isinstance(router_policy, str) and router_policy.strip():
+            path = Path(router_policy).expanduser()
+            if not path.is_absolute() and recipe_base is not None:
+                path = recipe_base / path
+            overrides["router_policy_path"] = path.resolve()
+
         local_ocr = metadata.get("local_ocr_enabled")
         if isinstance(local_ocr, bool):
             overrides["local_ocr_enabled"] = local_ocr
@@ -74,6 +82,22 @@ class HarnessEngineRunner:
             overrides["tesseract_language"] = ocr_language.strip()
 
         return replace(self.base_settings, **overrides)
+
+    def _route_override_for_recipe(
+        self,
+        recipe: BenchmarkRecipe,
+    ) -> RouteKind | None:
+        raw = recipe.metadata.get("harness_route_override")
+        if raw is None or raw == "":
+            return None
+        if not isinstance(raw, str):
+            raise ValueError("harness_route_override must be a route string")
+        try:
+            return RouteKind(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"unsupported harness_route_override: {raw}"
+            ) from exc
 
     def _provider_call_count(self, job_id: str) -> int:
         count = 0
@@ -137,6 +161,44 @@ class HarnessEngineRunner:
             masked_text_regions=masked_regions,
             provider_recipe_id=recipe_id,
             precision_ops=sorted(set(precision_ops)),
+        )
+
+    def _route_evidence(self, job_id: str) -> RouteEvidence:
+        route_payload = self.engine.checkpoints.payload(job_id, "route")
+        design_payload = self.engine.checkpoints.payload(job_id, "design_spec")
+        candidate_payload = self.engine.checkpoints.payload(job_id, "candidate")
+
+        route = None
+        if isinstance(route_payload, dict):
+            try:
+                route = RouteDecision.model_validate(route_payload)
+            except ValueError:
+                route = None
+
+        design = None
+        if isinstance(design_payload, dict):
+            try:
+                design = DesignSpec.model_validate(design_payload)
+            except ValueError:
+                design = None
+
+        return RouteEvidence(
+            selected_route=route.route if route is not None else None,
+            requested_override=self.engine.route_override,
+            used_remote=(
+                bool(candidate_payload.get("used_remote"))
+                if isinstance(candidate_payload, dict)
+                else False
+            ),
+            remote_available=self.engine.provider.available,
+            design_confidence=design.confidence if design is not None else None,
+            artwork_type=design.artwork_type if design is not None else None,
+            required_capabilities=(
+                list(design.required_capabilities)
+                if design is not None
+                else []
+            ),
+            reason_codes=list(route.reason_codes) if route is not None else [],
         )
 
     def _runtime_qc_evidence(self, job_id: str) -> RuntimeQCEvidence:
@@ -217,6 +279,7 @@ class HarnessEngineRunner:
                 manual_review=job.state is JobState.REVIEW_REQUIRED,
             ),
             precision=self._precision_evidence(job_id),
+            route=self._route_evidence(job_id),
             runtime_qc=self._runtime_qc_evidence(job_id),
             metadata={
                 "job_id": job_id,
@@ -239,8 +302,12 @@ class HarnessEngineRunner:
         recipe_base: Path | None = None,
     ) -> BenchmarkScorecard:
         effective_settings = self._settings_for_recipe(recipe, recipe_base)
+        route_override = self._route_override_for_recipe(recipe)
         self.settings = effective_settings
-        self.engine = Engine(effective_settings)
+        self.engine = Engine(
+            effective_settings,
+            route_override=route_override,
+        )
 
         cases = self.case_factory.build(dataset_id, tier, limit=limit)
         if not cases:
@@ -288,6 +355,9 @@ class HarnessEngineRunner:
             quality_mode=quality_mode,
             qc_policy_id=self.engine.qc_policy.policy_id,
             qc_policy_version=self.engine.qc_policy.version,
+            router_policy_id=self.engine.router_policy.policy_id,
+            router_policy_version=self.engine.router_policy.version,
+            route_override=route_override,
             provider_recipe_id=provider_recipe_id,
         )
         manifest = CandidateManifest(candidates=entries)

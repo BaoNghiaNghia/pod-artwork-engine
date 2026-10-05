@@ -55,6 +55,10 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "qc_policy_path": (
                 str(settings.qc_policy_path) if settings.qc_policy_path else ""
             ),
+            "router_policy_configured": settings.router_policy_path is not None,
+            "router_policy_path": (
+                str(settings.router_policy_path) if settings.router_policy_path else ""
+            ),
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
             "tesseract_language": settings.tesseract_language,

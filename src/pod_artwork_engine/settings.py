@@ -39,6 +39,7 @@ class Settings:
     remote_provider_timeout_seconds: float = 120.0
     provider_recipe_path: Path | None = None
     qc_policy_path: Path | None = None
+    router_policy_path: Path | None = None
     local_ocr_enabled: bool = True
     tesseract_path: Path | None = None
     tesseract_language: str = "eng"
@@ -77,6 +78,11 @@ class Settings:
             qc_policy_path=(
                 Path(os.environ["POD_QC_POLICY_PATH"]).expanduser()
                 if os.environ.get("POD_QC_POLICY_PATH")
+                else None
+            ),
+            router_policy_path=(
+                Path(os.environ["POD_ROUTER_POLICY_PATH"]).expanduser()
+                if os.environ.get("POD_ROUTER_POLICY_PATH")
                 else None
             ),
             local_ocr_enabled=os.environ.get("POD_LOCAL_OCR_ENABLED", "1").strip().lower()

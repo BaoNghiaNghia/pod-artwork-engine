@@ -90,6 +90,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "qc_policy_id": engine.qc_policy.policy_id,
             "qc_policy_version": engine.qc_policy.version,
             "qc_policy_configured": settings.qc_policy_path is not None,
+            "router_policy_id": engine.router_policy.policy_id,
+            "router_policy_version": engine.router_policy.version,
+            "router_policy_configured": settings.router_policy_path is not None,
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
         }

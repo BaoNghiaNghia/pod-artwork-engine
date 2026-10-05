@@ -40,6 +40,9 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert status["qc_policy_id"] == "phase1-default"
     assert status["qc_policy_version"] == "1"
     assert status["qc_policy_configured"] is False
+    assert status["router_policy_id"] == "phase1-router-default"
+    assert status["router_policy_version"] == "1"
+    assert status["router_policy_configured"] is False
 
     response = client.post(
         "/jobs?quality_mode=print_ready",

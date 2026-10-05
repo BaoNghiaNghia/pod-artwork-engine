@@ -347,6 +347,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.provenance.recipe_sha256
     assert scorecard.provenance.dataset_manifest_sha256
     assert scorecard.provenance.qc_policy_id
+    assert scorecard.provenance.router_policy_id
     result = store.get_results(scorecard.run_id)[0]
     assert result.runtime_qc.semantic_score is not None
     assert result.runtime_qc.technical_score is not None
@@ -366,6 +367,8 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
         metadata={
             "provider_recipe_path": "provider.json",
             "qc_policy_path": "qc-policy.json",
+            "router_policy_path": "router-policy.json",
+            "harness_route_override": "hybrid",
             "local_ocr_enabled": False,
             "tesseract_language": "vie+eng",
         },
@@ -379,6 +382,10 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
     assert effective.qc_policy_path == (
         tmp_path / "recipes" / "qc-policy.json"
     ).resolve()
+    assert effective.router_policy_path == (
+        tmp_path / "recipes" / "router-policy.json"
+    ).resolve()
+    assert runner._route_override_for_recipe(recipe).value == "hybrid"
     assert effective.local_ocr_enabled is False
     assert effective.tesseract_language == "vie+eng"
     assert effective.remote_provider_token == settings.remote_provider_token
@@ -427,3 +434,35 @@ def test_promotion_gate_rejects_non_equivalent_provenance() -> None:
     assert decision.eligible is False
     assert "dataset manifest fingerprint mismatch" in decision.reasons
     assert "quality mode mismatch" in decision.reasons
+
+
+def test_harness_route_override_records_fallback_without_fake_remote(
+    tmp_path: Path,
+) -> None:
+    registry, dataset_id = _seed_dataset(tmp_path, count=10)
+    settings = Settings(
+        data_root=tmp_path / "route-runtime",
+        local_ocr_enabled=False,
+    )
+    store = HarnessStore(settings.harness_dir)
+    recipe = BenchmarkRecipe(
+        recipe_id="forced-hybrid-no-provider",
+        version="1",
+        metadata={"harness_route_override": "hybrid"},
+    )
+
+    scorecard = HarnessEngineRunner(settings, registry, store).run(
+        dataset_id,
+        BenchmarkTier.SMOKE,
+        recipe,
+        quality_mode=QualityMode.QUICK_2D,
+        limit=1,
+    )
+
+    result = store.get_results(scorecard.run_id)[0]
+    assert result.route.selected_route.value == "hybrid"
+    assert result.route.requested_override.value == "hybrid"
+    assert result.route.remote_available is False
+    assert result.route.used_remote is False
+    assert "harness_route_override" in result.route.reason_codes
+    assert "remote_unavailable_experiment_fallback" in result.route.reason_codes

@@ -24,6 +24,7 @@ from .contracts import (
     QCResult,
     QualityMode,
     RouteDecision,
+    RouteKind,
 )
 from .exporter import export_master
 from .geometry import GeometryRenderUnavailable, geometry_to_svg, render_geometry_master
@@ -42,7 +43,8 @@ from .qc import semantic_qc, technical_qc
 from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
 from .resources import capture_resources
-from .router import choose_route
+from .router import choose_route, forced_route_decision
+from .router_policy import load_router_policy
 from .settings import Settings
 from .storage import StorageLimitExceeded, StorageManager
 from .typography import (
@@ -57,14 +59,21 @@ logger = logging.getLogger("pod_engine")
 
 
 class Engine:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        route_override: RouteKind | None = None,
+    ) -> None:
         self.settings = settings
+        self.route_override = route_override
         settings.ensure_directories()
         self.storage = StorageManager(settings)
         self.jobs = JobStore(settings.database_path)
         self.checkpoints = CheckpointManager(settings.jobs_dir)
         self.provider = RemoteProvider(settings)
         self.qc_policy = load_qc_policy(settings.qc_policy_path)
+        self.router_policy = load_router_policy(settings.router_policy_path)
 
     def _job_dir(self, job_id: str) -> Path:
         return self.settings.jobs_dir / job_id
@@ -382,11 +391,19 @@ class Engine:
         if isinstance(checkpoint, dict):
             return RouteDecision.model_validate(checkpoint)
 
-        decision = choose_route(
-            design_spec,
-            job.quality_mode,
-            remote_available=self.provider.available,
-        )
+        if self.route_override is not None:
+            decision = forced_route_decision(
+                design_spec,
+                self.route_override,
+                remote_available=self.provider.available,
+            )
+        else:
+            decision = choose_route(
+                design_spec,
+                job.quality_mode,
+                remote_available=self.provider.available,
+                policy=self.router_policy,
+            )
         self.checkpoints.write(job.job_id, "route", decision.model_dump(mode="json"))
         self._log_stage(
             job,
@@ -453,14 +470,20 @@ class Engine:
                 recognized_text = list(evidence_text)
         temp_dir = self._job_dir(job.job_id) / "temp"
 
+        harness_force_remote = self.route_override in {
+            RouteKind.REMOTE_SEMANTIC,
+            RouteKind.HYBRID,
+        }
         deterministic_typography = (
             route.deterministic_finish
+            and not harness_force_remote
             and design_spec.artwork_type is ArtworkType.TYPOGRAPHY
             and design_spec.typography is not None
             and bool(design_spec.typography.lines)
         )
         deterministic_geometry = (
             route.deterministic_finish
+            and not harness_force_remote
             and design_spec.artwork_type is ArtworkType.LOGO
             and design_spec.geometry is not None
             and bool(design_spec.geometry.primitives)
@@ -794,7 +817,10 @@ class Engine:
                 if provider_result and provider_result.model_version
                 else {}
             ),
-            policy_version=f"{self.qc_policy.policy_id}:{self.qc_policy.version}",
+            policy_version=(
+                f"router={self.router_policy.policy_id}:{self.router_policy.version};"
+                f"qc={self.qc_policy.policy_id}:{self.qc_policy.version}"
+            ),
             export_profile="default_pod",
             qc_report={
                 "semantic": qc1.model_dump(mode="json"),

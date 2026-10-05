@@ -10,16 +10,19 @@ from . import __version__
 from .api import create_app
 from .benchmark_suite import BenchmarkSuiteRunner
 from .calibration import QCPolicyCalibrator
-from .contracts import DatasetSplit, QualityMode
+from .contracts import DatasetSplit, QualityMode, RouteKind
 from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
-from .harness_models import BenchmarkSuiteSpec, BenchmarkTier, PromotionPolicy
+from .harness_models import BenchmarkSuiteSpec, BenchmarkTier, PromotionPolicy, RouteMatrixSpec
 from .logging_config import LoggingRuntime
 from .qc_policy import load_qc_policy
+from .route_matrix import RouteMatrixRunner
+from .router_calibration import RouterPolicyCalibrator
+from .router_policy import load_router_policy
 from .settings import Settings
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -127,6 +130,36 @@ def main() -> None:
     harness_calibrate.add_argument("--max-false-accept", type=float, default=0.05)
     harness_calibrate.add_argument("--max-threshold-delta", type=float, default=0.10)
     harness_calibrate.add_argument("--qc-policy", type=Path)
+
+    route_matrix = sub.add_parser("harness-route-matrix")
+    route_matrix.add_argument("dataset_id")
+    route_matrix.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        required=True,
+    )
+    route_matrix.add_argument("--recipe", type=Path, required=True)
+    route_matrix.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    route_matrix.add_argument(
+        "--route",
+        choices=[route.value for route in RouteKind],
+        action="append",
+    )
+    route_matrix.add_argument("--limit", type=int)
+    route_matrix.add_argument("--min-quality-gain", type=float, default=0.02)
+
+    router_calibrate = sub.add_parser("harness-router-calibrate")
+    router_calibrate.add_argument("matrix_ids", nargs="+")
+    router_calibrate.add_argument("--allow-pre-golden", action="store_true")
+    router_calibrate.add_argument("--min-remote", type=int, default=3)
+    router_calibrate.add_argument("--min-deterministic", type=int, default=3)
+    router_calibrate.add_argument("--max-false-local", type=float, default=0.05)
+    router_calibrate.add_argument("--max-threshold-delta", type=float, default=0.15)
+    router_calibrate.add_argument("--router-policy", type=Path)
 
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -320,6 +353,45 @@ def main() -> None:
             min_good=args.min_good,
             min_bad=args.min_bad,
             max_false_accept_rate=args.max_false_accept,
+            max_threshold_delta=args.max_threshold_delta,
+        )
+        print(json.dumps(proposal.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-route-matrix":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        routes = (
+            [RouteKind(value) for value in args.route]
+            if args.route
+            else [RouteKind.DETERMINISTIC, RouteKind.HYBRID]
+        )
+        spec = RouteMatrixSpec(
+            dataset_id=args.dataset_id,
+            tier=BenchmarkTier(args.tier),
+            recipe_path=str(args.recipe),
+            quality_mode=QualityMode(args.quality_mode),
+            routes=routes,
+            limit=args.limit,
+            min_quality_gain=args.min_quality_gain,
+        )
+        report = RouteMatrixRunner(settings, registry, store).run(
+            spec,
+            spec_base=Path.cwd(),
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-router-calibrate":
+        store = HarnessStore(settings.harness_dir)
+        policy_path = (
+            args.router_policy.resolve()
+            if args.router_policy is not None
+            else settings.router_policy_path
+        )
+        current_policy = load_router_policy(policy_path)
+        proposal = RouterPolicyCalibrator(store, current_policy).propose(
+            args.matrix_ids,
+            require_golden=not args.allow_pre_golden,
+            min_remote=args.min_remote,
+            min_deterministic=args.min_deterministic,
+            max_false_local_rate=args.max_false_local,
             max_threshold_delta=args.max_threshold_delta,
         )
         print(json.dumps(proposal.model_dump(mode="json"), ensure_ascii=False, indent=2))
