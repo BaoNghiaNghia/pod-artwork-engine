@@ -1317,6 +1317,57 @@ Build:
 
 ### Phase 1 — Reconstruction V1
 
+**Status: Phase 1A implemented and locally verified.** The tool now executes an end-to-end reconstruction pipeline from uploaded references to a 4500×5400 RGBA PNG instead of stopping after pre-flight. The operational pipeline foundation is now separated from the remaining exact-typography/provider-quality work.
+
+Implemented in Phase 1A:
+
+- enhanced pre-flight with hashes, dimensions, EXIF orientation, sharpness/compression triage, source-quality score and artwork-region detection;
+- local `DesignSpec` analyzer for bbox, dominant colors, coarse artwork family, texture class, confidence and required capabilities;
+- strict typed contracts for `RouteDecision`, `ProviderRequest`, `ProviderResult`, `QCResult`, `ExportProfile` and resource telemetry;
+- equivalent JEV/TypeSafe boundary behavior using strict versioned Pydantic contracts plus bounded deterministic JSON extraction/repair;
+- capability router supporting deterministic, remote-semantic and hybrid routes;
+- vendor-neutral remote semantic gateway so GPT-6-family support, another remote model or an internal gateway can be mapped without changing core pipeline code;
+- Quick 2D remote-first behavior when a provider gateway is configured;
+- invalid/failed provider results fall back to a deterministic local baseline and are logged;
+- provider requests do not expose local filesystem paths; normalized reference images are transferred instead;
+- local clean/flat-source reconstruction baseline with crop, alpha preservation or conservative border-color soft masking;
+- precision normalization and transparent 4500×5400 PNG export with 300-DPI metadata;
+- QC Gate #1 for semantic/source-confidence policy and exact-text evidence when supplied;
+- QC Gate #2 for dimensions, alpha, effective source resolution and edge/detail checks;
+- per-stage checkpoints and restart/resume through the full reconstruction pipeline;
+- final `ArtifactManifest` with source hashes, output hashes, provider/model metadata and both QC reports;
+- stage-level CPU/RAM/storage telemetry in structured logs;
+- Desktop preview plus local `/jobs/{job_id}/output` export endpoint.
+
+Remote gateway configuration:
+
+```text
+POD_REMOTE_PROVIDER_URL=
+POD_REMOTE_PROVIDER_TOKEN=
+POD_REMOTE_PROVIDER_NAME=remote
+POD_REMOTE_PROVIDER_TIMEOUT_SECONDS=120
+```
+
+The gateway receives versioned typed `analyze` and `reconstruct` requests. Provider responses must pass strict typed validation before the pipeline consumes them. Secrets remain local and are not written into job payloads or logs.
+
+Current truthfulness limits:
+
+- the local analyzer is not yet a full OCR/VLM replacement;
+- the deterministic text/logo branch currently establishes routing and precision-preservation behavior, but does not yet rebuild exact fonts/glyph geometry from OCR;
+- border-color alpha extraction is a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
+- `REVIEW_REQUIRED` is expected when semantic reconstruction is required but no acceptable remote result exists;
+- concrete production GPT-6/provider mapping stays configurable until Harness evidence selects it;
+- exact OCR/font/layout reconstruction and semantic Judge integration are the next Phase 1B work.
+
+Phase 1B next:
+
+- OCR + line-order/text confidence;
+- deterministic exact-text/font/layout rebuild;
+- richer logo/geometry reconstruction;
+- concrete remote provider adapters/gateway recipes;
+- semantic Judge/object-fidelity metrics;
+- Harness Smoke/Regression/Golden runs against real historical cases.
+
 Build:
 
 - pre-flight;

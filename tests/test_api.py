@@ -43,21 +43,22 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert response.status_code == 200
     job_id = response.json()["job_id"]
 
-    deadline = time.time() + 3
+    deadline = time.time() + 5
     job = {}
+    terminal = {"completed", "review_required", "failed_final", "cancelled"}
     while time.time() < deadline:
         job = client.get(f"/jobs/{job_id}").json()
-        if job["state"] != "queued":
+        if job["state"] in terminal:
             break
         time.sleep(0.05)
 
-    assert job["state"] in {"preflight", "waiting_provider"}
+    assert job["state"] in {"completed", "review_required"}
     checkpoint = tmp_path / "jobs" / job_id / "checkpoints" / "preflight.json"
-    deadline = time.time() + 3
-    while time.time() < deadline and not checkpoint.exists():
-        time.sleep(0.05)
-
     assert checkpoint.exists()
+    assert job["result_path"]
+    output = client.get(f"/jobs/{job_id}/output")
+    assert output.status_code == 200
+    assert output.headers["content-type"].startswith("image/png")
 
 
 def test_dataset_read_api(tmp_path: Path) -> None:

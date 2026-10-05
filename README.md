@@ -119,6 +119,36 @@ Promotion comparison defaults to requiring Golden Holdout scorecards:
 python -m pod_artwork_engine harness-compare run_champion run_challenger
 ```
 
+### Phase 1A — Reconstruction Pipeline Foundation
+
+Implemented:
+
+- enhanced pre-flight quality signals and artwork-region detection;
+- local `DesignSpec` analyzer with strict typed contracts;
+- capability router for deterministic, remote-semantic and hybrid paths;
+- vendor-neutral remote provider gateway that can front GPT-6-family or other image/vision providers;
+- typed provider boundary with bounded JSON repair and strict Pydantic validation;
+- remote-first Quick 2D path with deterministic local fallback;
+- local crop/alpha reconstruction baseline for clean/flat sources;
+- 4500×5400 RGBA PNG export with 300-DPI metadata;
+- semantic QC Gate #1 and technical print QC Gate #2;
+- per-stage checkpoints, artifact manifest and resource telemetry;
+- restart/resume through the full pipeline;
+- local output API plus Desktop output preview/export button.
+
+Remote-provider configuration is optional:
+
+```text
+POD_REMOTE_PROVIDER_URL=
+POD_REMOTE_PROVIDER_TOKEN=
+POD_REMOTE_PROVIDER_NAME=remote
+POD_REMOTE_PROVIDER_TIMEOUT_SECONDS=120
+```
+
+The configured gateway receives typed `analyze` and `reconstruct` requests. Local filesystem paths are never sent to the provider; references are normalized and transferred as encoded images. If the gateway is unavailable or returns invalid structured data, the engine falls back deterministically and records the reason.
+
+Phase 1A does **not** claim exact typography reconstruction yet. OCR/font/layout rebuild, concrete production provider mappings and stronger semantic Judge integration remain the next Phase 1 work.
+
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 
 ## Development

@@ -47,6 +47,8 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "ram_hard_bytes": settings.ram_hard_bytes,
             "release_channel": settings.release_channel,
             "release_manifest_configured": bool(settings.release_manifest_url),
+            "remote_provider_configured": bool(settings.remote_provider_url),
+            "remote_provider_name": settings.remote_provider_name,
         }
         (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 

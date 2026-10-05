@@ -10,6 +10,7 @@ type Job = {
   stage_message: string;
   source_paths: string[];
   result_path?: string | null;
+  failure_reason?: string | null;
 };
 
 const ENGINE_URL = "http://127.0.0.1:8765";
@@ -150,6 +151,24 @@ export default function App() {
         </div>
         <p>{job?.stage_message ?? "Select references and start processing."}</p>
         {job && <div className="job-state">{job.state.replaceAll("_", " ")}</div>}
+        {job?.failure_reason && job.state === "review_required" && (
+          <div className="review-note">Review: {job.failure_reason}</div>
+        )}
+        {job?.result_path && (
+          <div className="output-preview">
+            <img
+              src={`${ENGINE_URL}/jobs/${job.job_id}/output`}
+              alt="Reconstructed artwork"
+            />
+            <a
+              className="primary-button"
+              href={`${ENGINE_URL}/jobs/${job.job_id}/output`}
+              download={`pod-artwork-${job.job_id.slice(0, 12)}.png`}
+            >
+              Export PNG
+            </a>
+          </div>
+        )}
       </section>
     </main>
   );

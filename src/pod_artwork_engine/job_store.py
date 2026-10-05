@@ -79,6 +79,7 @@ class JobStore:
         message: str | None = None,
         failure_category: FailureCategory | None = None,
         failure_reason: str | None = None,
+        result_path: str | None = None,
     ) -> JobRecord:
         job = self.get(job_id)
         if not job:
@@ -90,4 +91,6 @@ class JobStore:
             job.stage_message = message
         job.failure_category = failure_category
         job.failure_reason = failure_reason
+        if result_path is not None:
+            job.result_path = result_path
         return self.save(job)

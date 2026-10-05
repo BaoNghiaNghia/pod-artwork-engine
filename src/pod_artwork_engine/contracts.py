@@ -74,6 +74,17 @@ class DatasetSplit(StrEnum):
     GOLDEN_HOLDOUT = "golden_holdout"
 
 
+class RouteKind(StrEnum):
+    DETERMINISTIC = "deterministic"
+    REMOTE_SEMANTIC = "remote_semantic"
+    HYBRID = "hybrid"
+
+
+class QCGate(StrEnum):
+    SEMANTIC = "semantic"
+    TECHNICAL = "technical"
+
+
 class BoundingBox(StrictModel):
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
@@ -105,6 +116,71 @@ class PreflightResult(StrictModel):
     image_format: str | None = None
     file_size_bytes: int = Field(ge=0)
     has_alpha: bool = False
+    orientation_applied: bool = False
+    blur_score: float = Field(default=0, ge=0, le=1)
+    compression_risk: float = Field(default=0, ge=0, le=1)
+    source_quality: float = Field(default=0, ge=0, le=1)
+    artwork_bbox: BoundingBox | None = None
+    artwork_confidence: float = Field(default=0, ge=0, le=1)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RouteDecision(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    route: RouteKind
+    required_capabilities: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    use_remote_provider: bool = False
+    deterministic_finish: bool = True
+
+
+class ProviderRequest(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    action: str
+    job_id: str
+    quality_mode: QualityMode
+    source_paths: list[str] = Field(min_length=1)
+    design_spec: DesignSpec | None = None
+    requested_capabilities: list[str] = Field(default_factory=list)
+
+
+class ProviderResult(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    provider: str
+    model_version: str = ""
+    design_spec: DesignSpec | None = None
+    candidate_path: str | None = None
+    candidate_image_base64: str | None = None
+    recognized_text: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QCResult(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    gate: QCGate
+    passed: bool
+    score: float = Field(ge=0, le=1)
+    reasons: list[str] = Field(default_factory=list)
+    metrics: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
+
+
+class ExportProfile(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    name: str = "default_pod"
+    width: int = Field(default=4500, gt=0)
+    height: int = Field(default=5400, gt=0)
+    dpi: int = Field(default=300, gt=0)
+    format: str = "PNG"
+    transparent: bool = True
+    max_artwork_width_ratio: float = Field(default=0.84, gt=0, le=1)
+    max_artwork_height_ratio: float = Field(default=0.84, gt=0, le=1)
+
+
+class ResourceSnapshot(StrictModel):
+    cpu_percent: float = Field(default=0, ge=0)
+    process_rss_bytes: int = Field(default=0, ge=0)
+    memory_available_bytes: int = Field(default=0, ge=0)
+    storage_used_bytes: int = Field(default=0, ge=0)
 
 
 class ArtifactRef(StrictModel):

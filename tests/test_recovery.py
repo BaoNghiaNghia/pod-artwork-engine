@@ -19,5 +19,5 @@ def test_recovery_reuses_preflight_checkpoint(tmp_path: Path) -> None:
     recovered = engine.recover_interrupted_jobs()
     restored = next(item for item in recovered if item.job_id == job.job_id)
 
-    assert restored.state is JobState.WAITING_PROVIDER
+    assert restored.state is JobState.RESUMING
     assert restored.progress >= 0.12

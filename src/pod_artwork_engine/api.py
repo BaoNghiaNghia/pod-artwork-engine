@@ -9,6 +9,7 @@ from pathlib import Path
 
 import psutil
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
@@ -43,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         recovered = engine.recover_interrupted_jobs()
         for job in recovered:
             if job.state is JobState.RESUMING:
-                asyncio.create_task(asyncio.to_thread(engine.run_preflight, job.job_id))
+                asyncio.create_task(asyncio.to_thread(engine.run_job, job.job_id))
         yield
 
     app = FastAPI(title="POD Artwork Engine", version=__version__, lifespan=lifespan)
@@ -83,6 +84,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "historical_pair_count": len(historical_pairs),
             "dataset_count": len(dataset_records),
             "harness_run_count": len(harness.list_scorecards()),
+            "remote_provider_configured": engine.provider.available,
+            "remote_provider_name": settings.remote_provider_name,
         }
 
     @app.get("/datasets", response_model=list[DatasetRecord])
@@ -136,6 +139,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Job not found")
         return job
 
+    @app.get("/jobs/{job_id}/output")
+    def get_job_output(job_id: str):
+        job = engine.jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if not job.result_path:
+            raise HTTPException(status_code=404, detail="Output not available")
+        path = Path(job.result_path)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Output file missing")
+        return FileResponse(
+            path,
+            media_type="image/png",
+        )
+
     @app.post("/jobs", response_model=JobRecord)
     async def create_job(
         files: list[UploadFile] = File(...),
@@ -156,7 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 staged_paths.append(target)
 
             job = engine.create_job(staged_paths, quality_mode)
-            asyncio.create_task(asyncio.to_thread(engine.run_preflight, job.job_id))
+            asyncio.create_task(asyncio.to_thread(engine.run_job, job.job_id))
             return job
         finally:
             shutil.rmtree(staging, ignore_errors=True)

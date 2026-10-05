@@ -26,6 +26,12 @@ class JsonFormatter(logging.Formatter):
             "duration_ms",
             "attempt",
             "failure_reason",
+            "cpu_percent",
+            "process_rss_bytes",
+            "memory_available_bytes",
+            "storage_used_bytes",
+            "quality_score",
+            "route",
             "event",
         ):
             value = getattr(record, key, None)

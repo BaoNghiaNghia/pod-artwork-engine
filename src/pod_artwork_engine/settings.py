@@ -33,6 +33,10 @@ class Settings:
     storage: StorageLimits = StorageLimits()
     release_channel: str = "stable"
     release_manifest_url: str = ""
+    remote_provider_url: str = ""
+    remote_provider_token: str = ""
+    remote_provider_name: str = "remote"
+    remote_provider_timeout_seconds: float = 120.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -54,6 +58,12 @@ class Settings:
             ram_hard_bytes=int(float(os.environ.get("POD_RAM_HARD_GB", default_ram_hard / GIB)) * GIB),
             release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
             release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
+            remote_provider_url=os.environ.get("POD_REMOTE_PROVIDER_URL", ""),
+            remote_provider_token=os.environ.get("POD_REMOTE_PROVIDER_TOKEN", ""),
+            remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", "remote"),
+            remote_provider_timeout_seconds=float(
+                os.environ.get("POD_REMOTE_PROVIDER_TIMEOUT_SECONDS", "120")
+            ),
         )
 
     def ensure_directories(self) -> None:
