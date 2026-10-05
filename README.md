@@ -59,6 +59,66 @@ python -m pod_artwork_engine dataset-list
 
 Explicit pairing can use a JSON manifest with `design_id`, `target`, `sources[]` and optional `metadata`.
 
+### Phase 0C — Harness Foundation
+
+Implemented:
+
+- typed benchmark case and recipe schemas;
+- Smoke / Regression / Golden case selection from Dataset Registry splits;
+- deterministic raster comparison metrics for layout, color, texture/detail and technical fidelity;
+- optional strict exact-text scoring when OCR/recognized text is supplied;
+- operational metrics for latency, memory/VRAM, retries, provider calls and cost;
+- per-case visual diff images;
+- scorecards with metric coverage and cohort breakdowns;
+- persisted harness runs under the tool data directory;
+- Golden promotion guard that blocks serious cohort regressions even when the overall mean improves;
+- CLI and read-only API endpoints for harness runs;
+- 2 GB harness storage quota included in the global 40 GB tool budget.
+
+Example recipe:
+
+```json
+{
+  "recipe_id": "baseline-v1",
+  "version": "1",
+  "stages": [
+    {"name": "reconstruction", "implementation": "provider-a", "version": "1"}
+  ]
+}
+```
+
+Candidate manifest keys may use `pair_id`, `case_id`, or `artwork_identity`:
+
+```json
+{
+  "candidates": {
+    "pair_...": {
+      "result_path": "results/pair_....png",
+      "recognized_text": ["EXACT TEXT"],
+      "operational": {
+        "latency_ms": 32000,
+        "provider_calls": 1,
+        "cost_usd": 0.04
+      }
+    }
+  }
+}
+```
+
+Run the harness:
+
+```powershell
+python -m pod_artwork_engine harness-cases historical-v1 --tier smoke
+python -m pod_artwork_engine harness-run historical-v1 --tier smoke --recipe recipe.json --candidates candidates.json
+python -m pod_artwork_engine harness-scorecards
+```
+
+Promotion comparison defaults to requiring Golden Holdout scorecards:
+
+```powershell
+python -m pod_artwork_engine harness-compare run_champion run_challenger
+```
+
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 
 ## Development

@@ -7,6 +7,8 @@ from PIL import Image
 
 from pod_artwork_engine.api import create_app
 from pod_artwork_engine.dataset_registry import DatasetRegistry
+from pod_artwork_engine.harness import HarnessStore
+from pod_artwork_engine.harness_models import BenchmarkScorecard, BenchmarkTier, HarnessRunStatus
 from pod_artwork_engine.settings import Settings, StorageLimits
 
 
@@ -86,3 +88,35 @@ def test_dataset_read_api(tmp_path: Path) -> None:
     status = client.get("/status").json()
     assert status["dataset_count"] == 1
     assert status["historical_pair_count"] == 1
+
+
+def test_harness_read_api(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path)
+    store = HarnessStore(settings.harness_dir)
+    scorecard = BenchmarkScorecard(
+        run_id="run-api",
+        dataset_id="dataset-api",
+        tier=BenchmarkTier.SMOKE,
+        recipe_id="recipe-api",
+        recipe_version="1",
+        status=HarnessRunStatus.COMPLETE,
+        case_count=1,
+        success_count=1,
+        failure_count=0,
+        manual_review_count=0,
+        quality_mean=0.9,
+    )
+    store.save_model(store.scorecard_path(scorecard.run_id), scorecard)
+
+    client = TestClient(create_app(settings))
+
+    response = client.get("/harness/runs")
+    assert response.status_code == 200
+    assert response.json()[0]["run_id"] == "run-api"
+
+    detail = client.get("/harness/runs/run-api")
+    assert detail.status_code == 200
+    assert detail.json()["scorecard_id"] == scorecard.scorecard_id
+
+    status = client.get("/status").json()
+    assert status["harness_run_count"] == 1

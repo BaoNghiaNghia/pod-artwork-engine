@@ -1285,6 +1285,26 @@ Build:
 
 ### Phase 0C — Harness foundation
 
+**Status: implemented and locally verified at the backend foundation level.** The Harness now consumes immutable Dataset Registry snapshots, materializes typed benchmark cases by tier, evaluates normalized candidate outputs, writes per-case metrics/visual diffs, aggregates scorecards by cohort and applies a Golden promotion guard. Direct execution of reconstruction recipes will plug into the same runner once Phase 1 provider/pipeline adapters exist; until then the runner evaluates candidate manifests produced by experiments or external providers.
+
+Implemented foundation:
+
+- typed `BenchmarkCase`, `BenchmarkPlan`, `BenchmarkRecipe`, metric, result, scorecard and promotion contracts;
+- deterministic Smoke cases from Train, Regression cases from Validation and Golden cases from Golden Holdout;
+- strict exact-text scoring when recognized/OCR text is supplied;
+- deterministic layout/color/texture-detail proxy metrics;
+- technical edge/alpha/halo/blur/effective-resolution/small-detail metrics;
+- operational latency/GPU/VRAM/RAM/retry/provider-call/cost/manual-review metrics;
+- metric-coverage reporting so unavailable semantic metrics are never silently treated as perfect;
+- persisted per-case result JSON plus target/result/diff preview artifacts;
+- scorecards with global and cohort-level quality/failure summaries;
+- Champion/Challenger comparison that rejects serious cohort regressions even when the global average improves;
+- Golden-only promotion by default, with no automatic self-promotion;
+- read-only Harness API plus CLI inspection/run/compare commands;
+- Harness storage included in the global tool budget with a 2 GB quota and whole-run eviction.
+
+Important limitation: `object_fidelity` remains unset until a semantic evaluator is connected. The current deterministic image metrics are engineering proxies, not substitutes for a VLM/Judge or human review. The interactive synchronized-zoom Harness UI described in §24.6 is a later UI layer; Phase 0C establishes the data, scorecards and visual-diff artifacts it will consume.
+
 Build:
 
 - benchmark case schema;

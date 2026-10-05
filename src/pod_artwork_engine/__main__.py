@@ -13,6 +13,8 @@ from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
+from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
+from .harness_models import BenchmarkTier, PromotionPolicy
 from .logging_config import LoggingRuntime
 from .settings import Settings
 from .storage import StorageManager
@@ -53,6 +55,26 @@ def main() -> None:
         choices=[split.value for split in DatasetSplit],
     )
     dataset_members.add_argument("--retrieval-only", action="store_true")
+
+    harness_cases = sub.add_parser("harness-cases")
+    harness_cases.add_argument("dataset_id")
+    harness_cases.add_argument("--tier", choices=[tier.value for tier in BenchmarkTier], required=True)
+    harness_cases.add_argument("--limit", type=int)
+
+    harness_run = sub.add_parser("harness-run")
+    harness_run.add_argument("dataset_id")
+    harness_run.add_argument("--tier", choices=[tier.value for tier in BenchmarkTier], required=True)
+    harness_run.add_argument("--recipe", type=Path, required=True)
+    harness_run.add_argument("--candidates", type=Path, required=True)
+    harness_run.add_argument("--limit", type=int)
+
+    sub.add_parser("harness-scorecards")
+
+    harness_compare = sub.add_parser("harness-compare")
+    harness_compare.add_argument("champion_run_id")
+    harness_compare.add_argument("challenger_run_id")
+    harness_compare.add_argument("--allow-pre-golden", action="store_true")
+    harness_compare.add_argument("--max-cohort-drop", type=float, default=0.03)
 
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -137,6 +159,61 @@ def main() -> None:
                 indent=2,
             )
         )
+    elif args.command == "harness-cases":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        cases = HarnessCaseFactory(registry).build(
+            args.dataset_id,
+            BenchmarkTier(args.tier),
+            limit=args.limit,
+        )
+        print(
+            json.dumps(
+                [case.model_dump(mode="json") for case in cases],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif args.command == "harness-run":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        recipe = load_recipe(args.recipe.resolve())
+        manifest_path = args.candidates.resolve()
+        manifest = load_candidate_manifest(manifest_path)
+        scorecard = HarnessRunner(registry, store).run_candidates(
+            args.dataset_id,
+            BenchmarkTier(args.tier),
+            recipe,
+            manifest,
+            manifest_base=manifest_path.parent,
+            limit=args.limit,
+        )
+        print(json.dumps(scorecard.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-scorecards":
+        store = HarnessStore(settings.harness_dir)
+        print(
+            json.dumps(
+                [item.model_dump(mode="json") for item in store.list_scorecards()],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif args.command == "harness-compare":
+        store = HarnessStore(settings.harness_dir)
+        champion = store.get_scorecard(args.champion_run_id)
+        challenger = store.get_scorecard(args.challenger_run_id)
+        if champion is None:
+            parser.error(f"scorecard not found: {args.champion_run_id}")
+        if challenger is None:
+            parser.error(f"scorecard not found: {args.challenger_run_id}")
+        decision = compare_scorecards(
+            champion,
+            challenger,
+            PromotionPolicy(
+                max_cohort_drop=args.max_cohort_drop,
+                require_golden=not args.allow_pre_golden,
+            ),
+        )
+        print(json.dumps(decision.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

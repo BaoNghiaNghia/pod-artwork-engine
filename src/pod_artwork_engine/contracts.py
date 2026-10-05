@@ -152,6 +152,9 @@ class StorageStatus(StrictModel):
     jobs_bytes: int = Field(ge=0)
     logs_bytes: int = Field(ge=0)
     updates_bytes: int = Field(ge=0)
+    artifacts_bytes: int = Field(ge=0)
+    datasets_bytes: int = Field(ge=0)
+    harness_bytes: int = Field(ge=0)
     state: str
 
 

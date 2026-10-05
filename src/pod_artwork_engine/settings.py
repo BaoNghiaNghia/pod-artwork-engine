@@ -19,6 +19,7 @@ class StorageLimits:
     temp_jobs_bytes: int = 6 * GIB
     logs_bytes: int = 1 * GIB
     updates_bytes: int = 2 * GIB
+    harness_bytes: int = 2 * GIB
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class Settings:
             self.updates_dir,
             self.artifacts_dir,
             self.datasets_dir,
+            self.harness_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +92,10 @@ class Settings:
     @property
     def datasets_dir(self) -> Path:
         return self.data_root / "datasets"
+
+    @property
+    def harness_dir(self) -> Path:
+        return self.data_root / "harness"
 
     @property
     def database_path(self) -> Path:

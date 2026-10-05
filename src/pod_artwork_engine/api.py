@@ -24,6 +24,8 @@ from .contracts import (
 from .dataset_registry import DatasetRegistry
 from .engine import Engine
 from .hardware import detect_hardware
+from .harness import HarnessStore
+from .harness_models import BenchmarkScorecard
 from .settings import Settings
 from .updater import UpdateManager
 
@@ -33,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.ensure_directories()
     engine = Engine(settings)
     datasets = DatasetRegistry(settings.database_path, settings.datasets_dir)
+    harness = HarnessStore(settings.harness_dir)
     hardware = detect_hardware()
 
     @asynccontextmanager
@@ -79,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "update": UpdateManager(settings, __version__).state(),
             "historical_pair_count": len(historical_pairs),
             "dataset_count": len(dataset_records),
+            "harness_run_count": len(harness.list_scorecards()),
         }
 
     @app.get("/datasets", response_model=list[DatasetRecord])
@@ -109,6 +113,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/historical/pairs", response_model=list[HistoricalPair])
     def list_historical_pairs() -> list[HistoricalPair]:
         return datasets.list_pairs()
+
+    @app.get("/harness/runs", response_model=list[BenchmarkScorecard])
+    def list_harness_runs() -> list[BenchmarkScorecard]:
+        return harness.list_scorecards()
+
+    @app.get("/harness/runs/{run_id}", response_model=BenchmarkScorecard)
+    def get_harness_run(run_id: str) -> BenchmarkScorecard:
+        scorecard = harness.get_scorecard(run_id)
+        if not scorecard:
+            raise HTTPException(status_code=404, detail="Harness run not found")
+        return scorecard
 
     @app.get("/jobs", response_model=list[JobRecord])
     def list_jobs(limit: int = 50) -> list[JobRecord]:

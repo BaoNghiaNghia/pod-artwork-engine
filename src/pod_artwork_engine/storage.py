@@ -37,7 +37,9 @@ class StorageManager:
         logs = directory_size(self.settings.logs_dir)
         updates = directory_size(self.settings.updates_dir)
         artifacts = directory_size(self.settings.artifacts_dir)
-        used = cache + jobs + logs + updates + artifacts
+        datasets = directory_size(self.settings.datasets_dir)
+        harness = directory_size(self.settings.harness_dir)
+        used = cache + jobs + logs + updates + artifacts + datasets + harness
         limits = self.settings.storage
 
         if used >= limits.hard_total_bytes:
@@ -55,6 +57,9 @@ class StorageManager:
             jobs_bytes=jobs,
             logs_bytes=logs,
             updates_bytes=updates,
+            artifacts_bytes=artifacts,
+            datasets_bytes=datasets,
+            harness_bytes=harness,
             state=state,
         )
 
@@ -76,6 +81,7 @@ class StorageManager:
         self._cleanup_directory(self.settings.cache_dir, limits.cache_bytes)
         self._cleanup_updates(limits.updates_bytes)
         self._cleanup_directory(self.settings.logs_dir, limits.logs_bytes)
+        self._cleanup_harness(limits.harness_bytes)
         self._cleanup_stale_job_temp()
         self._cleanup_temp_quota(limits.temp_jobs_bytes)
 
@@ -160,6 +166,23 @@ class StorageManager:
                     shutil.rmtree(candidate, ignore_errors=True)
             except OSError:
                 continue
+
+    def _cleanup_harness(self, quota: int) -> None:
+        harness_dir = self.settings.harness_dir
+        if directory_size(harness_dir) <= quota:
+            return
+
+        runs_dir = harness_dir / "runs"
+        if not runs_dir.exists():
+            self._cleanup_directory(harness_dir, quota)
+            return
+
+        runs = [item for item in runs_dir.iterdir() if item.is_dir()]
+        runs.sort(key=lambda item: item.stat().st_mtime)
+        for run_dir in runs:
+            if directory_size(harness_dir) <= quota:
+                break
+            shutil.rmtree(run_dir, ignore_errors=True)
 
     def _cleanup_stale_job_temp(self) -> None:
         cutoff = time.time() - 24 * 60 * 60
