@@ -29,7 +29,12 @@ from .contracts import (
     TypographySpec,
 )
 from .exporter import export_master
-from .geometry import GeometryRenderUnavailable, geometry_to_svg, render_geometry_master
+from .geometry import (
+    GeometryRenderUnavailable,
+    geometry_to_svg,
+    geometry_topology_evidence,
+    render_geometry_master,
+)
 from .job_store import JobStore
 from .font_catalog import get_font_catalog
 from .font_matcher import match_typography_fonts, merge_verified_font_matches
@@ -592,9 +597,18 @@ class Engine:
                         self.settings,
                         temp_dir / "deterministic-logo.png",
                     )
-                geometry_to_svg(
+                geometry_svg = geometry_to_svg(
                     design_spec.geometry,
                     self._job_dir(job.job_id) / "master" / "vector" / "geometry.svg",
+                )
+                topology = geometry_topology_evidence(design_spec.geometry)
+                self.checkpoints.write(
+                    job.job_id,
+                    "geometry_topology",
+                    {
+                        **topology.model_dump(mode="json"),
+                        "svg_sha256": sha256_file(geometry_svg),
+                    },
                 )
                 candidate = normalize_candidate(
                     rendered_path,
@@ -909,6 +923,10 @@ class Engine:
             precision_evidence={
                 "font_match": (
                     self.checkpoints.payload(job.job_id, "font_match")
+                    or {}
+                ),
+                "geometry_topology": (
+                    self.checkpoints.payload(job.job_id, "geometry_topology")
                     or {}
                 ),
             },

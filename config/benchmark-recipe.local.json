@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v2",
-  "version": "2",
-  "description": "CPU-first local precision baseline with optional Tesseract OCR and guarded visual font matching.",
+  "recipe_id": "local-precision-v3",
+  "version": "3",
+  "description": "CPU-first local precision baseline with guarded OCR/font matching and compound vector topology.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "local-preflight-ocr-fontmatch",
-      "version": "phase1g"
+      "version": "phase1h"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase1g"
+      "version": "phase1h"
     },
     {
       "name": "qc",
       "implementation": "two-gate-qc",
-      "version": "phase1g"
+      "version": "phase1h"
     }
   ],
   "router_version": "phase1f",

@@ -1488,6 +1488,21 @@ POD_VISUAL_FONT_MATCH_MIN_MARGIN=0.035
 POD_VISUAL_FONT_MATCH_MAX_CANDIDATES=96
 ```
 
+Phase 1H compound vector topology:
+
+- `GeometryKind.PATH` now supports multiple typed subpaths in one primitive rather than forcing one `MOVE` sequence per primitive;
+- each subpath may contain line and cubic Bezier commands; stroke-only paths may remain open while filled paths must close every subpath;
+- typed `GeometryFillRule` makes `nonzero` versus `evenodd` explicit and the SVG exporter preserves the declared fill rule;
+- deterministic raster rendering supports multi-subpath filled paths with explicit `evenodd`, allowing counters/holes such as rings, letter-like cutouts and nested logo shapes without painting a fake white inner object;
+- compound `nonzero` fill remains valid for SVG export, but the local Pillow rasterizer fails closed until a true winding-number raster implementation is available; it never guesses hole direction;
+- validation rejects empty subpaths, insufficient drawable segments, commands without an active subpath, open filled contours and commands that continue after `CLOSE` without a new `MOVE`;
+- compound stroke-only geometry is supported, including independent line/Bezier marks in one path primitive;
+- `GeometrySpec` carries evidence provider/version fields and successful deterministic geometry produces typed `GeometryTopologyEvidence`;
+- topology evidence records primitive count, path count, total subpaths, compound-path count, even-odd compound-fill count and fill rules;
+- the geometry topology checkpoint also records the SVG SHA-256, is copied into ArtifactManifest precision evidence, and is surfaced to Harness;
+- Harness precision evidence now tracks `compound_geometry`, total geometry subpaths and even-odd compound fills in addition to ordinary vector coverage;
+- engine status/diagnostics advertise only the geometry capabilities actually supported by the local deterministic renderer: cubic, multi-subpath and even-odd compound fill.
+
 Current truthfulness limits:
 
 - local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
@@ -1496,7 +1511,8 @@ Current truthfulness limits:
 - exact typography redraw still requires sufficiently confident layout plus an accepted installed/local font match or other sufficiently trusted explicit typography evidence;
 - font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
 - polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
-- Bezier support currently allows one guarded subpath per primitive; compound paths/holes/general SVG tracing remain later work;
+- compound `nonzero` fills are preserved in SVG but are not rasterized locally; deterministic raster output requires explicit `evenodd` for multi-subpath fills;
+- the current geometry layer consumes validated vector evidence; fully automatic raster-to-vector tracing of arbitrary complex logos remains a separate benchmarked capability rather than an implicit conversion;
 - route-matrix evidence is not valid as remote evidence when the provider was unavailable and the engine fell back locally;
 - router calibration currently changes confidence thresholds only; `quick_2d_remote_first` and `remote_complex_enabled` remain explicit human-controlled policy fields;
 - generated QC/router candidate policies are not production policy until explicitly configured and benchmarked again;
@@ -1509,7 +1525,6 @@ Remaining Phase 1 work:
 - import and run the user's real historical source/final pairs through the suite and route matrix, then establish the first measured champion and RouterPolicy;
 - choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
-- add compound/multi-subpath Bezier topology and richer logo tracing;
 - add illustration-aware/inpainting masks for text overlapping non-solid art;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 

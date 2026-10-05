@@ -136,6 +136,10 @@ class HarnessEngineRunner:
     def _precision_evidence(self, job_id: str) -> PrecisionEvidence:
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
+        geometry_topology = self.engine.checkpoints.payload(
+            job_id,
+            "geometry_topology",
+        )
         candidate = self.engine.checkpoints.payload(job_id, "candidate")
         design_spec = self.engine.checkpoints.payload(job_id, "design_spec")
         precision_ops = (
@@ -194,6 +198,23 @@ class HarnessEngineRunner:
                     / "vector"
                     / "geometry.svg"
                 ).is_file()
+            ),
+            compound_geometry=(
+                isinstance(geometry_topology, dict)
+                and int(geometry_topology.get("compound_path_count") or 0) > 0
+            ),
+            geometry_subpaths=(
+                int(geometry_topology.get("subpath_count") or 0)
+                if isinstance(geometry_topology, dict)
+                else 0
+            ),
+            evenodd_compound_fills=(
+                int(
+                    geometry_topology.get("evenodd_compound_fill_count")
+                    or 0
+                )
+                if isinstance(geometry_topology, dict)
+                else 0
             ),
             masked_text_regions=masked_regions,
             provider_recipe_id=recipe_id,

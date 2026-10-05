@@ -309,12 +309,28 @@ POD_VISUAL_FONT_MATCH_MAX_CANDIDATES=96
 
 `TypographyLine.bbox` used for visual verification is interpreted inside the detected artwork region. Curved, heavily warped, occluded or textured text may not produce a confident local match; those cases remain eligible for provider reconstruction/review rather than being forced into a wrong local font.
 
+### Phase 1H — Compound Vector Topology
+
+Implemented:
+
+- a single typed `GeometryKind.PATH` may contain multiple subpaths, including multiple `MOVE ... CLOSE` contours and multiple open stroke-only contours;
+- cubic Bezier commands remain supported inside every subpath, so compound logos can combine curved outer shapes, inner counters/holes and separate marks without flattening them into unrelated raster layers;
+- `GeometryFillRule` is explicit in the contract and SVG output records `fill-rule` instead of relying on renderer defaults;
+- deterministic raster rendering supports compound filled paths only with explicit `evenodd`, which gives predictable holes/counters independent of contour winding direction;
+- compound `nonzero` fills still export correctly to SVG but intentionally fail closed in the Pillow raster path rather than risk filling a hole incorrectly;
+- filled compound paths must close every subpath; malformed, empty, degenerate or post-close commands are rejected before rendering;
+- open multi-subpath paths are supported when they are stroke-only;
+- every deterministic geometry result records typed topology provenance: primitive count, path count, total subpaths, compound paths, even-odd compound fills, evidence provider/version and the SVG SHA-256;
+- the topology evidence is included in the job checkpoint, ArtifactManifest precision evidence and Harness precision metrics;
+- Harness now reports `compound_geometry` coverage in addition to ordinary `geometry_vector` coverage.
+
+This keeps the precision route conservative: SVG can preserve richer provider/vector topology, while local raster output is produced only when the fill semantics are deterministic and tested.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
 - choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
-- multi-subpath/compound Bezier tracing and more complex logo topology;
 - illustration-aware/inpainting masks for text that overlaps non-solid artwork;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 

@@ -153,6 +153,9 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
                     visual_font_match=True,
                     matched_font_lines=2,
                     geometry_vector=True,
+                    compound_geometry=True,
+                    geometry_subpaths=3,
+                    evenodd_compound_fills=1,
                     precision_ops=["deterministic_geometry"],
                 ),
             )
@@ -189,6 +192,7 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
     assert scorecard.precision_coverage["local_ocr"] == 1.0
     assert scorecard.precision_coverage["visual_font_match"] == 1.0
     assert scorecard.precision_coverage["geometry_vector"] == 1.0
+    assert scorecard.precision_coverage["compound_geometry"] == 1.0
     assert scorecard.result_paths
     assert all(Path(path).is_file() for path in scorecard.result_paths)
     assert store.get_scorecard(scorecard.run_id) is not None

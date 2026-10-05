@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageColor, ImageDraw
+from PIL import Image, ImageChops, ImageColor, ImageDraw
 
-from .contracts import GeometryKind, GeometryPrimitive, GeometrySpec, PathCommandKind
+from .contracts import (
+    GeometryFillRule,
+    GeometryKind,
+    GeometryPrimitive,
+    GeometrySpec,
+    GeometryTopologyEvidence,
+    PathCommandKind,
+)
 
 
 class GeometryRenderUnavailable(RuntimeError):
@@ -55,12 +62,13 @@ def _points_pixels(
     ]
 
 
-def _path_points_pixels(
+def _path_subpaths_pixels(
     primitive: GeometryPrimitive,
     canvas: Image.Image,
     *,
     cubic_steps: int = 24,
-) -> tuple[list[tuple[int, int]], bool]:
+) -> list[tuple[list[tuple[int, int]], bool]]:
+    subpaths: list[tuple[list[tuple[int, int]], bool]] = []
     points: list[tuple[int, int]] = []
     current: tuple[float, float] | None = None
     start: tuple[float, float] | None = None
@@ -72,17 +80,33 @@ def _path_points_pixels(
             max(0.0, min(canvas.height - 1.0, point.y * canvas.height)),
         )
 
+    def flush() -> None:
+        nonlocal points, current, start, closed
+        if points:
+            subpaths.append((points, closed))
+        points = []
+        current = None
+        start = None
+        closed = False
+
     for command in primitive.path:
         if command.kind is PathCommandKind.MOVE:
+            flush()
             current = scaled(command.points[0])
             start = current
-            points.append((round(current[0]), round(current[1])))
+            points = [(round(current[0]), round(current[1]))]
         elif command.kind is PathCommandKind.LINE:
+            if current is None:
+                raise GeometryRenderUnavailable(
+                    "line path command requires a current point"
+                )
             current = scaled(command.points[0])
             points.append((round(current[0]), round(current[1])))
         elif command.kind is PathCommandKind.CUBIC:
             if current is None:
-                raise GeometryRenderUnavailable("cubic path command requires a current point")
+                raise GeometryRenderUnavailable(
+                    "cubic path command requires a current point"
+                )
             c1 = scaled(command.points[0])
             c2 = scaled(command.points[1])
             end = scaled(command.points[2])
@@ -105,11 +129,54 @@ def _path_points_pixels(
                 points.append((round(x), round(y)))
             current = end
         elif command.kind is PathCommandKind.CLOSE:
-            if start is not None:
-                points.append((round(start[0]), round(start[1])))
-                current = start
-                closed = True
-    return points, closed
+            if start is None or not points:
+                raise GeometryRenderUnavailable(
+                    "close path command requires an active subpath"
+                )
+            start_pixel = (round(start[0]), round(start[1]))
+            if points[-1] != start_pixel:
+                points.append(start_pixel)
+            current = start
+            closed = True
+    flush()
+    return subpaths
+
+
+def _path_subpath_count(primitive: GeometryPrimitive) -> int:
+    if primitive.kind is not GeometryKind.PATH:
+        return 0
+    return sum(command.kind is PathCommandKind.MOVE for command in primitive.path)
+
+
+def geometry_topology_evidence(spec: GeometrySpec) -> GeometryTopologyEvidence:
+    path_primitives = [
+        primitive
+        for primitive in spec.primitives
+        if primitive.kind is GeometryKind.PATH
+    ]
+    compound = [
+        primitive
+        for primitive in path_primitives
+        if _path_subpath_count(primitive) > 1
+    ]
+    fill_rules = sorted(
+        {primitive.fill_rule for primitive in path_primitives},
+        key=lambda item: item.value,
+    )
+    return GeometryTopologyEvidence(
+        evidence_provider=spec.evidence_provider,
+        evidence_version=spec.evidence_version,
+        primitive_count=len(spec.primitives),
+        path_primitive_count=len(path_primitives),
+        subpath_count=sum(_path_subpath_count(item) for item in path_primitives),
+        compound_path_count=len(compound),
+        evenodd_compound_fill_count=sum(
+            item.fill is not None
+            and item.fill_rule is GeometryFillRule.EVENODD
+            for item in compound
+        ),
+        fill_rules=fill_rules,
+    )
 
 
 def _validate_primitive(primitive: GeometryPrimitive) -> None:
@@ -141,7 +208,12 @@ def _validate_primitive(primitive: GeometryPrimitive) -> None:
             raise GeometryRenderUnavailable("path primitive requires path commands")
         if primitive.path[0].kind is not PathCommandKind.MOVE:
             raise GeometryRenderUnavailable("path primitive must start with move")
-        for index, command in enumerate(primitive.path):
+
+        active = False
+        closed = False
+        drawable_segments = 0
+        completed_subpaths: list[tuple[bool, int]] = []
+        for command in primitive.path:
             required = {
                 PathCommandKind.MOVE: 1,
                 PathCommandKind.LINE: 1,
@@ -152,15 +224,48 @@ def _validate_primitive(primitive: GeometryPrimitive) -> None:
                 raise GeometryRenderUnavailable(
                     f"{command.kind.value} path command requires {required} points"
                 )
-            if command.kind is PathCommandKind.MOVE and index != 0:
+
+            if command.kind is PathCommandKind.MOVE:
+                if active:
+                    completed_subpaths.append((closed, drawable_segments))
+                active = True
+                closed = False
+                drawable_segments = 0
+                continue
+
+            if not active:
                 raise GeometryRenderUnavailable(
-                    "multiple path subpaths are not supported by deterministic rasterization"
+                    f"{command.kind.value} path command requires an active subpath"
                 )
-            if (
-                command.kind is PathCommandKind.CLOSE
-                and index != len(primitive.path) - 1
-            ):
-                raise GeometryRenderUnavailable("close must be the final path command")
+            if closed:
+                raise GeometryRenderUnavailable(
+                    "a closed subpath must be followed by move or end"
+                )
+
+            if command.kind in {PathCommandKind.LINE, PathCommandKind.CUBIC}:
+                drawable_segments += 1
+            elif command.kind is PathCommandKind.CLOSE:
+                if drawable_segments < 2:
+                    raise GeometryRenderUnavailable(
+                        "closed path subpath requires at least two drawable segments"
+                    )
+                closed = True
+
+        if active:
+            completed_subpaths.append((closed, drawable_segments))
+
+        if not completed_subpaths:
+            raise GeometryRenderUnavailable("path primitive contains no subpaths")
+        if any(segments < 1 for _, segments in completed_subpaths):
+            raise GeometryRenderUnavailable(
+                "path subpath requires at least one drawable segment"
+            )
+        if primitive.fill is not None and any(
+            not is_closed for is_closed, _ in completed_subpaths
+        ):
+            raise GeometryRenderUnavailable(
+                "every filled path subpath must be explicitly closed"
+            )
 
 
 def validate_geometry_spec(spec: GeometrySpec) -> None:
@@ -216,17 +321,52 @@ def apply_geometry(
                 closed = [*points, points[0]]
                 draw.line(closed, fill=stroke, width=width, joint="curve")
         elif primitive.kind is GeometryKind.PATH:
-            points, closed = _path_points_pixels(primitive, result)
-            if len(points) < 2:
-                raise GeometryRenderUnavailable("path primitive produced too few points")
+            subpaths = _path_subpaths_pixels(primitive, result)
+            if not subpaths:
+                raise GeometryRenderUnavailable(
+                    "path primitive produced no drawable subpaths"
+                )
+
             if fill is not None:
-                if not closed:
-                    raise GeometryRenderUnavailable(
-                        "filled path primitive must be explicitly closed"
-                    )
-                draw.polygon(points, fill=fill)
+                if len(subpaths) == 1:
+                    points, closed = subpaths[0]
+                    if not closed or len(points) < 4:
+                        raise GeometryRenderUnavailable(
+                            "filled path primitive must be explicitly closed"
+                        )
+                    draw.polygon(points, fill=fill)
+                else:
+                    if primitive.fill_rule is not GeometryFillRule.EVENODD:
+                        raise GeometryRenderUnavailable(
+                            "compound filled path requires evenodd fill rule "
+                            "for deterministic rasterization"
+                        )
+                    mask = Image.new("L", result.size, 0)
+                    for points, closed in subpaths:
+                        if not closed or len(points) < 4:
+                            raise GeometryRenderUnavailable(
+                                "compound filled path contains an open or "
+                                "degenerate subpath"
+                            )
+                        contour = Image.new("L", result.size, 0)
+                        ImageDraw.Draw(contour).polygon(points, fill=255)
+                        mask = ImageChops.difference(mask, contour)
+                    fill_layer = Image.new("RGBA", result.size, fill)
+                    result.paste(fill_layer, (0, 0), mask)
+                    draw = ImageDraw.Draw(result)
+
             if stroke is not None:
-                draw.line(points, fill=stroke, width=width, joint="curve")
+                for points, _closed in subpaths:
+                    if len(points) < 2:
+                        raise GeometryRenderUnavailable(
+                            "path subpath produced too few points"
+                        )
+                    draw.line(
+                        points,
+                        fill=stroke,
+                        width=width,
+                        joint="curve",
+                    )
         else:
             raise GeometryRenderUnavailable(
                 f"unsupported geometry primitive: {primitive.kind}"
@@ -337,7 +477,10 @@ def geometry_to_svg(
                     )
                 elif command.kind is PathCommandKind.CLOSE:
                     commands.append("Z")
-            elements.append(f'<path d="{" ".join(commands)}" {common}/>')
+            elements.append(
+                f'<path d="{" ".join(commands)}" '
+                f'fill-rule="{primitive.fill_rule.value}" {common}/>'
+            )
 
     svg = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

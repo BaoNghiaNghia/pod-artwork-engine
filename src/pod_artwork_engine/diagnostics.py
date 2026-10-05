@@ -67,6 +67,11 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "visual_font_match_max_candidates": (
                 settings.visual_font_match_max_candidates
             ),
+            "geometry_path_capabilities": [
+                "cubic",
+                "multi_subpath",
+                "evenodd_compound_fill",
+            ],
             "tesseract_language": settings.tesseract_language,
         }
         (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")

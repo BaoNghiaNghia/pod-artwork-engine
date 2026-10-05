@@ -469,6 +469,7 @@ def _precision_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
         "typography_rebuilt": lambda result: result.precision.typography_rebuilt,
         "mixed_text_refined": lambda result: result.precision.mixed_text_refined,
         "geometry_vector": lambda result: result.precision.geometry_vector,
+        "compound_geometry": lambda result: result.precision.compound_geometry,
         "masked_text_regions": lambda result: result.precision.masked_text_regions > 0,
         "provider_recipe": lambda result: bool(result.precision.provider_recipe_id),
     }

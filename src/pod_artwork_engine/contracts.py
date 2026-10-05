@@ -113,6 +113,11 @@ class PathCommandKind(StrEnum):
     CLOSE = "close"
 
 
+class GeometryFillRule(StrEnum):
+    NONZERO = "nonzero"
+    EVENODD = "evenodd"
+
+
 class BoundingBox(StrictModel):
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
@@ -174,12 +179,27 @@ class GeometryPrimitive(StrictModel):
     fill: str | None = None
     stroke: str | None = None
     stroke_width_ratio: float = Field(default=0.004, ge=0, le=0.1)
+    fill_rule: GeometryFillRule = GeometryFillRule.NONZERO
     confidence: float = Field(default=0, ge=0, le=1)
 
 
 class GeometrySpec(StrictModel):
     primitives: list[GeometryPrimitive] = Field(default_factory=list)
     confidence: float = Field(default=0, ge=0, le=1)
+    evidence_provider: str = ""
+    evidence_version: str = ""
+
+
+class GeometryTopologyEvidence(StrictModel):
+    method: str = "deterministic_geometry_v2"
+    evidence_provider: str = ""
+    evidence_version: str = ""
+    primitive_count: int = Field(default=0, ge=0)
+    path_primitive_count: int = Field(default=0, ge=0)
+    subpath_count: int = Field(default=0, ge=0)
+    compound_path_count: int = Field(default=0, ge=0)
+    evenodd_compound_fill_count: int = Field(default=0, ge=0)
+    fill_rules: list[GeometryFillRule] = Field(default_factory=list)
 
 
 class SemanticJudgeResult(StrictModel):

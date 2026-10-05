@@ -106,6 +106,9 @@ class PrecisionEvidence(StrictModel):
     typography_rebuilt: bool = False
     mixed_text_refined: bool = False
     geometry_vector: bool = False
+    compound_geometry: bool = False
+    geometry_subpaths: int = Field(default=0, ge=0)
+    evenodd_compound_fills: int = Field(default=0, ge=0)
     masked_text_regions: int = Field(default=0, ge=0)
     provider_recipe_id: str = ""
     precision_ops: list[str] = Field(default_factory=list)

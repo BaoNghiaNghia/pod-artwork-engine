@@ -98,6 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "visual_font_match_enabled": settings.visual_font_match_enabled,
             "visual_font_match_min_score": settings.visual_font_match_min_score,
             "visual_font_match_min_margin": settings.visual_font_match_min_margin,
+            "geometry_path_capabilities": [
+                "cubic",
+                "multi_subpath",
+                "evenodd_compound_fill",
+            ],
         }
 
     @app.get("/datasets", response_model=list[DatasetRecord])

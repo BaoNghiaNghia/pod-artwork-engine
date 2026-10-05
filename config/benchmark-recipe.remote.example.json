@@ -1,17 +1,17 @@
 {
-  "recipe_id": "remote-balanced-v2",
-  "version": "2",
-  "description": "Provider-gateway challenger with local OCR/font verification and capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v3",
+  "version": "3",
+  "description": "Provider-gateway challenger with local font verification, compound vector topology and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "provider-gateway-plus-local-font-verification",
-      "version": "phase1g"
+      "version": "phase1h"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase1g"
+      "version": "phase1h"
     },
     {
       "name": "judge",

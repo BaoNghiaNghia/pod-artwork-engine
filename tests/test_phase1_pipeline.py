@@ -12,6 +12,7 @@ from pod_artwork_engine.contracts import (
     BoundingBox,
     DesignSpec,
     FontMatchEvidence,
+    GeometryFillRule,
     GeometryKind,
     GeometryPathCommand,
     GeometryPrimitive,
@@ -28,7 +29,12 @@ from pod_artwork_engine.contracts import (
     TypographySpec,
 )
 from pod_artwork_engine.engine import Engine
-from pod_artwork_engine.geometry import geometry_to_svg, render_geometry_master
+from pod_artwork_engine.geometry import (
+    GeometryRenderUnavailable,
+    geometry_to_svg,
+    geometry_topology_evidence,
+    render_geometry_master,
+)
 from pod_artwork_engine.local_ocr import LocalOCRResult
 from pod_artwork_engine.preflight import inspect_image
 from pod_artwork_engine.router import choose_route
@@ -812,3 +818,220 @@ def test_engine_records_verified_visual_font_match_evidence(
     manifest = manifest_path.read_text(encoding="utf-8")
     assert '"font_match"' in manifest
     assert '"font_sha256": "' + ("a" * 64) + '"' in manifest
+
+
+def _compound_evenodd_ring() -> GeometrySpec:
+    return GeometrySpec(
+        confidence=0.99,
+        evidence_provider="fixture-analyzer",
+        evidence_version="1",
+        primitives=[
+            GeometryPrimitive(
+                kind=GeometryKind.PATH,
+                path=[
+                    GeometryPathCommand(
+                        kind=PathCommandKind.MOVE,
+                        points=[NormalizedPoint(x=0.15, y=0.15)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.85, y=0.15)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.85, y=0.85)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.15, y=0.85)],
+                    ),
+                    GeometryPathCommand(kind=PathCommandKind.CLOSE),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.MOVE,
+                        points=[NormalizedPoint(x=0.35, y=0.35)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.65, y=0.35)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.65, y=0.65)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.35, y=0.65)],
+                    ),
+                    GeometryPathCommand(kind=PathCommandKind.CLOSE),
+                ],
+                fill="#111111",
+                fill_rule=GeometryFillRule.EVENODD,
+                confidence=0.99,
+            )
+        ],
+    )
+
+
+def test_geometry_renderer_supports_evenodd_compound_path_hole(
+    tmp_path: Path,
+) -> None:
+    spec = _compound_evenodd_ring()
+
+    png = render_geometry_master(
+        spec,
+        tmp_path / "compound-ring.png",
+        canvas_size=(1000, 1000),
+    )
+    svg = geometry_to_svg(
+        spec,
+        tmp_path / "compound-ring.svg",
+        view_box=(1000, 1000),
+    )
+
+    with Image.open(png) as image:
+        alpha = image.convert("RGBA").getchannel("A")
+        assert alpha.getpixel((250, 500)) > 0
+        assert alpha.getpixel((500, 500)) == 0
+
+    svg_text = svg.read_text(encoding="utf-8")
+    assert 'fill-rule="evenodd"' in svg_text
+    assert svg_text.count("M ") == 2
+
+    topology = geometry_topology_evidence(spec)
+    assert topology.primitive_count == 1
+    assert topology.path_primitive_count == 1
+    assert topology.subpath_count == 2
+    assert topology.compound_path_count == 1
+    assert topology.evenodd_compound_fill_count == 1
+    assert topology.evidence_provider == "fixture-analyzer"
+
+
+def test_compound_nonzero_fill_fails_closed_for_raster_but_exports_svg(
+    tmp_path: Path,
+) -> None:
+    evenodd = _compound_evenodd_ring()
+    primitive = evenodd.primitives[0].model_copy(
+        update={"fill_rule": GeometryFillRule.NONZERO}
+    )
+    spec = evenodd.model_copy(update={"primitives": [primitive]})
+
+    with pytest.raises(
+        GeometryRenderUnavailable,
+        match="requires evenodd fill rule",
+    ):
+        render_geometry_master(
+            spec,
+            tmp_path / "should-not-render.png",
+            canvas_size=(1000, 1000),
+        )
+
+    svg = geometry_to_svg(
+        spec,
+        tmp_path / "compound-nonzero.svg",
+        view_box=(1000, 1000),
+    )
+    assert 'fill-rule="nonzero"' in svg.read_text(encoding="utf-8")
+
+
+def test_geometry_renderer_supports_multiple_open_stroke_subpaths(
+    tmp_path: Path,
+) -> None:
+    spec = GeometrySpec(
+        confidence=0.99,
+        primitives=[
+            GeometryPrimitive(
+                kind=GeometryKind.PATH,
+                path=[
+                    GeometryPathCommand(
+                        kind=PathCommandKind.MOVE,
+                        points=[NormalizedPoint(x=0.15, y=0.25)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.LINE,
+                        points=[NormalizedPoint(x=0.85, y=0.25)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.MOVE,
+                        points=[NormalizedPoint(x=0.15, y=0.75)],
+                    ),
+                    GeometryPathCommand(
+                        kind=PathCommandKind.CUBIC,
+                        points=[
+                            NormalizedPoint(x=0.35, y=0.55),
+                            NormalizedPoint(x=0.65, y=0.95),
+                            NormalizedPoint(x=0.85, y=0.75),
+                        ],
+                    ),
+                ],
+                stroke="#111111",
+                stroke_width_ratio=0.012,
+                confidence=0.99,
+            )
+        ],
+    )
+
+    png = render_geometry_master(
+        spec,
+        tmp_path / "multi-stroke.png",
+        canvas_size=(1000, 1000),
+    )
+    with Image.open(png) as image:
+        alpha = image.convert("RGBA").getchannel("A")
+        assert alpha.getpixel((500, 250)) > 0
+        assert alpha.getbbox() is not None
+
+    topology = geometry_topology_evidence(spec)
+    assert topology.subpath_count == 2
+    assert topology.compound_path_count == 1
+    assert topology.evenodd_compound_fill_count == 0
+
+
+def test_quick_compound_logo_records_topology_provenance(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = _transparent_art(tmp_path / "compound-logo-reference.png")
+    settings = Settings(
+        data_root=tmp_path / "compound-logo-data",
+        remote_provider_url="http://provider.invalid/gateway",
+        remote_provider_name="test-provider",
+    )
+    engine = Engine(settings)
+    geometry = _compound_evenodd_ring()
+    remote_spec = DesignSpec(
+        artwork_type=ArtworkType.LOGO,
+        artwork_bbox=BoundingBox(x=0.10, y=0.10, width=0.80, height=0.80),
+        geometry=geometry,
+        confidence=0.98,
+        required_capabilities=["need_vector"],
+    )
+
+    def fake_execute(request):
+        assert request.action == "analyze"
+        return ProviderResult(
+            provider="test-provider",
+            model_version="compound-logo-v1",
+            design_spec=remote_spec,
+        )
+
+    monkeypatch.setattr(engine.provider, "execute", fake_execute)
+
+    job = engine.create_job([source], QualityMode.QUICK_2D)
+    result = engine.run_job(job.job_id)
+
+    assert result.state is JobState.COMPLETED
+    topology = engine.checkpoints.payload(job.job_id, "geometry_topology")
+    assert topology["compound_path_count"] == 1
+    assert topology["subpath_count"] == 2
+    assert topology["evenodd_compound_fill_count"] == 1
+    assert topology["evidence_provider"] == "fixture-analyzer"
+    assert len(topology["svg_sha256"]) == 64
+
+    manifest = (
+        engine.settings.jobs_dir
+        / job.job_id
+        / "master"
+        / "artifact_manifest.json"
+    ).read_text(encoding="utf-8")
+    assert '"geometry_topology"' in manifest
+    assert '"compound_path_count": 1' in manifest
