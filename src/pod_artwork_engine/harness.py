@@ -465,6 +465,7 @@ def _precision_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
 
     predicates = {
         "local_ocr": lambda result: result.precision.local_ocr,
+        "visual_font_match": lambda result: result.precision.visual_font_match,
         "typography_rebuilt": lambda result: result.precision.typography_rebuilt,
         "mixed_text_refined": lambda result: result.precision.mixed_text_refined,
         "geometry_vector": lambda result: result.precision.geometry_vector,

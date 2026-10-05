@@ -11,6 +11,7 @@ from pod_artwork_engine.contracts import (
     ArtworkType,
     BoundingBox,
     DesignSpec,
+    FontMatchEvidence,
     GeometryKind,
     GeometryPathCommand,
     GeometryPrimitive,
@@ -320,6 +321,7 @@ def test_quick_typography_uses_deterministic_redraw_when_font_matches(
         data_root=tmp_path / "text-data",
         remote_provider_url="http://provider.invalid/gateway",
         remote_provider_name="test-provider",
+        visual_font_match_enabled=False,
     )
     settings.ensure_directories()
     if resolve_font(settings, "Arial") is None:
@@ -658,6 +660,7 @@ def test_engine_merges_high_confidence_local_ocr_evidence(
     settings = Settings(
         data_root=tmp_path / "ocr-runtime",
         local_ocr_enabled=True,
+        visual_font_match_enabled=False,
     )
     engine = Engine(settings)
     typography = TypographySpec(
@@ -708,3 +711,104 @@ def test_engine_merges_high_confidence_local_ocr_evidence(
     assert local_ocr["exact_text"] == ["HELLO"]
     candidate = engine.checkpoints.payload(job.job_id, "candidate")
     assert candidate["recognized_text"] == ["HELLO"]
+
+
+def test_engine_records_verified_visual_font_match_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = _transparent_art(tmp_path / "font-match-reference.png")
+    settings = Settings(
+        data_root=tmp_path / "font-match-runtime",
+        local_ocr_enabled=True,
+        visual_font_match_enabled=True,
+    )
+    engine = Engine(settings)
+    ocr_typography = TypographySpec(
+        lines=[
+            TypographyLine(
+                text="HELLO",
+                bbox=BoundingBox(x=0.2, y=0.35, width=0.6, height=0.2),
+                confidence=0.96,
+            )
+        ],
+        line_order_confidence=0.96,
+        evidence_provider="tesseract",
+        evidence_version="fixture",
+    )
+    matched_typography = ocr_typography.model_copy(
+        update={
+            "font_match_confidence": 0.91,
+            "evidence_provider": "tesseract+visual_render_compare_v1",
+            "lines": [
+                ocr_typography.lines[0].model_copy(
+                    update={
+                        "font_family": "Verified Sans",
+                        "font_weight": 400,
+                        "font_match": FontMatchEvidence(
+                            family="Verified Sans",
+                            style="Regular",
+                            weight=400,
+                            score=0.91,
+                            margin=0.08,
+                            accepted=True,
+                            method="visual_render_compare_v1",
+                            candidates_evaluated=42,
+                            font_sha256="a" * 64,
+                        ),
+                    }
+                )
+            ],
+        }
+    )
+
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.analyze_locally",
+        lambda source_paths, preflights: DesignSpec(
+            artwork_type=ArtworkType.MIXED,
+            artwork_bbox=BoundingBox(x=0.15, y=0.15, width=0.70, height=0.70),
+            confidence=0.85,
+            required_capabilities=["need_semantic_reconstruction"],
+        ),
+    )
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.local_ocr_available",
+        lambda settings: True,
+    )
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.analyze_artwork_text",
+        lambda source_path, artwork_bbox, settings: LocalOCRResult(
+            exact_text=["HELLO"],
+            typography=ocr_typography,
+            backend="tesseract",
+            backend_version="fixture",
+        ),
+    )
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.match_typography_fonts",
+        lambda source_path, artwork_bbox, typography, settings: matched_typography,
+    )
+
+    job = engine.create_job([source], QualityMode.QUICK_2D)
+    result = engine.run_job(job.job_id)
+
+    assert result.state in {JobState.COMPLETED, JobState.REVIEW_REQUIRED}
+    design_spec = engine.checkpoints.payload(job.job_id, "design_spec")
+    assert design_spec["typography"]["lines"][0]["font_family"] == "Verified Sans"
+    assert design_spec["typography"]["font_match_confidence"] == 0.91
+
+    font_match = engine.checkpoints.payload(job.job_id, "font_match")
+    assert font_match["method"] == "visual_render_compare_v1"
+    assert font_match["lines"][0]["accepted"] is True
+    assert font_match["lines"][0]["margin"] == 0.08
+    assert font_match["lines"][0]["font_sha256"] == "a" * 64
+
+    manifest_path = (
+        engine.settings.jobs_dir
+        / job.job_id
+        / "master"
+        / "artifact_manifest.json"
+    )
+    manifest = manifest_path.read_text(encoding="utf-8")
+    assert '"font_match"' in manifest
+    assert '"font_sha256": "' + ("a" * 64) + '"' in manifest

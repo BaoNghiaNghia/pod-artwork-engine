@@ -282,11 +282,38 @@ python -m pod_artwork_engine harness-router-calibrate <route-matrix-id>
 
 Route matrix artifacts are stored under `<data-root>/harness/route-matrices/<matrix-id>/`; router proposals are stored under `<data-root>/harness/router-calibration/<proposal-id>/`. A working remote provider is required for genuine remote counterfactual evidence.
 
+### Phase 1G — Guarded Visual Font Identification
+
+Implemented:
+
+- local visual font matching compares OCR/provider text crops against fonts already installed on Windows or placed in `<data-root>/fonts`; no model download is required;
+- matching is color-independent: the matcher estimates foreground from alpha or border/background contrast before comparing normalized glyph silhouettes;
+- candidate fonts are deduplicated, prefiltered by rendered aspect ratio, then scored by glyph-shape similarity plus aspect fidelity;
+- a font is accepted only when both absolute score and best-vs-runner-up margin pass configured thresholds; ambiguous look-alike fonts remain unresolved;
+- accepted evidence records family, style, inferred weight, score, margin, method, candidate count and the exact font-file SHA-256 in typed `FontMatchEvidence`;
+- deterministic rendering verifies that SHA-256 before reusing a visually matched font, so a changed/replaced font file cannot silently alter a previously approved reconstruction;
+- unresolved matches never overwrite `font_family`; therefore deterministic typography still refuses silent font substitution;
+- verified local font evidence can replace a provider font guess for the same text line, while unmatched provider lines can be locally verified after remote analysis;
+- font matching is optional and failure-isolated: matching errors fall back to OCR/provider analysis instead of failing the job;
+- Harness precision evidence now reports `visual_font_match` coverage and matched-line counts;
+- benchmark recipes may independently control font matching and its score/margin/candidate limits, allowing Golden Holdout data to calibrate the feature rather than hard-coding confidence assumptions.
+
+Configuration:
+
+```text
+POD_VISUAL_FONT_MATCH_ENABLED=1
+POD_VISUAL_FONT_MATCH_MIN_SCORE=0.72
+POD_VISUAL_FONT_MATCH_MIN_MARGIN=0.035
+POD_VISUAL_FONT_MATCH_MAX_CANDIDATES=96
+```
+
+`TypographyLine.bbox` used for visual verification is interpreted inside the detected artwork region. Curved, heavily warped, occluded or textured text may not produce a confident local match; those cases remain eligible for provider reconstruction/review rather than being forced into a wrong local font.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
 - choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
-- visual font identification beyond provider hints plus exact installed-family normalization;
+- calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
 - multi-subpath/compound Bezier tracing and more complex logo topology;
 - illustration-aware/inpainting masks for text that overlaps non-solid artwork;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.

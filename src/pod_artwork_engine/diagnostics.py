@@ -61,6 +61,12 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             ),
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
+            "visual_font_match_enabled": settings.visual_font_match_enabled,
+            "visual_font_match_min_score": settings.visual_font_match_min_score,
+            "visual_font_match_min_margin": settings.visual_font_match_min_margin,
+            "visual_font_match_max_candidates": (
+                settings.visual_font_match_max_candidates
+            ),
             "tesseract_language": settings.tesseract_language,
         }
         (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")

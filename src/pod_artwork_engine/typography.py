@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from .contracts import RegionReplacementMode, TypographyLine, TypographySpec
-from .font_catalog import get_font_catalog
+from .font_catalog import get_font_catalog, normalize_font_name
 from .settings import Settings
 
 
@@ -13,8 +14,35 @@ class TypographyRenderUnavailable(RuntimeError):
     pass
 
 
-def resolve_font(settings: Settings, family: str, weight: int = 400) -> Path | None:
-    entry = get_font_catalog(settings).resolve(family, weight)
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def resolve_font(
+    settings: Settings,
+    family: str,
+    weight: int = 400,
+    *,
+    expected_sha256: str = "",
+) -> Path | None:
+    catalog = get_font_catalog(settings)
+    if expected_sha256:
+        wanted = catalog.canonicalize(family)
+        for entry in catalog.entries:
+            if catalog.canonicalize(entry.family) != wanted:
+                continue
+            try:
+                if _sha256_file(entry.path) == expected_sha256:
+                    return entry.path
+            except OSError:
+                continue
+        return None
+
+    entry = catalog.resolve(family, weight)
     return entry.path if entry is not None else None
 
 
@@ -79,7 +107,19 @@ def _draw_line(
     line: TypographyLine,
     settings: Settings,
 ) -> None:
-    font_path = resolve_font(settings, line.font_family, line.font_weight)
+    expected_sha256 = (
+        line.font_match.font_sha256
+        if line.font_match is not None
+        and line.font_match.accepted
+        and line.font_match.font_sha256
+        else ""
+    )
+    font_path = resolve_font(
+        settings,
+        line.font_family,
+        line.font_weight,
+        expected_sha256=expected_sha256,
+    )
     if font_path is None:
         raise TypographyRenderUnavailable(
             f"required font is not installed: {line.font_family or '<unspecified>'}"
@@ -150,6 +190,26 @@ def validate_typography_spec(spec: TypographySpec) -> None:
             raise TypographyRenderUnavailable(
                 f"typography line confidence too low: {line.text}"
             )
+        match = line.font_match
+        if (
+            match is not None
+            and match.accepted
+            and match.method == "visual_render_compare_v1"
+        ):
+            if not match.font_sha256:
+                raise TypographyRenderUnavailable(
+                    f"visual font match is missing its font fingerprint: {line.text}"
+                )
+            if normalize_font_name(match.family) != normalize_font_name(
+                line.font_family
+            ):
+                raise TypographyRenderUnavailable(
+                    f"visual font evidence family mismatch: {line.text}"
+                )
+            if match.weight != line.font_weight:
+                raise TypographyRenderUnavailable(
+                    f"visual font evidence weight mismatch: {line.text}"
+                )
 
 
 def apply_typography(

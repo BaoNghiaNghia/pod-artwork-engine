@@ -150,6 +150,8 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
                 precision=PrecisionEvidence(
                     local_ocr=True,
                     ocr_backend="fixture-ocr",
+                    visual_font_match=True,
+                    matched_font_lines=2,
                     geometry_vector=True,
                     precision_ops=["deterministic_geometry"],
                 ),
@@ -185,6 +187,7 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
     assert scorecard.provider_calls == len(cases)
     assert scorecard.metric_coverage["semantic.object_fidelity"] == 1.0
     assert scorecard.precision_coverage["local_ocr"] == 1.0
+    assert scorecard.precision_coverage["visual_font_match"] == 1.0
     assert scorecard.precision_coverage["geometry_vector"] == 1.0
     assert scorecard.result_paths
     assert all(Path(path).is_file() for path in scorecard.result_paths)
@@ -370,6 +373,10 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
             "router_policy_path": "router-policy.json",
             "harness_route_override": "hybrid",
             "local_ocr_enabled": False,
+            "visual_font_match_enabled": False,
+            "visual_font_match_min_score": 0.81,
+            "visual_font_match_min_margin": 0.06,
+            "visual_font_match_max_candidates": 48,
             "tesseract_language": "vie+eng",
         },
     )
@@ -387,6 +394,10 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
     ).resolve()
     assert runner._route_override_for_recipe(recipe).value == "hybrid"
     assert effective.local_ocr_enabled is False
+    assert effective.visual_font_match_enabled is False
+    assert effective.visual_font_match_min_score == 0.81
+    assert effective.visual_font_match_min_margin == 0.06
+    assert effective.visual_font_match_max_candidates == 48
     assert effective.tesseract_language == "vie+eng"
     assert effective.remote_provider_token == settings.remote_provider_token
 

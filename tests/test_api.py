@@ -37,6 +37,9 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert "update" in status
     assert "local_ocr_available" in status
     assert "local_ocr_enabled" in status
+    assert status["visual_font_match_enabled"] is True
+    assert status["visual_font_match_min_score"] == 0.72
+    assert status["visual_font_match_min_margin"] == 0.035
     assert status["qc_policy_id"] == "phase1-default"
     assert status["qc_policy_version"] == "1"
     assert status["qc_policy_configured"] is False

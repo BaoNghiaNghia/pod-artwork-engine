@@ -125,6 +125,18 @@ class NormalizedPoint(StrictModel):
     y: float = Field(ge=0, le=1)
 
 
+class FontMatchEvidence(StrictModel):
+    family: str = ""
+    style: str = ""
+    weight: int = Field(default=400, ge=100, le=900)
+    score: float = Field(default=0, ge=0, le=1)
+    margin: float = Field(default=0, ge=0, le=1)
+    accepted: bool = False
+    method: str = ""
+    candidates_evaluated: int = Field(default=0, ge=0)
+    font_sha256: str = Field(default="", pattern=r"^(?:[0-9a-f]{64})?$")
+
+
 class TypographyLine(StrictModel):
     text: str = Field(min_length=1)
     bbox: BoundingBox
@@ -138,6 +150,7 @@ class TypographyLine(StrictModel):
     replacement_mode: RegionReplacementMode = RegionReplacementMode.NONE
     replacement_fill: str | None = None
     replacement_mask: list[NormalizedPoint] = Field(default_factory=list)
+    font_match: FontMatchEvidence | None = None
 
 
 class TypographySpec(StrictModel):
@@ -313,6 +326,7 @@ class ArtifactManifest(StrictModel):
     prompt_versions: dict[str, str] = Field(default_factory=dict)
     policy_version: str = "foundation-v1"
     export_profile: str = "default_pod"
+    precision_evidence: dict[str, Any] = Field(default_factory=dict)
     qc_report: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -1,17 +1,17 @@
 {
-  "recipe_id": "remote-balanced-v1",
-  "version": "1",
-  "description": "Provider-gateway challenger using capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v2",
+  "version": "2",
+  "description": "Provider-gateway challenger with local OCR/font verification and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "provider-gateway",
-      "version": "1"
+      "implementation": "provider-gateway-plus-local-font-verification",
+      "version": "phase1g"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase1d"
+      "version": "phase1g"
     },
     {
       "name": "judge",
@@ -19,16 +19,20 @@
       "version": "1"
     }
   ],
-  "router_version": "phase1d",
+  "router_version": "phase1f",
   "provider_mapping": {
     "analyze": "vision_reasoning",
     "reconstruct": "image_reconstruction",
     "judge": "vision_judge"
   },
-  "qc_policy_version": "phase1d",
+  "qc_policy_version": "phase1e",
   "metadata": {
     "provider_recipe_path": "provider-recipe.example.json",
     "local_ocr_enabled": true,
+    "visual_font_match_enabled": true,
+    "visual_font_match_min_score": 0.72,
+    "visual_font_match_min_margin": 0.035,
+    "visual_font_match_max_candidates": 96,
     "tesseract_language": "eng"
   }
 }

@@ -95,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "router_policy_configured": settings.router_policy_path is not None,
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
+            "visual_font_match_enabled": settings.visual_font_match_enabled,
+            "visual_font_match_min_score": settings.visual_font_match_min_score,
+            "visual_font_match_min_margin": settings.visual_font_match_min_margin,
         }
 
     @app.get("/datasets", response_model=list[DatasetRecord])

@@ -77,6 +77,29 @@ class HarnessEngineRunner:
         if isinstance(local_ocr, bool):
             overrides["local_ocr_enabled"] = local_ocr
 
+        visual_font_match = metadata.get("visual_font_match_enabled")
+        if isinstance(visual_font_match, bool):
+            overrides["visual_font_match_enabled"] = visual_font_match
+
+        for key in (
+            "visual_font_match_min_score",
+            "visual_font_match_min_margin",
+        ):
+            value = metadata.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                numeric = float(value)
+                if not 0 <= numeric <= 1:
+                    raise ValueError(f"{key} must be between 0 and 1")
+                overrides[key] = numeric
+
+        max_candidates = metadata.get("visual_font_match_max_candidates")
+        if isinstance(max_candidates, int) and not isinstance(max_candidates, bool):
+            if not 8 <= max_candidates <= 512:
+                raise ValueError(
+                    "visual_font_match_max_candidates must be between 8 and 512"
+                )
+            overrides["visual_font_match_max_candidates"] = max_candidates
+
         ocr_language = metadata.get("tesseract_language")
         if isinstance(ocr_language, str) and ocr_language.strip():
             overrides["tesseract_language"] = ocr_language.strip()
@@ -112,6 +135,7 @@ class HarnessEngineRunner:
 
     def _precision_evidence(self, job_id: str) -> PrecisionEvidence:
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
+        font_match = self.engine.checkpoints.payload(job_id, "font_match")
         candidate = self.engine.checkpoints.payload(job_id, "candidate")
         design_spec = self.engine.checkpoints.payload(job_id, "design_spec")
         precision_ops = (
@@ -139,6 +163,17 @@ class HarnessEngineRunner:
             except Exception:
                 recipe_id = ""
 
+        font_lines = (
+            list(font_match.get("lines") or [])
+            if isinstance(font_match, dict)
+            else []
+        )
+        matched_font_lines = sum(
+            bool(line.get("accepted"))
+            for line in font_lines
+            if isinstance(line, dict)
+        )
+
         return PrecisionEvidence(
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
             ocr_backend=(
@@ -146,6 +181,8 @@ class HarnessEngineRunner:
                 if isinstance(local_ocr, dict)
                 else ""
             ),
+            visual_font_match=matched_font_lines > 0,
+            matched_font_lines=matched_font_lines,
             typography_rebuilt="deterministic_typography" in precision_ops,
             mixed_text_refined="mixed_typography" in precision_ops,
             geometry_vector=(

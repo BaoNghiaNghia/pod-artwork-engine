@@ -1,28 +1,32 @@
 {
-  "recipe_id": "local-precision-v1",
-  "version": "1",
-  "description": "CPU-first local precision baseline with optional Tesseract OCR.",
+  "recipe_id": "local-precision-v2",
+  "version": "2",
+  "description": "CPU-first local precision baseline with optional Tesseract OCR and guarded visual font matching.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "local-preflight-ocr",
-      "version": "phase1d"
+      "implementation": "local-preflight-ocr-fontmatch",
+      "version": "phase1g"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase1d"
+      "version": "phase1g"
     },
     {
       "name": "qc",
       "implementation": "two-gate-qc",
-      "version": "phase1d"
+      "version": "phase1g"
     }
   ],
-  "router_version": "phase1d",
-  "qc_policy_version": "phase1d",
+  "router_version": "phase1f",
+  "qc_policy_version": "phase1e",
   "metadata": {
     "local_ocr_enabled": true,
+    "visual_font_match_enabled": true,
+    "visual_font_match_min_score": 0.72,
+    "visual_font_match_min_margin": 0.035,
+    "visual_font_match_max_candidates": 96,
     "tesseract_language": "eng"
   }
 }

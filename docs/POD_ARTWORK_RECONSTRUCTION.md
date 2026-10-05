@@ -1462,11 +1462,38 @@ Example review-only router calibration:
 python -m pod_artwork_engine harness-router-calibrate <route-matrix-id>
 ```
 
+Phase 1G guarded visual font identification:
+
+- typography lines can carry typed `FontMatchEvidence`: matched family/style/weight, absolute score, winner margin, acceptance state, method, candidate count and exact font-file SHA-256;
+- deterministic typography verifies the accepted font SHA-256 before rendering; if that file changed or disappeared, the renderer fails closed instead of substituting another same-family file;
+- the matcher uses only installed Windows fonts plus `<data-root>/fonts`; it does not download a model or duplicate a font library into tool storage;
+- OCR/provider line crops are converted into a color-independent foreground mask using alpha when available, otherwise border/background contrast;
+- installed-font candidates are deduplicated and cheaply prefiltered by rendered text aspect before more expensive glyph-shape comparison;
+- final ranking combines normalized glyph silhouette similarity with aspect fidelity;
+- acceptance requires both a minimum absolute score and a minimum winner-vs-runner-up margin, so visually ambiguous font families are intentionally left unresolved;
+- an unresolved result records evidence but does not write `font_family`; deterministic typography therefore keeps its existing fail-closed behavior;
+- local visual evidence can override a provider font guess only when the same text line has an accepted local match;
+- provider typography without local OCR can also be visually checked against the source when its line boxes are available;
+- already accepted local matches are retained when provider evidence is merged, avoiding needless re-identification;
+- optional font matching is failure-isolated: font scanning/rendering errors are logged and the job falls back to OCR/provider analysis instead of failing;
+- Harness precision evidence includes `visual_font_match` coverage and matched-line counts;
+- benchmark recipes can independently set `visual_font_match_enabled`, score/margin thresholds and candidate limits so Golden Holdout evidence can calibrate the feature.
+
+Default configuration:
+
+```text
+POD_VISUAL_FONT_MATCH_ENABLED=1
+POD_VISUAL_FONT_MATCH_MIN_SCORE=0.72
+POD_VISUAL_FONT_MATCH_MIN_MARGIN=0.035
+POD_VISUAL_FONT_MATCH_MAX_CANDIDATES=96
+```
+
 Current truthfulness limits:
 
 - local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
-- Tesseract provides text/location evidence but not trusted visual font identification;
-- exact typography redraw still requires sufficiently confident layout plus an actually matched installed/local font;
+- visual font matching identifies the best candidate only from fonts actually present on the machine/user font directory; it cannot recover an unavailable proprietary font;
+- `TypographyLine.bbox` used for local font verification is interpreted inside the detected artwork region; heavy perspective, curved text, occlusion or textured fills may reduce confidence and intentionally leave the font unresolved;
+- exact typography redraw still requires sufficiently confident layout plus an accepted installed/local font match or other sufficiently trusted explicit typography evidence;
 - font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
 - polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
 - Bezier support currently allows one guarded subpath per primitive; compound paths/holes/general SVG tracing remain later work;
@@ -1481,7 +1508,7 @@ Remaining Phase 1 work:
 
 - import and run the user's real historical source/final pairs through the suite and route matrix, then establish the first measured champion and RouterPolicy;
 - choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
-- add visual font identification/ranking beyond provider hints and exact installed-family normalization;
+- calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
 - add compound/multi-subpath Bezier topology and richer logo tracing;
 - add illustration-aware/inpainting masks for text overlapping non-solid art;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.

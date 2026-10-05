@@ -12,6 +12,7 @@ from .contracts import (
     ArtifactManifest,
     ArtifactRef,
     ArtworkType,
+    BoundingBox,
     DesignSpec,
     ExportProfile,
     FailureCategory,
@@ -25,11 +26,13 @@ from .contracts import (
     QualityMode,
     RouteDecision,
     RouteKind,
+    TypographySpec,
 )
 from .exporter import export_master
 from .geometry import GeometryRenderUnavailable, geometry_to_svg, render_geometry_master
 from .job_store import JobStore
 from .font_catalog import get_font_catalog
+from .font_matcher import match_typography_fonts, merge_verified_font_matches
 from .local_ocr import LocalOCRUnavailable, analyze_artwork_text, available as local_ocr_available
 from .logging_config import log_event
 from .preflight import inspect_image, sha256_file
@@ -77,6 +80,57 @@ class Engine:
 
     def _job_dir(self, job_id: str) -> Path:
         return self.settings.jobs_dir / job_id
+
+    def _apply_visual_font_matching(
+        self,
+        job: JobRecord,
+        source_path: Path,
+        artwork_bbox: BoundingBox,
+        typography: TypographySpec,
+    ) -> TypographySpec:
+        if not self.settings.visual_font_match_enabled or not typography.lines:
+            return typography
+        try:
+            matched = match_typography_fonts(
+                source_path,
+                artwork_bbox,
+                typography,
+                self.settings,
+            )
+        except Exception as exc:
+            self._log_stage(
+                job,
+                "visual_font_match_unavailable",
+                stage="analyzing",
+                failure_reason=f"{type(exc).__name__}: {exc}",
+            )
+            return typography
+
+        evidence = [
+            line.font_match.model_dump(mode="json")
+            for line in matched.lines
+            if line.font_match is not None
+        ]
+        if evidence:
+            accepted = sum(bool(item.get("accepted")) for item in evidence)
+            self.checkpoints.write(
+                job.job_id,
+                "font_match",
+                {
+                    "method": "visual_render_compare_v1",
+                    "font_match_confidence": matched.font_match_confidence,
+                    "accepted_lines": accepted,
+                    "total_lines": len(evidence),
+                    "lines": evidence,
+                },
+            )
+            self._log_stage(
+                job,
+                "visual_font_match_completed",
+                stage="analyzing",
+                quality_score=matched.font_match_confidence,
+            )
+        return matched
 
     def _log_stage(
         self,
@@ -222,6 +276,15 @@ class Engine:
         local_spec = analyze_locally(source_paths, preflights)
         provider_result: ProviderResult | None = None
 
+        primary_index = max(
+            range(len(preflights)),
+            key=lambda index: (
+                preflights[index].artwork_confidence,
+                preflights[index].source_quality,
+                preflights[index].width * preflights[index].height,
+            ),
+        )
+
         should_run_local_ocr = (
             local_spec.artwork_bbox is not None
             and local_ocr_available(self.settings)
@@ -232,14 +295,6 @@ class Engine:
             )
         )
         if should_run_local_ocr:
-            primary_index = max(
-                range(len(preflights)),
-                key=lambda index: (
-                    preflights[index].artwork_confidence,
-                    preflights[index].source_quality,
-                    preflights[index].width * preflights[index].height,
-                ),
-            )
             try:
                 ocr_result = analyze_artwork_text(
                     source_paths[primary_index],
@@ -251,7 +306,12 @@ class Engine:
                     and ocr_result.typography.line_order_confidence >= 0.75
                 ):
                     local_spec.exact_text = list(ocr_result.exact_text)
-                    local_spec.typography = ocr_result.typography
+                    local_spec.typography = self._apply_visual_font_matching(
+                        job,
+                        source_paths[primary_index],
+                        local_spec.artwork_bbox,
+                        ocr_result.typography,
+                    )
                     if "need_exact_text" not in local_spec.required_capabilities:
                         local_spec.required_capabilities.append("need_exact_text")
                     self.checkpoints.write(
@@ -261,7 +321,7 @@ class Engine:
                             "backend": ocr_result.backend,
                             "backend_version": ocr_result.backend_version,
                             "exact_text": ocr_result.exact_text,
-                            "typography": ocr_result.typography.model_dump(mode="json"),
+                            "typography": local_spec.typography.model_dump(mode="json"),
                         },
                     )
                     self._log_stage(
@@ -281,7 +341,7 @@ class Engine:
         local_ocr_typography = (
             local_spec.typography
             if local_spec.typography is not None
-            and local_spec.typography.evidence_provider == "tesseract"
+            and local_spec.typography.evidence_provider.startswith("tesseract")
             else None
         )
 
@@ -324,6 +384,30 @@ class Engine:
                         and local_ocr_typography is not None
                     ):
                         local_spec.typography = local_ocr_typography
+                    elif (
+                        local_spec.typography is not None
+                        and local_ocr_typography is not None
+                    ):
+                        local_spec.typography = merge_verified_font_matches(
+                            local_spec.typography,
+                            local_ocr_typography,
+                        )
+                if (
+                    local_spec.artwork_bbox is not None
+                    and local_spec.typography is not None
+                    and local_spec.typography.lines
+                    and self.settings.visual_font_match_enabled
+                    and any(
+                        line.font_match is None or not line.font_match.accepted
+                        for line in local_spec.typography.lines
+                    )
+                ):
+                    local_spec.typography = self._apply_visual_font_matching(
+                        job,
+                        source_paths[primary_index],
+                        local_spec.artwork_bbox,
+                        local_spec.typography,
+                    )
                 if (
                     local_spec.typography is not None
                     and local_spec.typography.lines
@@ -822,6 +906,12 @@ class Engine:
                 f"qc={self.qc_policy.policy_id}:{self.qc_policy.version}"
             ),
             export_profile="default_pod",
+            precision_evidence={
+                "font_match": (
+                    self.checkpoints.payload(job.job_id, "font_match")
+                    or {}
+                ),
+            },
             qc_report={
                 "semantic": qc1.model_dump(mode="json"),
                 "technical": qc2.model_dump(mode="json"),

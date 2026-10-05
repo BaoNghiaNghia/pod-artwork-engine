@@ -41,6 +41,10 @@ class Settings:
     qc_policy_path: Path | None = None
     router_policy_path: Path | None = None
     local_ocr_enabled: bool = True
+    visual_font_match_enabled: bool = True
+    visual_font_match_min_score: float = 0.72
+    visual_font_match_min_margin: float = 0.035
+    visual_font_match_max_candidates: int = 96
     tesseract_path: Path | None = None
     tesseract_language: str = "eng"
 
@@ -87,6 +91,37 @@ class Settings:
             ),
             local_ocr_enabled=os.environ.get("POD_LOCAL_OCR_ENABLED", "1").strip().lower()
             not in {"0", "false", "no", "off"},
+            visual_font_match_enabled=os.environ.get(
+                "POD_VISUAL_FONT_MATCH_ENABLED",
+                "1",
+            ).strip().lower()
+            not in {"0", "false", "no", "off"},
+            visual_font_match_min_score=max(
+                0.0,
+                min(
+                    1.0,
+                    float(os.environ.get("POD_VISUAL_FONT_MATCH_MIN_SCORE", "0.72")),
+                ),
+            ),
+            visual_font_match_min_margin=max(
+                0.0,
+                min(
+                    1.0,
+                    float(os.environ.get("POD_VISUAL_FONT_MATCH_MIN_MARGIN", "0.035")),
+                ),
+            ),
+            visual_font_match_max_candidates=min(
+                512,
+                max(
+                    8,
+                    int(
+                        os.environ.get(
+                            "POD_VISUAL_FONT_MATCH_MAX_CANDIDATES",
+                            "96",
+                        )
+                    ),
+                ),
+            ),
             tesseract_path=(
                 Path(os.environ["POD_TESSERACT_PATH"]).expanduser()
                 if os.environ.get("POD_TESSERACT_PATH")
