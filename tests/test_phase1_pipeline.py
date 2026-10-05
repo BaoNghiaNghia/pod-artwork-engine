@@ -15,12 +15,16 @@ from pod_artwork_engine.contracts import (
     ProviderResult,
     QualityMode,
     RouteKind,
+    SemanticJudgeResult,
+    TypographyLine,
+    TypographySpec,
 )
 from pod_artwork_engine.engine import Engine
 from pod_artwork_engine.preflight import inspect_image
 from pod_artwork_engine.router import choose_route
 from pod_artwork_engine.settings import Settings
 from pod_artwork_engine.typed_control import TypedBoundaryError, validate_typed_payload
+from pod_artwork_engine.typography import render_typography_master, resolve_font
 
 
 def _transparent_art(path: Path, size: int = 1200) -> Path:
@@ -58,7 +62,7 @@ def _png_base64(size: int = 1000) -> str:
     buffer = BytesIO()
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    draw.rectangle((180, 260, 820, 740), fill=(60, 120, 220, 255))
+    draw.rectangle((size // 6, size // 4, size * 5 // 6, size * 3 // 4), fill=(60, 120, 220, 255))
     image.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
@@ -188,3 +192,169 @@ def test_quick_2d_uses_configured_remote_provider(monkeypatch, tmp_path: Path) -
     candidate_checkpoint = engine.checkpoints.payload(job.job_id, "candidate")
     assert candidate_checkpoint["used_remote"] is True
     assert candidate_checkpoint["provider"] == "test-provider"
+
+
+def test_max_fidelity_runs_semantic_judge_and_merges_ocr(monkeypatch, tmp_path: Path) -> None:
+    source = _opaque_mockup(tmp_path / "reference-max.png")
+    settings = Settings(
+        data_root=tmp_path / "data-max",
+        remote_provider_url="http://provider.invalid/gateway",
+        remote_provider_name="test-provider",
+    )
+    engine = Engine(settings)
+    calls: list[str] = []
+
+    remote_spec = DesignSpec(
+        artwork_type=ArtworkType.ILLUSTRATION,
+        artwork_bbox=BoundingBox(x=0.2, y=0.2, width=0.6, height=0.6),
+        dominant_colors=["#3c78dc"],
+        confidence=0.92,
+        required_capabilities=["need_semantic_reconstruction"],
+    )
+
+    def fake_execute(request):
+        calls.append(request.action)
+        if request.action == "analyze":
+            return ProviderResult(
+                provider="test-provider",
+                model_version="test-v2",
+                design_spec=remote_spec,
+                recognized_text=["HELLO"],
+            )
+        if request.action == "reconstruct":
+            return ProviderResult(
+                provider="test-provider",
+                model_version="test-v2",
+                design_spec=remote_spec,
+                candidate_image_base64=_png_base64(1800),
+                recognized_text=["HELLO"],
+            )
+        assert request.action == "judge"
+        assert request.candidate_path
+        return ProviderResult(
+            provider="test-provider",
+            model_version="test-v2",
+            recognized_text=["HELLO"],
+            judge_result=SemanticJudgeResult(
+                exact_text=1.0,
+                layout=0.95,
+                object_fidelity=0.94,
+                color=0.96,
+                texture=0.92,
+                missing_detail=0.93,
+                confidence=0.97,
+            ),
+        )
+
+    monkeypatch.setattr(engine.provider, "execute", fake_execute)
+
+    job = engine.create_job([source], QualityMode.MAX_FIDELITY)
+    result = engine.run_job(job.job_id)
+
+    assert calls == ["analyze", "reconstruct", "judge"]
+    assert result.state is JobState.COMPLETED, result.failure_reason
+
+    design_spec = engine.checkpoints.payload(job.job_id, "design_spec")
+    assert design_spec["exact_text"] == ["HELLO"]
+
+    judge = engine.checkpoints.payload(job.job_id, "semantic_judge")
+    assert judge["judge_result"]["object_fidelity"] == 0.94
+
+    semantic = engine.checkpoints.payload(job.job_id, "qc_semantic")
+    assert semantic["metrics"]["exact_text_verified"] is True
+    assert semantic["metrics"]["object_fidelity"] == 0.94
+
+
+def test_deterministic_typography_renders_only_with_matched_font(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "typography-data")
+    settings.ensure_directories()
+    font = resolve_font(settings, "Arial")
+    if font is None:
+        pytest.skip("Arial is not available on this host")
+
+    spec = TypographySpec(
+        line_order_confidence=0.98,
+        font_match_confidence=0.95,
+        lines=[
+            TypographyLine(
+                text="HELLO POD",
+                bbox=BoundingBox(x=0.1, y=0.35, width=0.8, height=0.3),
+                font_family="Arial",
+                font_weight=700,
+                fill="#111111",
+                confidence=0.97,
+            )
+        ],
+    )
+    output = render_typography_master(
+        spec,
+        settings,
+        tmp_path / "typography.png",
+        canvas_size=(1200, 800),
+    )
+
+    with Image.open(output) as image:
+        assert image.mode == "RGBA"
+        assert image.getchannel("A").getbbox() is not None
+
+
+def test_quick_typography_uses_deterministic_redraw_when_font_matches(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = _transparent_art(tmp_path / "text-reference.png")
+    settings = Settings(
+        data_root=tmp_path / "text-data",
+        remote_provider_url="http://provider.invalid/gateway",
+        remote_provider_name="test-provider",
+    )
+    settings.ensure_directories()
+    if resolve_font(settings, "Arial") is None:
+        pytest.skip("Arial is not available on this host")
+
+    engine = Engine(settings)
+    calls: list[str] = []
+    typography = TypographySpec(
+        line_order_confidence=0.98,
+        font_match_confidence=0.95,
+        lines=[
+            TypographyLine(
+                text="HELLO POD",
+                bbox=BoundingBox(x=0.08, y=0.35, width=0.84, height=0.30),
+                font_family="Arial",
+                font_weight=700,
+                fill="#111111",
+                confidence=0.98,
+            )
+        ],
+    )
+    remote_spec = DesignSpec(
+        artwork_type=ArtworkType.TYPOGRAPHY,
+        artwork_bbox=BoundingBox(x=0.15, y=0.12, width=0.70, height=0.76),
+        exact_text=["HELLO POD"],
+        typography=typography,
+        confidence=0.96,
+        required_capabilities=["need_exact_text", "need_vector"],
+    )
+
+    def fake_execute(request):
+        calls.append(request.action)
+        assert request.action == "analyze"
+        return ProviderResult(
+            provider="test-provider",
+            model_version="test-text-v1",
+            design_spec=remote_spec,
+            recognized_text=["HELLO POD"],
+        )
+
+    monkeypatch.setattr(engine.provider, "execute", fake_execute)
+
+    job = engine.create_job([source], QualityMode.QUICK_2D)
+    result = engine.run_job(job.job_id)
+
+    assert calls == ["analyze"]
+    assert result.state is JobState.COMPLETED
+    candidate = engine.checkpoints.payload(job.job_id, "candidate")
+    assert candidate["used_remote"] is False
+    assert candidate["recognized_text"] == ["HELLO POD"]
+    assert candidate["alpha_method"] == "provider_or_existing_alpha"

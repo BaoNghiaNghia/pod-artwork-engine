@@ -92,11 +92,41 @@ class BoundingBox(StrictModel):
     height: float = Field(gt=0, le=1)
 
 
+class TypographyLine(StrictModel):
+    text: str = Field(min_length=1)
+    bbox: BoundingBox
+    font_family: str = ""
+    font_weight: int = Field(default=400, ge=100, le=900)
+    fill: str = "#000000"
+    stroke: str | None = None
+    stroke_width_ratio: float = Field(default=0, ge=0, le=0.1)
+    rotation_degrees: float = Field(default=0, ge=-180, le=180)
+    confidence: float = Field(default=0, ge=0, le=1)
+
+
+class TypographySpec(StrictModel):
+    lines: list[TypographyLine] = Field(default_factory=list)
+    line_order_confidence: float = Field(default=0, ge=0, le=1)
+    font_match_confidence: float = Field(default=0, ge=0, le=1)
+
+
+class SemanticJudgeResult(StrictModel):
+    exact_text: float | None = Field(default=None, ge=0, le=1)
+    layout: float | None = Field(default=None, ge=0, le=1)
+    object_fidelity: float | None = Field(default=None, ge=0, le=1)
+    color: float | None = Field(default=None, ge=0, le=1)
+    texture: float | None = Field(default=None, ge=0, le=1)
+    missing_detail: float | None = Field(default=None, ge=0, le=1)
+    confidence: float = Field(default=0, ge=0, le=1)
+    reasons: list[str] = Field(default_factory=list)
+
+
 class DesignSpec(StrictModel):
     schema_version: str = SCHEMA_VERSION
     artwork_type: ArtworkType = ArtworkType.UNKNOWN
     artwork_bbox: BoundingBox | None = None
     exact_text: list[str] = Field(default_factory=list)
+    typography: TypographySpec | None = None
     objects: list[str] = Field(default_factory=list)
     dominant_colors: list[str] = Field(default_factory=list)
     texture_classes: list[str] = Field(default_factory=list)
@@ -140,6 +170,7 @@ class ProviderRequest(StrictModel):
     job_id: str
     quality_mode: QualityMode
     source_paths: list[str] = Field(min_length=1)
+    candidate_path: str | None = None
     design_spec: DesignSpec | None = None
     requested_capabilities: list[str] = Field(default_factory=list)
 
@@ -152,6 +183,7 @@ class ProviderResult(StrictModel):
     candidate_path: str | None = None
     candidate_image_base64: str | None = None
     recognized_text: list[str] = Field(default_factory=list)
+    judge_result: SemanticJudgeResult | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

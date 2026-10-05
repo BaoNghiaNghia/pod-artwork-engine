@@ -11,6 +11,7 @@ from .checkpoints import CheckpointManager
 from .contracts import (
     ArtifactManifest,
     ArtifactRef,
+    ArtworkType,
     DesignSpec,
     ExportProfile,
     FailureCategory,
@@ -39,6 +40,7 @@ from .resources import capture_resources
 from .router import choose_route
 from .settings import Settings
 from .storage import StorageLimitExceeded, StorageManager
+from .typography import TypographyRenderUnavailable, render_typography_master
 
 
 logger = logging.getLogger("pod_engine")
@@ -200,7 +202,9 @@ class Engine:
         local_spec = analyze_locally(source_paths, preflights)
         provider_result: ProviderResult | None = None
         needs_remote_analysis = self.provider.available and (
-            "need_semantic_reconstruction" in local_spec.required_capabilities
+            job.quality_mode is QualityMode.QUICK_2D
+            or "need_semantic_reconstruction" in local_spec.required_capabilities
+            or "need_exact_text" in local_spec.required_capabilities
             or local_spec.confidence < 0.55
             or job.quality_mode is QualityMode.MAX_FIDELITY
         )
@@ -219,6 +223,16 @@ class Engine:
                 )
                 if provider_result.design_spec is not None:
                     local_spec = provider_result.design_spec
+                if provider_result.recognized_text and not local_spec.exact_text:
+                    local_spec.exact_text = list(provider_result.recognized_text)
+                if (
+                    local_spec.typography is not None
+                    and local_spec.typography.lines
+                    and not local_spec.exact_text
+                ):
+                    local_spec.exact_text = [
+                        line.text for line in local_spec.typography.lines
+                    ]
             except (ProviderUnavailable, ProviderProtocolError) as exc:
                 self._log_stage(
                     job,
@@ -268,7 +282,7 @@ class Engine:
         preflights: list[PreflightResult],
         design_spec: DesignSpec,
         route: RouteDecision,
-    ) -> tuple[CandidateInfo, ProviderResult | None, bool]:
+    ) -> tuple[CandidateInfo, ProviderResult | None, bool, list[str]]:
         candidate_checkpoint = self.checkpoints.payload(job.job_id, "candidate")
         if isinstance(candidate_checkpoint, dict):
             path = Path(str(candidate_checkpoint.get("path", "")))
@@ -289,7 +303,12 @@ class Engine:
                         model_version=str(candidate_checkpoint.get("model_version") or ""),
                         recognized_text=list(candidate_checkpoint.get("recognized_text") or []),
                     )
-                return info, restored_provider, bool(candidate_checkpoint.get("used_remote"))
+                return (
+                    info,
+                    restored_provider,
+                    bool(candidate_checkpoint.get("used_remote")),
+                    list(candidate_checkpoint.get("recognized_text") or []),
+                )
 
         self.jobs.transition(
             job.job_id,
@@ -300,9 +319,48 @@ class Engine:
         started = time.perf_counter()
         provider_result: ProviderResult | None = None
         used_remote = False
+        recognized_text: list[str] = []
         temp_dir = self._job_dir(job.job_id) / "temp"
 
-        if route.use_remote_provider and self.provider.available:
+        deterministic_typography = (
+            route.deterministic_finish
+            and design_spec.artwork_type is ArtworkType.TYPOGRAPHY
+            and design_spec.typography is not None
+            and bool(design_spec.typography.lines)
+        )
+
+        if deterministic_typography:
+            try:
+                rendered_path = render_typography_master(
+                    design_spec.typography,
+                    self.settings,
+                    temp_dir / "deterministic-typography.png",
+                )
+                candidate = normalize_candidate(
+                    rendered_path,
+                    temp_dir / "candidate.png",
+                    source_path=source_paths[0],
+                )
+                recognized_text = [
+                    line.text for line in design_spec.typography.lines
+                ]
+                self._log_stage(
+                    job,
+                    "deterministic_typography_rendered",
+                    stage="reconstructing",
+                    route=route.route.value,
+                )
+            except TypographyRenderUnavailable as exc:
+                self._log_stage(
+                    job,
+                    "deterministic_typography_unavailable",
+                    stage="reconstructing",
+                    failure_reason=str(exc),
+                    route=route.route.value,
+                )
+                deterministic_typography = False
+
+        if not deterministic_typography and route.use_remote_provider and self.provider.available:
             try:
                 provider_result = self.provider.execute(
                     ProviderRequest(
@@ -325,6 +383,7 @@ class Engine:
                         source_path=source_paths[0],
                     )
                     used_remote = True
+                    recognized_text = list(provider_result.recognized_text)
                 else:
                     raise ProviderProtocolError("provider returned no reconstruction image")
             except (ProviderUnavailable, ProviderProtocolError) as exc:
@@ -341,7 +400,7 @@ class Engine:
                     design_spec,
                     temp_dir / "candidate.png",
                 )
-        else:
+        elif not deterministic_typography:
             candidate = reconstruct_local_baseline(
                 source_paths,
                 preflights,
@@ -362,7 +421,7 @@ class Engine:
                 "used_remote": used_remote,
                 "provider": provider_result.provider if provider_result else None,
                 "model_version": provider_result.model_version if provider_result else None,
-                "recognized_text": provider_result.recognized_text if provider_result else [],
+                "recognized_text": recognized_text,
             },
         )
         self._log_stage(
@@ -374,7 +433,89 @@ class Engine:
             model_version=provider_result.model_version if provider_result else None,
             route=route.route.value,
         )
-        return candidate, provider_result, used_remote
+        return candidate, provider_result, used_remote, recognized_text
+
+    def _judge_semantics(
+        self,
+        job: JobRecord,
+        source_paths: list[Path],
+        candidate: CandidateInfo,
+        design_spec: DesignSpec,
+    ) -> ProviderResult | None:
+        checkpoint = self.checkpoints.payload(job.job_id, "semantic_judge")
+        if isinstance(checkpoint, dict):
+            try:
+                restored = ProviderResult.model_validate(checkpoint)
+            except ValueError:
+                restored = None
+            if restored is not None and restored.judge_result is not None:
+                return restored
+
+        if not self.provider.available or job.quality_mode is QualityMode.QUICK_2D:
+            return None
+
+        should_judge = (
+            job.quality_mode is QualityMode.MAX_FIDELITY
+            or "need_semantic_reconstruction" in design_spec.required_capabilities
+            or bool(design_spec.exact_text)
+        )
+        if not should_judge:
+            return None
+
+        started = time.perf_counter()
+        try:
+            result = self.provider.execute(
+                ProviderRequest(
+                    action="judge",
+                    job_id=job.job_id,
+                    quality_mode=job.quality_mode,
+                    source_paths=[str(path) for path in source_paths],
+                    candidate_path=str(candidate.path),
+                    design_spec=design_spec,
+                    requested_capabilities=[
+                        "judge_exact_text",
+                        "judge_layout",
+                        "judge_object_fidelity",
+                        "judge_color",
+                        "judge_texture",
+                        "judge_missing_detail",
+                    ],
+                )
+            )
+            if result.judge_result is None:
+                raise ProviderProtocolError("provider returned no semantic judge result")
+            self.checkpoints.write(
+                job.job_id,
+                "semantic_judge",
+                {
+                    "provider": result.provider,
+                    "model_version": result.model_version,
+                    "recognized_text": result.recognized_text,
+                    "judge_result": result.judge_result.model_dump(mode="json"),
+                },
+            )
+            self._log_stage(
+                job,
+                "semantic_judge_completed",
+                stage="qc_semantic",
+                duration_ms=round((time.perf_counter() - started) * 1000),
+                provider=result.provider,
+                model_version=result.model_version,
+                quality_score=(
+                    result.judge_result.object_fidelity
+                    if result.judge_result.object_fidelity is not None
+                    else result.judge_result.confidence
+                ),
+            )
+            return result
+        except (ProviderUnavailable, ProviderProtocolError) as exc:
+            self._log_stage(
+                job,
+                "semantic_judge_fallback",
+                stage="qc_semantic",
+                failure_reason=str(exc),
+            )
+            return None
 
     def _write_artifact_manifest(
         self,
@@ -448,14 +589,29 @@ class Engine:
             job = self.jobs.get(job_id) or job
             route = self._route(job, design_spec)
 
-            candidate, reconstruction_provider, used_remote = self._reconstruct(
+            (
+                candidate,
+                reconstruction_provider,
+                used_remote,
+                recognized_text,
+            ) = self._reconstruct(
                 job,
                 source_paths,
                 preflights,
                 design_spec,
                 route,
             )
-            provider_result = reconstruction_provider or analysis_provider
+            judge_provider = self._judge_semantics(
+                job,
+                source_paths,
+                candidate,
+                design_spec,
+            )
+            provider_result = (
+                reconstruction_provider
+                or analysis_provider
+                or judge_provider
+            )
 
             self.jobs.transition(
                 job_id,
@@ -463,16 +619,22 @@ class Engine:
                 progress=0.60,
                 message="Checking source fidelity",
             )
-            recognized_text = (
-                reconstruction_provider.recognized_text
-                if reconstruction_provider is not None
-                else []
-            )
+            if (
+                not recognized_text
+                and judge_provider is not None
+                and judge_provider.recognized_text
+            ):
+                recognized_text = list(judge_provider.recognized_text)
             qc1 = semantic_qc(
                 design_spec,
                 job.quality_mode,
                 recognized_text=recognized_text,
                 used_remote_provider=used_remote,
+                judge_result=(
+                    judge_provider.judge_result
+                    if judge_provider is not None
+                    else None
+                ),
             )
             self.checkpoints.write(job_id, "qc_semantic", qc1.model_dump(mode="json"))
             self._log_stage(

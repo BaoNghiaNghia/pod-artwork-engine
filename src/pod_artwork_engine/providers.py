@@ -60,6 +60,10 @@ class RemoteProvider:
             _encode_reference(Path(path))
             for path in request.source_paths
         ]
+        if request.candidate_path:
+            candidate = Path(request.candidate_path)
+            payload["candidate_path"] = candidate.name
+            payload["candidate_image"] = _encode_reference(candidate)
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = {
             "Content-Type": "application/json",

@@ -5,7 +5,14 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
 
-from .contracts import DesignSpec, ExportProfile, QCGate, QCResult, QualityMode
+from .contracts import (
+    DesignSpec,
+    ExportProfile,
+    QCGate,
+    QCResult,
+    QualityMode,
+    SemanticJudgeResult,
+)
 from .reconstruction import CandidateInfo
 
 
@@ -19,15 +26,49 @@ def semantic_qc(
     *,
     recognized_text: list[str] | None = None,
     used_remote_provider: bool = False,
+    judge_result: SemanticJudgeResult | None = None,
 ) -> QCResult:
     reasons: list[str] = []
     score = design_spec.confidence
 
     expected = [_normalize_text(item) for item in design_spec.exact_text]
     observed = [_normalize_text(item) for item in (recognized_text or [])]
-    text_verified = None
+    text_verified: bool | None = None
+
+    judge_values: list[float] = []
+    judge_score: float | None = None
+    judge_object_fidelity: float | None = None
+    if judge_result is not None and judge_result.confidence >= 0.50:
+        judge_values = [
+            value
+            for value in (
+                judge_result.exact_text,
+                judge_result.layout,
+                judge_result.object_fidelity,
+                judge_result.color,
+                judge_result.texture,
+                judge_result.missing_detail,
+            )
+            if value is not None
+        ]
+        if judge_values:
+            judge_score = sum(judge_values) / len(judge_values)
+            score = 0.45 * score + 0.55 * judge_score
+        judge_object_fidelity = judge_result.object_fidelity
+        for reason in judge_result.reasons:
+            normalized = reason.strip()
+            if normalized and normalized not in reasons:
+                reasons.append(f"judge:{normalized}")
+
     if expected:
         text_verified = bool(observed) and observed == expected
+        if (
+            not text_verified
+            and judge_result is not None
+            and judge_result.exact_text is not None
+        ):
+            text_verified = judge_result.exact_text >= 0.999
+
         if not text_verified:
             reasons.append("exact_text_not_verified")
             score = min(score, 0.45)
@@ -56,8 +97,21 @@ def semantic_qc(
         reasons.append("semantic_provider_not_used")
         score = min(score, 0.49)
 
+    object_threshold = {
+        QualityMode.QUICK_2D: 0.0,
+        QualityMode.PRINT_READY: 0.60,
+        QualityMode.MAX_FIDELITY: 0.72,
+    }[quality_mode]
+    object_fidelity_failed = (
+        judge_object_fidelity is not None
+        and judge_object_fidelity < object_threshold
+    )
+    if object_fidelity_failed:
+        reasons.append("object_fidelity_below_threshold")
+        score = min(score, judge_object_fidelity)
+
     passed = score >= threshold and "artwork_bbox_missing" not in reasons
-    if semantic_provider_required:
+    if semantic_provider_required or object_fidelity_failed:
         passed = False
     if expected and text_verified is not True and quality_mode is not QualityMode.QUICK_2D:
         passed = False
@@ -73,6 +127,18 @@ def semantic_qc(
             "exact_text_required": bool(expected),
             "exact_text_verified": text_verified,
             "remote_provider_used": used_remote_provider,
+            "judge_available": judge_result is not None,
+            "judge_confidence": (
+                round(judge_result.confidence, 4)
+                if judge_result is not None
+                else None
+            ),
+            "judge_score": round(judge_score, 4) if judge_score is not None else None,
+            "object_fidelity": (
+                round(judge_object_fidelity, 4)
+                if judge_object_fidelity is not None
+                else None
+            ),
         },
     )
 

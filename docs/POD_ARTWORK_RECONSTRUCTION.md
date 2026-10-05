@@ -1317,7 +1317,7 @@ Build:
 
 ### Phase 1 — Reconstruction V1
 
-**Status: Phase 1A implemented and locally verified.** The tool now executes an end-to-end reconstruction pipeline from uploaded references to a 4500×5400 RGBA PNG instead of stopping after pre-flight. The operational pipeline foundation is now separated from the remaining exact-typography/provider-quality work.
+**Status: Phase 1A implemented; Phase 1B text-fidelity/Judge foundation implemented and locally verified.** The tool now executes an end-to-end reconstruction pipeline from uploaded references to a 4500×5400 RGBA PNG instead of stopping after pre-flight. The operational pipeline is separated from provider selection and deterministic precision stages.
 
 Implemented in Phase 1A:
 
@@ -1348,25 +1348,39 @@ POD_REMOTE_PROVIDER_NAME=remote
 POD_REMOTE_PROVIDER_TIMEOUT_SECONDS=120
 ```
 
-The gateway receives versioned typed `analyze` and `reconstruct` requests. Provider responses must pass strict typed validation before the pipeline consumes them. Secrets remain local and are not written into job payloads or logs.
+The gateway receives versioned typed `analyze`, `reconstruct` and policy-controlled `judge` requests. Provider responses must pass strict typed validation before the pipeline consumes them. Local filesystem paths and secrets are not sent as provider metadata; source/candidate images are normalized for transfer and credentials remain local.
+
+Phase 1B text-fidelity/Judge foundation:
+
+- provider OCR evidence is merged into `DesignSpec.exact_text`;
+- `TypographySpec` records ordered text lines, normalized boxes, font-family/weight hints, fill/stroke, rotation and per-line confidence;
+- deterministic typography rendering is allowed only when line-order/font/line confidence passes policy thresholds;
+- the deterministic renderer resolves only an explicitly matched installed/local font and refuses silent substitution;
+- user-supplied local fonts can be placed under `<data-root>/fonts`;
+- difficult Print Ready and Max Fidelity jobs can run a separate semantic `judge` action against SOURCE + CANDIDATE + DesignSpec;
+- Judge output is strictly typed and reports exact-text/layout/object-fidelity/color/texture/missing-detail evidence;
+- policy code, not the Judge itself, applies pass/fail thresholds;
+- exact text remains a hard Print Ready / Max Fidelity gate;
+- Harness candidate manifests can carry semantic Judge evidence so `semantic.object_fidelity` becomes measurable and its coverage is visible in scorecards.
 
 Current truthfulness limits:
 
-- the local analyzer is not yet a full OCR/VLM replacement;
-- the deterministic text/logo branch currently establishes routing and precision-preservation behavior, but does not yet rebuild exact fonts/glyph geometry from OCR;
+- the local analyzer is still not a full OCR/VLM replacement;
+- exact typography redraw requires a sufficiently confident layout plus an actually matched font; the system must not silently substitute a visually different font;
+- mixed-art text replacement still needs masking/compositing so deterministic text can replace generative text without damaging illustration regions;
+- logo geometry reconstruction is not yet a full SVG/vector tracer;
 - border-color alpha extraction is a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
 - `REVIEW_REQUIRED` is expected when semantic reconstruction is required but no acceptable remote result exists;
-- concrete production GPT-6/provider mapping stays configurable until Harness evidence selects it;
-- exact OCR/font/layout reconstruction and semantic Judge integration are the next Phase 1B work.
+- concrete production GPT-6/provider mapping stays configurable until Harness evidence selects it.
 
-Phase 1B next:
+Remaining Phase 1 work:
 
-- OCR + line-order/text confidence;
-- deterministic exact-text/font/layout rebuild;
+- production OCR/font-identification adapter and font-family normalization;
+- mixed-art deterministic text replacement/masking;
 - richer logo/geometry reconstruction;
-- concrete remote provider adapters/gateway recipes;
-- semantic Judge/object-fidelity metrics;
-- Harness Smoke/Regression/Golden runs against real historical cases.
+- concrete GPT-6/provider gateway recipes and fallback mappings;
+- run Smoke/Regression/Golden benchmarks against real historical pairs;
+- calibrate semantic/technical thresholds from those results rather than hand-tuning them.
 
 Build:
 

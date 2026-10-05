@@ -145,9 +145,31 @@ POD_REMOTE_PROVIDER_NAME=remote
 POD_REMOTE_PROVIDER_TIMEOUT_SECONDS=120
 ```
 
-The configured gateway receives typed `analyze` and `reconstruct` requests. Local filesystem paths are never sent to the provider; references are normalized and transferred as encoded images. If the gateway is unavailable or returns invalid structured data, the engine falls back deterministically and records the reason.
+The configured gateway receives typed `analyze`, `reconstruct` and, when policy requires it, `judge` requests. Local filesystem paths are never sent to the provider; references/candidates are normalized and transferred as encoded images. If the gateway is unavailable or returns invalid structured data, the engine falls back deterministically and records the reason.
 
 Phase 1A does **not** claim exact typography reconstruction yet. OCR/font/layout rebuild, concrete production provider mappings and stronger semantic Judge integration remain the next Phase 1 work.
+
+### Phase 1B — Text Fidelity + Semantic Judge
+
+Implemented foundation:
+
+- provider OCR output is merged into the versioned `DesignSpec.exact_text`;
+- typed typography contracts store line order, normalized line boxes, font-family/weight hints, fill/stroke and confidence;
+- deterministic typography renderer uses only an explicitly matched installed/local font and refuses silent fallback when the font or confidence is insufficient;
+- local user font directory at `<data-root>/fonts`;
+- Max Fidelity and difficult Print Ready jobs can invoke a separate semantic `judge` provider action using SOURCE + CANDIDATE + DesignSpec;
+- Judge output is strictly typed and can score exact text, layout, object fidelity, color, texture and missing detail;
+- object-fidelity thresholds are policy-controlled; the Judge does not directly decide production state;
+- exact text remains a hard Print Ready / Max Fidelity gate;
+- Harness candidate manifests can carry semantic Judge evidence so `semantic.object_fidelity` has measurable coverage instead of being silently omitted.
+
+Still pending in Phase 1:
+
+- production OCR/font-identification adapter and font-family normalization;
+- deterministic vector/logo geometry reconstruction;
+- mixed-art text replacement/masking rather than pure-typography-only deterministic redraw;
+- concrete GPT-6/provider gateway recipe and benchmark-selected model mapping;
+- real historical Smoke/Regression/Golden benchmark runs and threshold calibration.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 

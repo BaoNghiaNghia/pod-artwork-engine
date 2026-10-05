@@ -273,6 +273,13 @@ class HarnessRunner:
                             expected_text=case.exact_text,
                             recognized_text=entry.recognized_text,
                         )
+                        if (
+                            entry.semantic_judge is not None
+                            and entry.semantic_judge.object_fidelity is not None
+                        ):
+                            semantic.object_fidelity = (
+                                entry.semantic_judge.object_fidelity
+                            )
                         semantic_score, technical_score, quality_score = aggregate_metric_scores(
                             semantic,
                             technical,

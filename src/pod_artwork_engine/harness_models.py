@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import Field, model_validator
 
-from .contracts import SCHEMA_VERSION, StrictModel, utc_now
+from .contracts import SCHEMA_VERSION, SemanticJudgeResult, StrictModel, utc_now
 
 
 class BenchmarkTier(StrEnum):
@@ -180,6 +180,7 @@ class PromotionDecision(StrictModel):
 class CandidateManifestEntry(StrictModel):
     result_path: str
     recognized_text: list[str] = Field(default_factory=list)
+    semantic_judge: SemanticJudgeResult | None = None
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

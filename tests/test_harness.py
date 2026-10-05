@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from pod_artwork_engine.contracts import SemanticJudgeResult
 from pod_artwork_engine.dataset_registry import DatasetRegistry
 from pod_artwork_engine.harness import (
     HarnessCaseFactory,
@@ -133,6 +134,10 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
             case.pair_id: CandidateManifestEntry(
                 result_path=case.target_path,
                 recognized_text=case.exact_text,
+                semantic_judge=SemanticJudgeResult(
+                    object_fidelity=0.99,
+                    confidence=0.98,
+                ),
                 operational=OperationalMetrics(
                     latency_ms=1200,
                     provider_calls=1,
@@ -168,6 +173,7 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
     assert scorecard.quality_mean is not None and scorecard.quality_mean > 0.99
     assert scorecard.latency_p50_ms == 1200
     assert scorecard.provider_calls == len(cases)
+    assert scorecard.metric_coverage["semantic.object_fidelity"] == 1.0
     assert scorecard.result_paths
     assert all(Path(path).is_file() for path in scorecard.result_paths)
     assert store.get_scorecard(scorecard.run_id) is not None

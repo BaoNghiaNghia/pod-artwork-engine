@@ -76,6 +76,7 @@ class Settings:
             self.artifacts_dir,
             self.datasets_dir,
             self.harness_dir,
+            self.fonts_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -106,6 +107,10 @@ class Settings:
     @property
     def harness_dir(self) -> Path:
         return self.data_root / "harness"
+
+    @property
+    def fonts_dir(self) -> Path:
+        return self.data_root / "fonts"
 
     @property
     def database_path(self) -> Path:
