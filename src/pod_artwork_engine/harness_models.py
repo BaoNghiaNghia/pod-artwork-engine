@@ -7,7 +7,8 @@ from uuid import uuid4
 
 from pydantic import Field, model_validator
 
-from .contracts import SCHEMA_VERSION, SemanticJudgeResult, StrictModel, utc_now
+from .contracts import QualityMode, SCHEMA_VERSION, SemanticJudgeResult, StrictModel, utc_now
+from .qc_policy import QCModePolicy, QCPolicy
 
 
 class BenchmarkTier(StrEnum):
@@ -43,6 +44,17 @@ class BenchmarkRecipe(StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RunProvenance(StrictModel):
+    engine_version: str = ""
+    execution_kind: str = "candidate_manifest"
+    quality_mode: QualityMode | None = None
+    recipe_sha256: str = ""
+    dataset_manifest_sha256: str = ""
+    qc_policy_id: str = ""
+    qc_policy_version: str = ""
+    provider_recipe_id: str = ""
+
+
 class BenchmarkPlan(StrictModel):
     schema_version: str = SCHEMA_VERSION
     plan_id: str = Field(default_factory=lambda: "plan_" + uuid4().hex)
@@ -52,6 +64,7 @@ class BenchmarkPlan(StrictModel):
     recipe_id: str
     recipe_version: str
     case_ids: list[str] = Field(min_length=1)
+    provenance: RunProvenance = Field(default_factory=RunProvenance)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -92,6 +105,16 @@ class PrecisionEvidence(StrictModel):
     precision_ops: list[str] = Field(default_factory=list)
 
 
+class RuntimeQCEvidence(StrictModel):
+    semantic_score: float | None = Field(default=None, ge=0, le=1)
+    technical_score: float | None = Field(default=None, ge=0, le=1)
+    semantic_passed: bool | None = None
+    technical_passed: bool | None = None
+    object_fidelity: float | None = Field(default=None, ge=0, le=1)
+    resolution_score: float | None = Field(default=None, ge=0, le=1)
+    analysis_confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class SemanticMetrics(StrictModel):
     exact_text: float | None = Field(default=None, ge=0, le=1)
     layout: float | None = Field(default=None, ge=0, le=1)
@@ -122,6 +145,7 @@ class BenchmarkCaseResult(StrictModel):
     technical: TechnicalMetrics = Field(default_factory=TechnicalMetrics)
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
     precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
+    runtime_qc: RuntimeQCEvidence = Field(default_factory=RuntimeQCEvidence)
     semantic_score: float | None = Field(default=None, ge=0, le=1)
     technical_score: float | None = Field(default=None, ge=0, le=1)
     quality_score: float | None = Field(default=None, ge=0, le=1)
@@ -164,6 +188,7 @@ class BenchmarkScorecard(StrictModel):
     total_cost_usd: float = Field(default=0, ge=0)
     metric_coverage: dict[str, float] = Field(default_factory=dict)
     precision_coverage: dict[str, float] = Field(default_factory=dict)
+    provenance: RunProvenance = Field(default_factory=RunProvenance)
     cohorts: dict[str, CohortScore] = Field(default_factory=dict)
     result_paths: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
@@ -171,6 +196,7 @@ class BenchmarkScorecard(StrictModel):
 
 class PromotionPolicy(StrictModel):
     min_overall_delta: float = 0
+    require_complete: bool = True
     max_cohort_drop: float = Field(default=0.03, ge=0, le=1)
     max_failure_rate_increase: float = Field(default=0, ge=0, le=1)
     max_manual_review_rate_increase: float = Field(default=0, ge=0, le=1)
@@ -190,12 +216,95 @@ class PromotionDecision(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class SuiteRecommendation(StrEnum):
+    INCOMPLETE = "incomplete"
+    REJECTED = "rejected"
+    ELIGIBLE_FOR_HUMAN_REVIEW = "eligible_for_human_review"
+
+
+class BenchmarkSuiteSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    suite_id: str = Field(default_factory=lambda: "suite_" + uuid4().hex)
+    dataset_id: str
+    champion_recipe_path: str
+    challenger_recipe_paths: list[str] = Field(min_length=1)
+    quality_mode: QualityMode = QualityMode.PRINT_READY
+    smoke_limit: int | None = Field(default=8, ge=1)
+    regression_limit: int | None = Field(default=None, ge=1)
+    golden_limit: int | None = Field(default=None, ge=1)
+    promotion_policy: PromotionPolicy = Field(default_factory=PromotionPolicy)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SuiteTierResult(StrictModel):
+    tier: BenchmarkTier
+    champion_run_id: str
+    challenger_run_id: str
+    decision: PromotionDecision
+    passed_gate: bool
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ChallengerSuiteResult(StrictModel):
+    recipe_id: str
+    recipe_version: str
+    tiers: list[SuiteTierResult] = Field(default_factory=list)
+    recommendation: SuiteRecommendation = SuiteRecommendation.INCOMPLETE
+    reasons: list[str] = Field(default_factory=list)
+
+
+class BenchmarkSuiteReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    suite_id: str
+    dataset_id: str
+    champion_recipe_id: str
+    champion_recipe_version: str
+    quality_mode: QualityMode
+    challengers: list[ChallengerSuiteResult] = Field(default_factory=list)
+    requires_human_approval: bool = True
+    auto_promoted: bool = False
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ThresholdCalibrationMetric(StrictModel):
+    metric: str
+    sample_count: int = Field(ge=0)
+    good_count: int = Field(ge=0)
+    bad_count: int = Field(ge=0)
+    current_threshold: float = Field(ge=0, le=1)
+    recommended_threshold: float | None = Field(default=None, ge=0, le=1)
+    false_accept_rate: float | None = Field(default=None, ge=0, le=1)
+    false_reject_rate: float | None = Field(default=None, ge=0, le=1)
+    sufficient_evidence: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class QCPolicyCalibrationProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(default_factory=lambda: "cal_" + uuid4().hex)
+    quality_mode: QualityMode
+    source_run_ids: list[str] = Field(min_length=1)
+    source_tiers: list[BenchmarkTier] = Field(default_factory=list)
+    current_policy: QCModePolicy
+    proposed_policy: QCModePolicy
+    candidate_policy: QCPolicy
+    metrics: dict[str, ThresholdCalibrationMetric] = Field(default_factory=dict)
+    good_quality_threshold: float = Field(default=0.85, ge=0, le=1)
+    bad_quality_threshold: float = Field(default=0.70, ge=0, le=1)
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class CandidateManifestEntry(StrictModel):
     result_path: str
     recognized_text: list[str] = Field(default_factory=list)
     semantic_judge: SemanticJudgeResult | None = None
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
     precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
+    runtime_qc: RuntimeQCEvidence = Field(default_factory=RuntimeQCEvidence)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

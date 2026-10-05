@@ -51,6 +51,10 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "remote_provider_configured": bool(settings.remote_provider_url),
             "remote_provider_name": settings.remote_provider_name,
             "provider_recipe_configured": settings.provider_recipe_path is not None,
+            "qc_policy_configured": settings.qc_policy_path is not None,
+            "qc_policy_path": (
+                str(settings.qc_policy_path) if settings.qc_policy_path else ""
+            ),
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
             "tesseract_language": settings.tesseract_language,

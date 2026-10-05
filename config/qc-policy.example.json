@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "policy_id": "phase1-default",
+  "version": "1",
+  "quick_2d": {
+    "semantic_min_score": 0.2,
+    "object_fidelity_min": 0.0,
+    "required_native_long_edge": 300,
+    "min_resolution_score": 0.0
+  },
+  "print_ready": {
+    "semantic_min_score": 0.35,
+    "object_fidelity_min": 0.6,
+    "required_native_long_edge": 700,
+    "min_resolution_score": 0.55
+  },
+  "max_fidelity": {
+    "semantic_min_score": 0.5,
+    "object_fidelity_min": 0.72,
+    "required_native_long_edge": 1000,
+    "min_resolution_score": 0.75
+  }
+}

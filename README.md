@@ -215,14 +215,46 @@ POD_TESSERACT_LANGUAGE=eng
 
 Tesseract is currently auto-detected or explicitly configured; it is **not yet bundled into the installer**. This is a concrete local OCR adapter/fallback foundation, not yet the final zero-dependency OCR packaging decision.
 
+### Phase 1E — Benchmark Suite + Safe QC Calibration
+
+Implemented:
+
+- `harness-suite` runs a champion and one or more challenger recipes through Smoke → Regression → Golden in order;
+- challengers that fail Smoke/Regression stop early, reducing unnecessary provider/GPU work;
+- Golden success is reported only as `eligible_for_human_review`; the Harness never rewrites production configuration or auto-promotes a challenger;
+- scorecards now persist recipe SHA-256, Dataset Registry manifest SHA-256, engine version, execution kind, quality mode, provider-recipe identity and QC-policy identity;
+- champion/challenger comparison rejects incomplete scorecards, dataset-manifest mismatches and quality-mode mismatches;
+- production-engine Harness results carry the engine's semantic/technical QC evidence so threshold behavior can be compared against approved target quality;
+- QC thresholds are now represented by a typed `QCPolicy`; the built-in defaults preserve the previous behavior;
+- an explicit `POD_QC_POLICY_PATH` or benchmark recipe `qc_policy_path` can load a candidate policy for testing, but no calibration result is applied automatically;
+- `harness-calibrate` labels benchmark outcomes from target-comparison quality, searches bounded thresholds under a false-accept constraint, and writes a review-only proposal plus `candidate-qc-policy.json`;
+- safe calibration requires Golden Holdout runs by default and retains current values when judge/metric evidence is insufficient.
+
+Run a full champion/challenger suite:
+
+```powershell
+python -m pod_artwork_engine harness-suite historical-v1 `
+  --champion config/benchmark-recipe.local.json `
+  --challenger config/benchmark-recipe.remote.example.json `
+  --quality-mode print_ready
+```
+
+Generate a QC-policy proposal after Golden runs:
+
+```powershell
+python -m pod_artwork_engine harness-calibrate <golden-run-id> <another-golden-run-id>
+```
+
+Outputs are stored under `<data-root>/harness/suites/<suite-id>/` and `<data-root>/harness/calibration/<proposal-id>/`. A calibration proposal is evidence only. To test it, explicitly point `POD_QC_POLICY_PATH` or a benchmark recipe at the generated candidate file and run the Harness again.
+
 Still pending in Phase 1:
 
-- choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on the Golden Holdout;
+- import/run the user's real historical source/final pairs through the new suite and establish the first measured champion;
+- choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
 - visual font identification beyond provider hints plus exact installed-family normalization;
 - multi-subpath/compound Bezier tracing and more complex logo topology;
 - illustration-aware/inpainting masks for text that overlaps non-solid artwork;
-- run the real historical Smoke → Regression → Golden benchmark sequence;
-- calibrate QC/router thresholds from those scorecards;
+- calibrate router thresholds only after counterfactual route evidence exists; the current QC calibrator intentionally does not guess router policy from non-counterfactual data;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.

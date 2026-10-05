@@ -87,6 +87,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "harness_run_count": len(harness.list_scorecards()),
             "remote_provider_configured": engine.provider.available,
             "remote_provider_name": settings.remote_provider_name,
+            "qc_policy_id": engine.qc_policy.policy_id,
+            "qc_policy_version": engine.qc_policy.version,
+            "qc_policy_configured": settings.qc_policy_path is not None,
             "local_ocr_enabled": settings.local_ocr_enabled,
             "local_ocr_available": local_ocr_available(settings),
         }

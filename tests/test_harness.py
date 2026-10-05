@@ -26,6 +26,7 @@ from pod_artwork_engine.harness_models import (
     PrecisionEvidence,
     PromotionPolicy,
     RecipeStage,
+    RunProvenance,
 )
 from pod_artwork_engine.settings import Settings
 
@@ -341,6 +342,14 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.status is HarnessRunStatus.COMPLETE
     assert scorecard.latency_p50_ms > 0
     assert scorecard.precision_coverage
+    assert scorecard.provenance.execution_kind == "production_engine"
+    assert scorecard.provenance.quality_mode is QualityMode.QUICK_2D
+    assert scorecard.provenance.recipe_sha256
+    assert scorecard.provenance.dataset_manifest_sha256
+    assert scorecard.provenance.qc_policy_id
+    result = store.get_results(scorecard.run_id)[0]
+    assert result.runtime_qc.semantic_score is not None
+    assert result.runtime_qc.technical_score is not None
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:
@@ -356,6 +365,7 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
         version="1",
         metadata={
             "provider_recipe_path": "provider.json",
+            "qc_policy_path": "qc-policy.json",
             "local_ocr_enabled": False,
             "tesseract_language": "vie+eng",
         },
@@ -366,6 +376,54 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
     assert effective.provider_recipe_path == (
         tmp_path / "recipes" / "provider.json"
     ).resolve()
+    assert effective.qc_policy_path == (
+        tmp_path / "recipes" / "qc-policy.json"
+    ).resolve()
     assert effective.local_ocr_enabled is False
     assert effective.tesseract_language == "vie+eng"
     assert effective.remote_provider_token == settings.remote_provider_token
+
+
+def test_promotion_gate_rejects_non_equivalent_provenance() -> None:
+    champion = BenchmarkScorecard(
+        scorecard_id="champion-provenance",
+        run_id="champion-provenance",
+        dataset_id="dataset-v1",
+        tier=BenchmarkTier.GOLDEN,
+        recipe_id="recipe-a",
+        recipe_version="1",
+        status=HarnessRunStatus.COMPLETE,
+        case_count=2,
+        success_count=2,
+        failure_count=0,
+        manual_review_count=0,
+        quality_mean=0.90,
+        provenance=RunProvenance(
+            quality_mode=QualityMode.PRINT_READY,
+            dataset_manifest_sha256="dataset-a",
+        ),
+    )
+    challenger = BenchmarkScorecard(
+        scorecard_id="challenger-provenance",
+        run_id="challenger-provenance",
+        dataset_id="dataset-v1",
+        tier=BenchmarkTier.GOLDEN,
+        recipe_id="recipe-b",
+        recipe_version="1",
+        status=HarnessRunStatus.COMPLETE,
+        case_count=2,
+        success_count=2,
+        failure_count=0,
+        manual_review_count=0,
+        quality_mean=0.92,
+        provenance=RunProvenance(
+            quality_mode=QualityMode.MAX_FIDELITY,
+            dataset_manifest_sha256="dataset-b",
+        ),
+    )
+
+    decision = compare_scorecards(champion, challenger)
+
+    assert decision.eligible is False
+    assert "dataset manifest fingerprint mismatch" in decision.reasons
+    assert "quality mode mismatch" in decision.reasons

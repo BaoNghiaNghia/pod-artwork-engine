@@ -1400,6 +1400,37 @@ python -m pod_artwork_engine harness-engine-run historical-v1 --tier smoke --rec
 
 `config/benchmark-recipe.remote.example.json` demonstrates a remote challenger whose provider recipe is resolved relative to the benchmark recipe. Provider URL/token remain local environment configuration. This intentionally separates benchmark recipe identity from secrets and from concrete provider credentials.
 
+Phase 1E benchmark-suite and safe policy-calibration foundation:
+
+- `BenchmarkSuiteRunner` evaluates one champion against one or more challengers in strict Smoke → Regression → Golden order;
+- a challenger that fails an earlier gate is stopped before later, more expensive tiers;
+- pre-Golden comparisons may decide whether a challenger continues, but only a successful Golden comparison can become `eligible_for_human_review`;
+- Harness reports always set `auto_promoted=false` and `requires_human_approval=true`; the evaluator never mutates the live provider recipe, router, or QC policy;
+- scorecard provenance includes recipe SHA-256, Dataset Registry manifest SHA-256, engine version, execution kind, quality mode, provider-recipe identity and QC-policy identity;
+- comparisons reject incomplete runs, dataset-manifest drift and mismatched quality modes rather than comparing non-equivalent evidence;
+- production-engine candidate evidence now records runtime semantic/technical QC scores, pass state, object-fidelity evidence, resolution score and analysis confidence;
+- QC thresholds moved into a typed `QCPolicy` while built-in defaults preserve the previous behavior;
+- `POD_QC_POLICY_PATH` and benchmark-recipe `qc_policy_path` are explicit opt-in mechanisms for testing a candidate policy; generated calibration artifacts are never loaded automatically;
+- `QCPolicyCalibrator` uses approved-target Harness quality as labels, ignores ambiguous middle-quality results, searches bounded threshold candidates and enforces a configurable false-accept ceiling;
+- safe calibration requires Golden Holdout runs by default and requires enough good/bad labeled evidence before recommending a threshold;
+- metrics without enough evidence, such as sparse semantic-Judge object-fidelity coverage, keep the current threshold;
+- each calibration produces `proposal.json` plus a full `candidate-qc-policy.json` under Harness storage for explicit re-benchmarking.
+
+Example champion/challenger sequence:
+
+```powershell
+python -m pod_artwork_engine harness-suite historical-v1 `
+  --champion config/benchmark-recipe.local.json `
+  --challenger config/benchmark-recipe.remote.example.json `
+  --quality-mode print_ready
+```
+
+Example review-only calibration after Golden runs:
+
+```powershell
+python -m pod_artwork_engine harness-calibrate <golden-run-id> <golden-run-id-2>
+```
+
 Current truthfulness limits:
 
 - local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
@@ -1408,18 +1439,20 @@ Current truthfulness limits:
 - font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
 - polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
 - Bezier support currently allows one guarded subpath per primitive; compound paths/holes/general SVG tracing remain later work;
+- calibration currently tunes QC thresholds only; router-threshold learning is intentionally deferred because valid router calibration needs counterfactual route outcomes, not just one chosen route per case;
+- a generated `candidate-qc-policy.json` is not production policy until explicitly configured and benchmarked again;
 - border-color alpha extraction remains a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
 - `REVIEW_REQUIRED` remains expected when semantic reconstruction is needed but no acceptable provider/local result exists;
 - concrete GPT/provider model aliases remain configurable until Golden Holdout evidence selects them.
 
 Remaining Phase 1 work:
 
+- import and run the user's real historical source/final pairs through the suite and establish the first measured champion;
 - choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
 - add visual font identification/ranking beyond provider hints and exact installed-family normalization;
 - add compound/multi-subpath Bezier topology and richer logo tracing;
 - add illustration-aware/inpainting masks for text overlapping non-solid art;
-- run Smoke → Regression → Golden against the user's real historical source/final pairs;
-- calibrate semantic/technical/router thresholds from those scorecards;
+- use repeated challenger evidence to calibrate router policy once counterfactual outcomes exist;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 
 Build:

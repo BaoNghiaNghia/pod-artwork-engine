@@ -8,6 +8,8 @@ import uvicorn
 
 from . import __version__
 from .api import create_app
+from .benchmark_suite import BenchmarkSuiteRunner
+from .calibration import QCPolicyCalibrator
 from .contracts import DatasetSplit, QualityMode
 from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
@@ -15,8 +17,9 @@ from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
-from .harness_models import BenchmarkTier, PromotionPolicy
+from .harness_models import BenchmarkSuiteSpec, BenchmarkTier, PromotionPolicy
 from .logging_config import LoggingRuntime
+from .qc_policy import load_qc_policy
 from .settings import Settings
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -91,6 +94,39 @@ def main() -> None:
     harness_compare.add_argument("challenger_run_id")
     harness_compare.add_argument("--allow-pre-golden", action="store_true")
     harness_compare.add_argument("--max-cohort-drop", type=float, default=0.03)
+
+    harness_suite = sub.add_parser("harness-suite")
+    harness_suite.add_argument("dataset_id")
+    harness_suite.add_argument("--champion", type=Path, required=True)
+    harness_suite.add_argument(
+        "--challenger",
+        type=Path,
+        action="append",
+        required=True,
+    )
+    harness_suite.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    harness_suite.add_argument("--smoke-limit", type=int, default=8)
+    harness_suite.add_argument("--regression-limit", type=int)
+    harness_suite.add_argument("--golden-limit", type=int)
+    harness_suite.add_argument("--min-overall-delta", type=float, default=0.0)
+    harness_suite.add_argument("--max-cohort-drop", type=float, default=0.03)
+    harness_suite.add_argument("--max-latency-ratio", type=float)
+    harness_suite.add_argument("--max-cost-ratio", type=float)
+
+    harness_calibrate = sub.add_parser("harness-calibrate")
+    harness_calibrate.add_argument("run_ids", nargs="+")
+    harness_calibrate.add_argument("--allow-pre-golden", action="store_true")
+    harness_calibrate.add_argument("--good-quality", type=float, default=0.85)
+    harness_calibrate.add_argument("--bad-quality", type=float, default=0.70)
+    harness_calibrate.add_argument("--min-good", type=int, default=5)
+    harness_calibrate.add_argument("--min-bad", type=int, default=3)
+    harness_calibrate.add_argument("--max-false-accept", type=float, default=0.05)
+    harness_calibrate.add_argument("--max-threshold-delta", type=float, default=0.10)
+    harness_calibrate.add_argument("--qc-policy", type=Path)
 
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -244,6 +280,49 @@ def main() -> None:
             ),
         )
         print(json.dumps(decision.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-suite":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = BenchmarkSuiteSpec(
+            dataset_id=args.dataset_id,
+            champion_recipe_path=str(args.champion),
+            challenger_recipe_paths=[str(path) for path in args.challenger],
+            quality_mode=QualityMode(args.quality_mode),
+            smoke_limit=args.smoke_limit,
+            regression_limit=args.regression_limit,
+            golden_limit=args.golden_limit,
+            promotion_policy=PromotionPolicy(
+                min_overall_delta=args.min_overall_delta,
+                max_cohort_drop=args.max_cohort_drop,
+                max_latency_ratio=args.max_latency_ratio,
+                max_cost_ratio=args.max_cost_ratio,
+                require_golden=True,
+            ),
+        )
+        report = BenchmarkSuiteRunner(settings, registry, store).run(
+            spec,
+            spec_base=Path.cwd(),
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-calibrate":
+        store = HarnessStore(settings.harness_dir)
+        policy_path = (
+            args.qc_policy.resolve()
+            if args.qc_policy is not None
+            else settings.qc_policy_path
+        )
+        current_policy = load_qc_policy(policy_path)
+        proposal = QCPolicyCalibrator(store, current_policy).propose(
+            args.run_ids,
+            require_golden=not args.allow_pre_golden,
+            good_quality_threshold=args.good_quality,
+            bad_quality_threshold=args.bad_quality,
+            min_good=args.min_good,
+            min_bad=args.min_bad,
+            max_false_accept_rate=args.max_false_accept,
+            max_threshold_delta=args.max_threshold_delta,
+        )
+        print(json.dumps(proposal.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

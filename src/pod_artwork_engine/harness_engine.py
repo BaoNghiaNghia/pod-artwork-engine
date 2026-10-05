@@ -4,6 +4,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from . import __version__
 from .contracts import JobState, ProviderResult, QualityMode, RegionReplacementMode
 from .engine import Engine
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore
@@ -15,6 +16,8 @@ from .harness_models import (
     CandidateManifestEntry,
     OperationalMetrics,
     PrecisionEvidence,
+    RunProvenance,
+    RuntimeQCEvidence,
 )
 from .settings import Settings
 
@@ -54,6 +57,13 @@ class HarnessEngineRunner:
             if not path.is_absolute() and recipe_base is not None:
                 path = recipe_base / path
             overrides["provider_recipe_path"] = path.resolve()
+
+        qc_policy = metadata.get("qc_policy_path")
+        if isinstance(qc_policy, str) and qc_policy.strip():
+            path = Path(qc_policy).expanduser()
+            if not path.is_absolute() and recipe_base is not None:
+                path = recipe_base / path
+            overrides["qc_policy_path"] = path.resolve()
 
         local_ocr = metadata.get("local_ocr_enabled")
         if isinstance(local_ocr, bool):
@@ -129,6 +139,46 @@ class HarnessEngineRunner:
             precision_ops=sorted(set(precision_ops)),
         )
 
+    def _runtime_qc_evidence(self, job_id: str) -> RuntimeQCEvidence:
+        semantic = self.engine.checkpoints.payload(job_id, "qc_semantic")
+        technical = self.engine.checkpoints.payload(job_id, "qc_technical")
+
+        semantic_metrics = (
+            semantic.get("metrics")
+            if isinstance(semantic, dict) and isinstance(semantic.get("metrics"), dict)
+            else {}
+        )
+        technical_metrics = (
+            technical.get("metrics")
+            if isinstance(technical, dict) and isinstance(technical.get("metrics"), dict)
+            else {}
+        )
+
+        def as_float(value: object) -> float | None:
+            if isinstance(value, bool) or value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return max(0.0, min(1.0, float(value)))
+            return None
+
+        return RuntimeQCEvidence(
+            semantic_score=as_float(semantic.get("score")) if isinstance(semantic, dict) else None,
+            technical_score=as_float(technical.get("score")) if isinstance(technical, dict) else None,
+            semantic_passed=(
+                bool(semantic.get("passed"))
+                if isinstance(semantic, dict) and "passed" in semantic
+                else None
+            ),
+            technical_passed=(
+                bool(technical.get("passed"))
+                if isinstance(technical, dict) and "passed" in technical
+                else None
+            ),
+            object_fidelity=as_float(semantic_metrics.get("object_fidelity")),
+            resolution_score=as_float(technical_metrics.get("resolution_score")),
+            analysis_confidence=as_float(semantic_metrics.get("analysis_confidence")),
+        )
+
     def _candidate_entry(
         self,
         job_id: str,
@@ -167,6 +217,7 @@ class HarnessEngineRunner:
                 manual_review=job.state is JobState.REVIEW_REQUIRED,
             ),
             precision=self._precision_evidence(job_id),
+            runtime_qc=self._runtime_qc_evidence(job_id),
             metadata={
                 "job_id": job_id,
                 "job_state": job.state.value,
@@ -224,6 +275,21 @@ class HarnessEngineRunner:
                     },
                 )
 
+        provider_recipe_id = ""
+        if self.engine.provider.available or self.settings.provider_recipe_path is not None:
+            try:
+                provider_recipe_id = self.engine.provider.recipe().recipe_id
+            except Exception:
+                provider_recipe_id = ""
+
+        provenance = RunProvenance(
+            engine_version=__version__,
+            execution_kind="production_engine",
+            quality_mode=quality_mode,
+            qc_policy_id=self.engine.qc_policy.policy_id,
+            qc_policy_version=self.engine.qc_policy.version,
+            provider_recipe_id=provider_recipe_id,
+        )
         manifest = CandidateManifest(candidates=entries)
         return HarnessRunner(self.registry, self.store).run_candidates(
             dataset_id,
@@ -231,4 +297,5 @@ class HarnessEngineRunner:
             recipe,
             manifest,
             limit=limit,
+            provenance=provenance,
         )

@@ -39,6 +39,7 @@ from .providers import (
     materialize_provider_candidate,
 )
 from .qc import semantic_qc, technical_qc
+from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
 from .resources import capture_resources
 from .router import choose_route
@@ -63,6 +64,7 @@ class Engine:
         self.jobs = JobStore(settings.database_path)
         self.checkpoints = CheckpointManager(settings.jobs_dir)
         self.provider = RemoteProvider(settings)
+        self.qc_policy = load_qc_policy(settings.qc_policy_path)
 
     def _job_dir(self, job_id: str) -> Path:
         return self.settings.jobs_dir / job_id
@@ -792,7 +794,7 @@ class Engine:
                 if provider_result and provider_result.model_version
                 else {}
             ),
-            policy_version="phase1c-v1",
+            policy_version=f"{self.qc_policy.policy_id}:{self.qc_policy.version}",
             export_profile="default_pod",
             qc_report={
                 "semantic": qc1.model_dump(mode="json"),
@@ -878,6 +880,7 @@ class Engine:
                     if judge_provider is not None
                     else None
                 ),
+                policy=self.qc_policy,
             )
             self.checkpoints.write(job_id, "qc_semantic", qc1.model_dump(mode="json"))
             self._log_stage(
@@ -928,6 +931,7 @@ class Engine:
                 normalized,
                 job.quality_mode,
                 profile,
+                policy=self.qc_policy,
             )
             self.checkpoints.write(job_id, "qc_technical", qc2.model_dump(mode="json"))
             self._log_stage(

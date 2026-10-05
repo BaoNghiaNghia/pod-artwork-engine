@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
+from . import __version__
 from .contracts import DatasetSplit
 from .dataset_registry import DatasetRegistry
 from .harness_metrics import aggregate_metric_scores, evaluate_images, write_visual_diff
@@ -24,6 +25,7 @@ from .harness_models import (
     HarnessRunStatus,
     PromotionDecision,
     PromotionPolicy,
+    RunProvenance,
 )
 
 
@@ -43,6 +45,26 @@ def _atomic_json(path: Path, payload: object) -> Path:
         temp_path = Path(handle.name)
     os.replace(temp_path, path)
     return path
+
+
+def _sha256_path(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _recipe_sha256(recipe: BenchmarkRecipe) -> str:
+    payload = json.dumps(
+        recipe.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _as_string_list(value: object) -> list[str]:
@@ -189,6 +211,28 @@ class HarnessStore:
                 continue
         return sorted(scorecards, key=lambda item: item.created_at, reverse=True)
 
+    def get_results(self, run_id: str) -> list[BenchmarkCaseResult]:
+        results_dir = self.run_dir(run_id) / "results"
+        if not results_dir.is_dir():
+            return []
+        results: list[BenchmarkCaseResult] = []
+        for path in sorted(results_dir.glob("*.json")):
+            try:
+                results.append(
+                    BenchmarkCaseResult.model_validate_json(
+                        path.read_text(encoding="utf-8")
+                    )
+                )
+            except (OSError, ValueError):
+                continue
+        return results
+
+    def suite_dir(self, suite_id: str) -> Path:
+        return self.root / "suites" / suite_id
+
+    def calibration_dir(self, proposal_id: str) -> Path:
+        return self.root / "calibration" / proposal_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:
@@ -205,10 +249,28 @@ class HarnessRunner:
         *,
         manifest_base: Path | None = None,
         limit: int | None = None,
+        provenance: RunProvenance | None = None,
     ) -> BenchmarkScorecard:
         cases = self.case_factory.build(dataset_id, tier, limit=limit)
         if not cases:
             raise ValueError(f"dataset {dataset_id} has no cases for tier {tier.value}")
+
+        dataset = self.registry.get_dataset(dataset_id)
+        if dataset is None:
+            raise KeyError(f"dataset not found: {dataset_id}")
+        dataset_manifest_sha256 = _sha256_path(Path(dataset.manifest_path))
+        recipe_sha256 = _recipe_sha256(recipe)
+        provenance = provenance or RunProvenance()
+        provenance = provenance.model_copy(
+            update={
+                "engine_version": provenance.engine_version or __version__,
+                "recipe_sha256": provenance.recipe_sha256 or recipe_sha256,
+                "dataset_manifest_sha256": (
+                    provenance.dataset_manifest_sha256
+                    or dataset_manifest_sha256
+                ),
+            }
+        )
 
         run_id = "run_" + uuid4().hex
         run_dir = self.store.run_dir(run_id)
@@ -225,6 +287,7 @@ class HarnessRunner:
             recipe_id=recipe.recipe_id,
             recipe_version=recipe.version,
             case_ids=[case.case_id for case in cases],
+            provenance=provenance,
         )
         self.store.save_model(run_dir / "plan.json", plan)
         _atomic_json(
@@ -264,6 +327,7 @@ class HarnessRunner:
                         error="candidate file not found",
                         operational=entry.operational,
                         precision=entry.precision,
+                        runtime_qc=entry.runtime_qc,
                         cohorts=case.cohorts,
                     )
                 else:
@@ -300,6 +364,7 @@ class HarnessRunner:
                             technical=technical,
                             operational=entry.operational,
                             precision=entry.precision,
+                            runtime_qc=entry.runtime_qc,
                             semantic_score=semantic_score,
                             technical_score=technical_score,
                             quality_score=quality_score,
@@ -316,6 +381,7 @@ class HarnessRunner:
                             error=f"{type(exc).__name__}: {exc}",
                             operational=entry.operational,
                             precision=entry.precision,
+                            runtime_qc=entry.runtime_qc,
                             cohorts=case.cohorts,
                         )
 
@@ -329,6 +395,7 @@ class HarnessRunner:
             tier=tier,
             recipe=recipe,
             results=results,
+            provenance=provenance,
         )
         self.store.save_model(run_dir / "scorecard.json", scorecard)
         return scorecard
@@ -408,6 +475,7 @@ def build_scorecard(
     tier: BenchmarkTier,
     recipe: BenchmarkRecipe,
     results: list[BenchmarkCaseResult],
+    provenance: RunProvenance | None = None,
 ) -> BenchmarkScorecard:
     successes = [result for result in results if result.success]
     failures = [result for result in results if not result.success]
@@ -456,6 +524,7 @@ def build_scorecard(
         total_cost_usd=sum(result.operational.cost_usd for result in results),
         metric_coverage=_metric_coverage(results),
         precision_coverage=_precision_coverage(results),
+        provenance=provenance or RunProvenance(),
         cohorts={
             cohort: _cohort_score(cohort, cohort_results)
             for cohort, cohort_results in sorted(cohorts.items())
@@ -481,6 +550,25 @@ def compare_scorecards(
         reasons.append("benchmark tier mismatch")
     if champion.case_count != challenger.case_count:
         reasons.append("case count mismatch")
+    if (
+        champion.provenance.dataset_manifest_sha256
+        and challenger.provenance.dataset_manifest_sha256
+        and champion.provenance.dataset_manifest_sha256
+        != challenger.provenance.dataset_manifest_sha256
+    ):
+        reasons.append("dataset manifest fingerprint mismatch")
+    if (
+        champion.provenance.quality_mode is not None
+        and challenger.provenance.quality_mode is not None
+        and champion.provenance.quality_mode
+        is not challenger.provenance.quality_mode
+    ):
+        reasons.append("quality mode mismatch")
+    if policy.require_complete and (
+        champion.status is not HarnessRunStatus.COMPLETE
+        or challenger.status is not HarnessRunStatus.COMPLETE
+    ):
+        reasons.append("promotion comparison requires complete scorecards")
     if policy.require_golden and (
         champion.tier is not BenchmarkTier.GOLDEN
         or challenger.tier is not BenchmarkTier.GOLDEN

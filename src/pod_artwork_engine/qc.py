@@ -13,6 +13,7 @@ from .contracts import (
     QualityMode,
     SemanticJudgeResult,
 )
+from .qc_policy import DEFAULT_QC_POLICY, QCPolicy
 from .reconstruction import CandidateInfo
 
 
@@ -27,8 +28,11 @@ def semantic_qc(
     recognized_text: list[str] | None = None,
     used_remote_provider: bool = False,
     judge_result: SemanticJudgeResult | None = None,
+    policy: QCPolicy | None = None,
 ) -> QCResult:
     reasons: list[str] = []
+    policy = policy or DEFAULT_QC_POLICY
+    mode_policy = policy.for_mode(quality_mode)
     score = design_spec.confidence
 
     expected = [_normalize_text(item) for item in design_spec.exact_text]
@@ -82,11 +86,7 @@ def semantic_qc(
         reasons.append("heavy_occlusion")
         score = min(score, 0.42)
 
-    threshold = {
-        QualityMode.QUICK_2D: 0.20,
-        QualityMode.PRINT_READY: 0.35,
-        QualityMode.MAX_FIDELITY: 0.50,
-    }[quality_mode]
+    threshold = mode_policy.semantic_min_score
 
     semantic_provider_required = (
         quality_mode is not QualityMode.QUICK_2D
@@ -97,11 +97,7 @@ def semantic_qc(
         reasons.append("semantic_provider_not_used")
         score = min(score, 0.49)
 
-    object_threshold = {
-        QualityMode.QUICK_2D: 0.0,
-        QualityMode.PRINT_READY: 0.60,
-        QualityMode.MAX_FIDELITY: 0.72,
-    }[quality_mode]
+    object_threshold = mode_policy.object_fidelity_min
     object_fidelity_failed = (
         judge_object_fidelity is not None
         and judge_object_fidelity < object_threshold
@@ -139,6 +135,10 @@ def semantic_qc(
                 if judge_object_fidelity is not None
                 else None
             ),
+            "policy_id": policy.policy_id,
+            "policy_version": policy.version,
+            "semantic_threshold": round(threshold, 4),
+            "object_fidelity_threshold": round(object_threshold, 4),
         },
     )
 
@@ -156,8 +156,12 @@ def technical_qc(
     candidate: CandidateInfo,
     quality_mode: QualityMode,
     profile: ExportProfile | None = None,
+    *,
+    policy: QCPolicy | None = None,
 ) -> QCResult:
     profile = profile or ExportProfile()
+    policy = policy or DEFAULT_QC_POLICY
+    mode_policy = policy.for_mode(quality_mode)
     reasons: list[str] = []
 
     with Image.open(output_path) as source:
@@ -177,11 +181,7 @@ def technical_qc(
         reasons.append("no_transparent_background")
 
     native_long_edge = max(candidate.native_width, candidate.native_height)
-    required_native = {
-        QualityMode.QUICK_2D: 300,
-        QualityMode.PRINT_READY: 700,
-        QualityMode.MAX_FIDELITY: 1000,
-    }[quality_mode]
+    required_native = mode_policy.required_native_long_edge
     resolution_score = min(1.0, native_long_edge / max(1, required_native))
     if native_long_edge < required_native:
         reasons.append("low_effective_source_resolution")
@@ -196,9 +196,7 @@ def technical_qc(
 
     blocking = {"wrong_output_dimensions", "empty_alpha"}
     passed = not any(reason in blocking for reason in reasons)
-    if quality_mode is QualityMode.MAX_FIDELITY and resolution_score < 0.75:
-        passed = False
-    if quality_mode is QualityMode.PRINT_READY and resolution_score < 0.55:
+    if resolution_score < mode_policy.min_resolution_score:
         passed = False
 
     return QCResult(
@@ -218,5 +216,9 @@ def technical_qc(
             "alpha_max": alpha_range[1],
             "dpi_x": round(float(dpi[0]), 2) if dpi else 0,
             "dpi_y": round(float(dpi[1]), 2) if dpi else 0,
+            "policy_id": policy.policy_id,
+            "policy_version": policy.version,
+            "required_native_long_edge": required_native,
+            "min_resolution_score": round(mode_policy.min_resolution_score, 4),
         },
     )
