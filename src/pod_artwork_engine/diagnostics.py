@@ -9,6 +9,8 @@ from pathlib import Path
 
 import psutil
 
+from . import __version__
+from .hardware import detect_hardware
 from .settings import Settings
 from .storage import StorageManager
 
@@ -21,22 +23,48 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         storage = StorageManager(settings).status()
+        hardware = detect_hardware()
         system = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": __version__,
             "platform": platform.platform(),
             "python": platform.python_version(),
             "cpu_logical": psutil.cpu_count(logical=True),
             "cpu_physical": psutil.cpu_count(logical=False),
             "memory_total": psutil.virtual_memory().total,
+            "hardware": hardware.to_dict(),
             "storage": storage.model_dump(mode="json"),
         }
         (root / "system.json").write_text(json.dumps(system, indent=2), encoding="utf-8")
 
+        config = {
+            "data_root": str(settings.data_root),
+            "host": settings.host,
+            "port": settings.port,
+            "cpu_soft_threads": settings.cpu_soft_threads,
+            "ram_soft_bytes": settings.ram_soft_bytes,
+            "ram_hard_bytes": settings.ram_hard_bytes,
+            "release_channel": settings.release_channel,
+            "release_manifest_configured": bool(settings.release_manifest_url),
+        }
+        (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+
         recent_logs = root / "logs"
         recent_logs.mkdir()
-        for log_file in settings.logs_dir.glob("*.log*"):
+        for log_file in settings.logs_dir.rglob("*.log*"):
             try:
-                shutil.copy2(log_file, recent_logs / log_file.name)
+                relative = log_file.relative_to(settings.logs_dir)
+                target = recent_logs / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(log_file, target)
+            except OSError:
+                pass
+
+        for job_log in (settings.logs_dir / "jobs").glob("*.jsonl"):
+            try:
+                target = recent_logs / "jobs" / job_log.name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(job_log, target)
             except OSError:
                 pass
 

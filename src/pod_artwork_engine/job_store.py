@@ -7,6 +7,14 @@ from pathlib import Path
 from .contracts import FailureCategory, JobRecord, JobState
 
 
+TERMINAL_STATES = {
+    JobState.COMPLETED,
+    JobState.FAILED_FINAL,
+    JobState.CANCELLED,
+    JobState.REVIEW_REQUIRED,
+}
+
+
 class JobStore:
     def __init__(self, database_path: Path) -> None:
         database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +65,10 @@ class JobStore:
                 (max(1, min(limit, 500)),),
             ).fetchall()
         return [JobRecord.model_validate_json(row["payload"]) for row in rows]
+
+    def list_interrupted(self, limit: int = 200) -> list[JobRecord]:
+        jobs = self.list_recent(limit)
+        return [job for job in jobs if job.state not in TERMINAL_STATES]
 
     def transition(
         self,

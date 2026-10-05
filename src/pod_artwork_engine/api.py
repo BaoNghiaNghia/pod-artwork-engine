@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psutil
@@ -10,8 +11,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
-from .contracts import JobRecord, QualityMode
+from .contracts import JobRecord, JobState, QualityMode
 from .engine import Engine
+from .hardware import detect_hardware
 from .settings import Settings
 
 
@@ -19,8 +21,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     settings.ensure_directories()
     engine = Engine(settings)
+    hardware = detect_hardware()
 
-    app = FastAPI(title="POD Artwork Engine", version=__version__)
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        recovered = engine.recover_interrupted_jobs()
+        for job in recovered:
+            if job.state is JobState.RESUMING:
+                asyncio.create_task(asyncio.to_thread(engine.run_preflight, job.job_id))
+        yield
+
+    app = FastAPI(title="POD Artwork Engine", version=__version__, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -46,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "cpu_percent": psutil.cpu_percent(interval=None),
             "memory_percent": memory.percent,
             "memory_available_bytes": memory.available,
+            "hardware": hardware.to_dict(),
         }
 
     @app.get("/jobs", response_model=list[JobRecord])
@@ -83,5 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return job
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+    @app.post("/storage/cleanup")
+    def cleanup_storage() -> dict[str, int]:
+        return engine.storage.cleanup()
 
     return app

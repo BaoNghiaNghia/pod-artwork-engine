@@ -27,6 +27,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "externalBin": [
+      "binaries/pod-artwork-engine"
+    ]
   }
 }

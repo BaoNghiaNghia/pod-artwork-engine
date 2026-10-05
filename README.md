@@ -18,16 +18,20 @@ Standalone Windows tool for reconstructing clean 2D POD artwork from product/moc
 
 The repository currently establishes:
 
-- separate desktop and engine processes;
+- Tauri desktop shell plus an independently packaged engine sidecar;
 - versioned typed contracts;
-- persistent job state;
-- structured non-blocking logging;
-- storage quotas and cleanup;
-- checkpoints/artifact folders;
-- diagnostics;
-- release-manifest/update primitives;
+- persistent SQLite job state;
+- atomic checkpoints and restart recovery;
+- structured non-blocking global and per-job logging;
+- dynamic CPU/RAM/GPU profiling and resource defaults;
+- 32 GB storage soft limit / 40 GB hard limit with cleanup policies;
+- redacted diagnostic bundles;
+- release-manifest, SHA-256 verification, safe update staging and rollback metadata;
 - local engine API;
-- Windows startup scripts.
+- Windows startup/build scripts;
+- a verified Windows release executable that automatically starts the engine sidecar.
+
+Stage 1 is not considered fully closed until packaged update **activation + automatic rollback** are wired through the independent bootstrap launcher. Update download/verification/staging are already implemented.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 

@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import psutil
+
 
 GIB = 1024 ** 3
 MIB = 1024 ** 2
@@ -35,10 +37,20 @@ class Settings:
     def from_env(cls) -> "Settings":
         default_root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "PODArtworkTool"
         root = Path(os.environ.get("POD_ARTWORK_DATA", default_root))
+
+        logical = psutil.cpu_count(logical=True) or 8
+        total_ram = psutil.virtual_memory().total
+        default_threads = min(40, max(4, logical - max(4, logical // 4)))
+        default_ram_soft = max(4 * GIB, int(total_ram * 0.50))
+        default_ram_hard = max(default_ram_soft, int(total_ram * 0.75))
+
         return cls(
             data_root=root,
             host=os.environ.get("POD_ENGINE_HOST", "127.0.0.1"),
             port=int(os.environ.get("POD_ENGINE_PORT", "8765")),
+            cpu_soft_threads=int(os.environ.get("POD_CPU_SOFT_THREADS", default_threads)),
+            ram_soft_bytes=int(float(os.environ.get("POD_RAM_SOFT_GB", default_ram_soft / GIB)) * GIB),
+            ram_hard_bytes=int(float(os.environ.get("POD_RAM_HARD_GB", default_ram_hard / GIB)) * GIB),
             release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
             release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
         )

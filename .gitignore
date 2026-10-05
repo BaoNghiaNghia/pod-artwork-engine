@@ -10,6 +10,7 @@ build/
 node_modules/
 desktop/dist/
 desktop/src-tauri/target/
+desktop/src-tauri/binaries/*.exe
 .env
 .env.*
 !.env.example
