@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "POD Artwork Tool",
+  "version": "0.1.0",
+  "identifier": "com.podaiprint.artworktool",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "POD Artwork Tool",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 900,
+        "minHeight": 650,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

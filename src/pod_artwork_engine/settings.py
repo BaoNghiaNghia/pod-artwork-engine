@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+
+GIB = 1024 ** 3
+MIB = 1024 ** 2
+
+
+@dataclass(frozen=True)
+class StorageLimits:
+    soft_total_bytes: int = 32 * GIB
+    hard_total_bytes: int = 40 * GIB
+    cache_bytes: int = 5 * GIB
+    temp_jobs_bytes: int = 6 * GIB
+    logs_bytes: int = 1 * GIB
+    updates_bytes: int = 2 * GIB
+
+
+@dataclass(frozen=True)
+class Settings:
+    data_root: Path
+    host: str = "127.0.0.1"
+    port: int = 8765
+    cpu_soft_threads: int = 40
+    ram_soft_bytes: int = 32 * GIB
+    ram_hard_bytes: int = 48 * GIB
+    storage: StorageLimits = StorageLimits()
+    release_channel: str = "stable"
+    release_manifest_url: str = ""
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        default_root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "PODArtworkTool"
+        root = Path(os.environ.get("POD_ARTWORK_DATA", default_root))
+        return cls(
+            data_root=root,
+            host=os.environ.get("POD_ENGINE_HOST", "127.0.0.1"),
+            port=int(os.environ.get("POD_ENGINE_PORT", "8765")),
+            release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
+            release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
+        )
+
+    def ensure_directories(self) -> None:
+        for path in (
+            self.data_root,
+            self.jobs_dir,
+            self.cache_dir,
+            self.logs_dir,
+            self.updates_dir,
+            self.artifacts_dir,
+        ):
+            path.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def jobs_dir(self) -> Path:
+        return self.data_root / "jobs"
+
+    @property
+    def cache_dir(self) -> Path:
+        return self.data_root / "cache"
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.data_root / "logs"
+
+    @property
+    def updates_dir(self) -> Path:
+        return self.data_root / "updates"
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self.data_root / "artifacts"
+
+    @property
+    def database_path(self) -> Path:
+        return self.data_root / "engine.sqlite3"
