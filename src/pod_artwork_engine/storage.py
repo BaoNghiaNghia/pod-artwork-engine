@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -73,7 +74,7 @@ class StorageManager:
         limits = self.settings.storage
 
         self._cleanup_directory(self.settings.cache_dir, limits.cache_bytes)
-        self._cleanup_directory(self.settings.updates_dir, limits.updates_bytes)
+        self._cleanup_updates(limits.updates_bytes)
         self._cleanup_directory(self.settings.logs_dir, limits.logs_bytes)
         self._cleanup_stale_job_temp()
         self._cleanup_temp_quota(limits.temp_jobs_bytes)
@@ -99,6 +100,64 @@ class StorageManager:
                 size = candidate.stat().st_size
                 candidate.unlink()
                 current = max(0, current - size)
+            except OSError:
+                continue
+
+    def _cleanup_updates(self, quota: int) -> None:
+        updates_dir = self.settings.updates_dir
+        if directory_size(updates_dir) <= quota:
+            return
+
+        state_path = updates_dir / "update-state.json"
+        protected_versions: set[str] = set()
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                for key in ("current_version", "previous_version", "staged_version"):
+                    value = state.get(key)
+                    if value:
+                        protected_versions.add(str(value))
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        downloads = updates_dir / "downloads"
+        if downloads.exists():
+            packages = [item for item in downloads.iterdir() if item.is_file()]
+            packages.sort(key=lambda item: item.stat().st_mtime)
+            for candidate in packages:
+                if directory_size(updates_dir) <= quota:
+                    break
+                try:
+                    candidate.unlink()
+                except OSError:
+                    continue
+
+        releases = updates_dir / "releases"
+        if releases.exists() and directory_size(updates_dir) > quota:
+            stale_releases = [
+                item
+                for item in releases.iterdir()
+                if item.is_dir()
+                and not item.name.startswith(".")
+                and item.name not in protected_versions
+            ]
+            stale_releases.sort(key=lambda item: item.stat().st_mtime)
+            for candidate in stale_releases:
+                if directory_size(updates_dir) <= quota:
+                    break
+                shutil.rmtree(candidate, ignore_errors=True)
+
+        for candidate in (releases.glob(".*.staging") if releases.exists() else []):
+            try:
+                if candidate.stat().st_mtime < time.time() - 24 * 60 * 60:
+                    shutil.rmtree(candidate, ignore_errors=True)
+            except OSError:
+                continue
+
+        for candidate in (releases.glob(".*.seed") if releases.exists() else []):
+            try:
+                if candidate.stat().st_mtime < time.time() - 24 * 60 * 60:
+                    shutil.rmtree(candidate, ignore_errors=True)
             except OSError:
                 continue
 

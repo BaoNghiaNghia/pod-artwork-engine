@@ -30,6 +30,8 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     client = TestClient(create_app(settings))
 
     assert client.get("/health").json()["status"] == "ok"
+    status = client.get("/status").json()
+    assert "update" in status
 
     response = client.post(
         "/jobs?quality_mode=print_ready",

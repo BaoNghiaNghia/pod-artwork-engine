@@ -6,13 +6,14 @@ Set-Location $RepoRoot
 
 Push-Location "desktop"
 try {
-    Remove-Item Env:CI -ErrorAction SilentlyContinue
     npm install
-    npm run build
-    npm run tauri build -- --no-bundle
+    npx tauri build --no-bundle --ci false
 }
 finally {
     Pop-Location
 }
 
-Write-Host "Desktop executable build complete."
+& "$PSScriptRoot\build_bootstrap.ps1"
+& ".venv\Scripts\python.exe" "scripts\assemble_release.py"
+
+Write-Host "Desktop release build complete."

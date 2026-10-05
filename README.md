@@ -31,7 +31,7 @@ The repository currently establishes:
 - Windows startup/build scripts;
 - a verified Windows release executable that automatically starts the engine sidecar.
 
-Stage 1 is not considered fully closed until packaged update **activation + automatic rollback** are wired through the independent bootstrap launcher. Update download/verification/staging are already implemented.
+Stage 1 standalone foundation is now closed for the local runtime: the independent `PODArtworkTool.exe` bootstrap seeds the current release, checks/stages updates, launches the candidate release, verifies the engine version through `/health`, activates only on success, and automatically rolls back to the previous healthy release on failure. Release-manifest hosting/signing policy remains a deployment concern rather than a runtime blocker.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 
@@ -52,4 +52,12 @@ Run tests:
 pytest
 ```
 
-Desktop development will use the `desktop/` Tauri shell and the local engine process.
+Build the standalone Windows release:
+
+```powershell
+powershell -NoProfile -File scripts\build_desktop.ps1
+```
+
+The build produces `build/release/PODArtworkTool.exe` as the stable bootstrap launcher plus the versioned desktop/engine payload and an update ZIP under `build/packages/`. The normal user entry point is `PODArtworkTool.exe`; Python or PowerShell is not required at runtime.
+
+Desktop development uses the `desktop/` Tauri shell and the local engine process.

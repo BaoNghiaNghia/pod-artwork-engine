@@ -641,6 +641,8 @@ staging
 
 The updater should be independent from the main engine so a broken release cannot prevent rollback.
 
+**Implemented foundation status:** the Windows launcher is now an independent bootstrap executable. It keeps versioned releases under the managed update directory, stages checksum-verified packages without replacing the active release, launches the staged desktop/engine pair, validates the expected engine version through `/health`, activates only after a successful health gate, and automatically falls back to the previous known-good release when the staged or active release fails. Update cleanup explicitly protects the active, previous and staged release directories. Remote manifest hosting and code-signing policy remain deployment configuration.
+
 ## 19. Historical learning from existing input/final pairs
 
 Existing historical data is a first-class starting asset.
@@ -1238,6 +1240,8 @@ The architecture should keep provider adapters replaceable so model changes do n
 ## 30. Implementation roadmap
 
 ### Phase 0A — Standalone foundation
+
+**Status: implemented and locally verified.** Release-manifest hosting/code-signing remain deployment configuration; the local runtime, bootstrap activation, health gate and automatic rollback are in place.
 
 Build:
 

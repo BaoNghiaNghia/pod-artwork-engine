@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from .contracts import JobRecord, JobState, QualityMode
 from .engine import Engine
 from .hardware import detect_hardware
 from .settings import Settings
+from .updater import UpdateManager
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -46,7 +48,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok", "version": __version__}
+        return {
+            "status": "ok",
+            "version": __version__,
+            "instance_token": os.environ.get("POD_BOOTSTRAP_TOKEN"),
+        }
 
     @app.get("/status")
     def status() -> dict:
@@ -58,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "memory_percent": memory.percent,
             "memory_available_bytes": memory.available,
             "hardware": hardware.to_dict(),
+            "update": UpdateManager(settings, __version__).state(),
         }
 
     @app.get("/jobs", response_model=list[JobRecord])

@@ -13,6 +13,7 @@ from . import __version__
 from .hardware import detect_hardware
 from .settings import Settings
 from .storage import StorageManager
+from .updater import UpdateManager
 
 
 def build_diagnostic_bundle(settings: Settings, destination: Path | None = None) -> Path:
@@ -48,6 +49,12 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "release_manifest_configured": bool(settings.release_manifest_url),
         }
         (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+        update_state = UpdateManager(settings, __version__).state()
+        (root / "update-state.json").write_text(
+            json.dumps(update_state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         recent_logs = root / "logs"
         recent_logs.mkdir()

@@ -1,5 +1,12 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\update_and_start.ps1"
-endlocal
+
+if exist "%~dp0build\release\PODArtworkTool.exe" (
+    start "" "%~dp0build\release\PODArtworkTool.exe"
+    exit /b 0
+)
+
+echo POD Artwork Tool release build was not found.
+echo Run: powershell -NoProfile -File scripts\build_desktop.ps1
+exit /b 2
