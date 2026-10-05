@@ -95,6 +95,7 @@ class RegionReplacementMode(StrEnum):
     NONE = "none"
     OVERLAY = "overlay"
     REPLACE_SOLID = "replace_solid"
+    REPLACE_MASK = "replace_mask"
 
 
 class GeometryKind(StrEnum):
@@ -102,6 +103,14 @@ class GeometryKind(StrEnum):
     ELLIPSE = "ellipse"
     LINE = "line"
     POLYGON = "polygon"
+    PATH = "path"
+
+
+class PathCommandKind(StrEnum):
+    MOVE = "move"
+    LINE = "line"
+    CUBIC = "cubic"
+    CLOSE = "close"
 
 
 class BoundingBox(StrictModel):
@@ -109,6 +118,11 @@ class BoundingBox(StrictModel):
     y: float = Field(ge=0, le=1)
     width: float = Field(gt=0, le=1)
     height: float = Field(gt=0, le=1)
+
+
+class NormalizedPoint(StrictModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
 
 
 class TypographyLine(StrictModel):
@@ -123,6 +137,7 @@ class TypographyLine(StrictModel):
     confidence: float = Field(default=0, ge=0, le=1)
     replacement_mode: RegionReplacementMode = RegionReplacementMode.NONE
     replacement_fill: str | None = None
+    replacement_mask: list[NormalizedPoint] = Field(default_factory=list)
 
 
 class TypographySpec(StrictModel):
@@ -133,15 +148,16 @@ class TypographySpec(StrictModel):
     evidence_version: str = ""
 
 
-class NormalizedPoint(StrictModel):
-    x: float = Field(ge=0, le=1)
-    y: float = Field(ge=0, le=1)
+class GeometryPathCommand(StrictModel):
+    kind: PathCommandKind
+    points: list[NormalizedPoint] = Field(default_factory=list)
 
 
 class GeometryPrimitive(StrictModel):
     kind: GeometryKind
     bbox: BoundingBox | None = None
     points: list[NormalizedPoint] = Field(default_factory=list)
+    path: list[GeometryPathCommand] = Field(default_factory=list)
     fill: str | None = None
     stroke: str | None = None
     stroke_width_ratio: float = Field(default=0.004, ge=0, le=0.1)

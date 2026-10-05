@@ -12,10 +12,12 @@ from pod_artwork_engine.contracts import (
     BoundingBox,
     DesignSpec,
     GeometryKind,
+    GeometryPathCommand,
     GeometryPrimitive,
     GeometrySpec,
     JobState,
     NormalizedPoint,
+    PathCommandKind,
     ProviderResult,
     QualityMode,
     RegionReplacementMode,
@@ -26,6 +28,7 @@ from pod_artwork_engine.contracts import (
 )
 from pod_artwork_engine.engine import Engine
 from pod_artwork_engine.geometry import geometry_to_svg, render_geometry_master
+from pod_artwork_engine.local_ocr import LocalOCRResult
 from pod_artwork_engine.preflight import inspect_image
 from pod_artwork_engine.router import choose_route
 from pod_artwork_engine.settings import Settings
@@ -541,3 +544,167 @@ def test_quick_logo_uses_deterministic_geometry_after_remote_analysis(
         / "artifact_manifest.json"
     ).read_text(encoding="utf-8")
     assert "geometry_svg" in manifest
+
+
+def test_mixed_text_replacement_supports_explicit_polygon_mask(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "masked-data")
+    settings.ensure_directories()
+    if resolve_font(settings, "Arial") is None:
+        pytest.skip("Arial is not available on this host")
+
+    candidate_path = tmp_path / "masked-candidate.png"
+    base = Image.new("RGBA", (800, 600), (35, 115, 75, 255))
+    ImageDraw.Draw(base).ellipse((40, 40, 210, 210), fill=(220, 80, 90, 255))
+    base.save(candidate_path)
+
+    spec = TypographySpec(
+        line_order_confidence=0.98,
+        font_match_confidence=0.94,
+        evidence_provider="fixture",
+        evidence_version="1",
+        lines=[
+            TypographyLine(
+                text="MASK TEXT",
+                bbox=BoundingBox(x=0.40, y=0.38, width=0.45, height=0.18),
+                font_family="Arial",
+                font_weight=700,
+                fill="#111111",
+                confidence=0.97,
+                replacement_mode=RegionReplacementMode.REPLACE_MASK,
+                replacement_fill="#ffffff",
+                replacement_mask=[
+                    NormalizedPoint(x=0.39, y=0.36),
+                    NormalizedPoint(x=0.87, y=0.36),
+                    NormalizedPoint(x=0.83, y=0.59),
+                    NormalizedPoint(x=0.42, y=0.57),
+                ],
+            )
+        ],
+    )
+
+    output, processed = replace_mixed_typography(
+        candidate_path,
+        spec,
+        settings,
+        tmp_path / "masked-refined.png",
+    )
+
+    with Image.open(candidate_path) as before, Image.open(output) as after:
+        before = before.convert("RGBA")
+        after = after.convert("RGBA")
+        assert before.getpixel((80, 80)) == after.getpixel((80, 80))
+        assert before.getpixel((350, 240)) != after.getpixel((350, 240))
+
+    assert processed == ["MASK TEXT"]
+
+
+def test_geometry_renderer_supports_cubic_bezier_path(tmp_path: Path) -> None:
+    path_primitive = GeometryPrimitive(
+        kind=GeometryKind.PATH,
+        path=[
+            GeometryPathCommand(
+                kind=PathCommandKind.MOVE,
+                points=[NormalizedPoint(x=0.15, y=0.55)],
+            ),
+            GeometryPathCommand(
+                kind=PathCommandKind.CUBIC,
+                points=[
+                    NormalizedPoint(x=0.30, y=0.10),
+                    NormalizedPoint(x=0.70, y=0.10),
+                    NormalizedPoint(x=0.85, y=0.55),
+                ],
+            ),
+            GeometryPathCommand(
+                kind=PathCommandKind.CUBIC,
+                points=[
+                    NormalizedPoint(x=0.70, y=0.90),
+                    NormalizedPoint(x=0.30, y=0.90),
+                    NormalizedPoint(x=0.15, y=0.55),
+                ],
+            ),
+            GeometryPathCommand(kind=PathCommandKind.CLOSE),
+        ],
+        fill="#f2c94c",
+        stroke="#111111",
+        stroke_width_ratio=0.008,
+        confidence=0.98,
+    )
+    spec = GeometrySpec(primitives=[path_primitive], confidence=0.97)
+
+    png = render_geometry_master(
+        spec,
+        tmp_path / "bezier.png",
+        canvas_size=(1200, 1200),
+    )
+    svg = geometry_to_svg(
+        spec,
+        tmp_path / "bezier.svg",
+        view_box=(1200, 1200),
+    )
+
+    with Image.open(png) as image:
+        assert image.getchannel("A").getbbox() is not None
+
+    svg_text = svg.read_text(encoding="utf-8")
+    assert "<path " in svg_text
+    assert " C " in svg_text or 'd="M ' in svg_text and "C " in svg_text
+
+
+def test_engine_merges_high_confidence_local_ocr_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = _transparent_art(tmp_path / "ocr-reference.png")
+    settings = Settings(
+        data_root=tmp_path / "ocr-runtime",
+        local_ocr_enabled=True,
+    )
+    engine = Engine(settings)
+    typography = TypographySpec(
+        lines=[
+            TypographyLine(
+                text="HELLO",
+                bbox=BoundingBox(x=0.2, y=0.35, width=0.6, height=0.2),
+                confidence=0.96,
+            )
+        ],
+        line_order_confidence=0.96,
+        font_match_confidence=0.0,
+        evidence_provider="tesseract",
+        evidence_version="fixture",
+    )
+
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.analyze_locally",
+        lambda source_paths, preflights: DesignSpec(
+            artwork_type=ArtworkType.MIXED,
+            artwork_bbox=BoundingBox(x=0.15, y=0.15, width=0.70, height=0.70),
+            confidence=0.85,
+            required_capabilities=["need_semantic_reconstruction"],
+        ),
+    )
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.local_ocr_available",
+        lambda settings: True,
+    )
+    monkeypatch.setattr(
+        "pod_artwork_engine.engine.analyze_artwork_text",
+        lambda source_path, artwork_bbox, settings: LocalOCRResult(
+            exact_text=["HELLO"],
+            typography=typography,
+            backend="tesseract",
+            backend_version="fixture",
+        ),
+    )
+
+    job = engine.create_job([source], QualityMode.QUICK_2D)
+    result = engine.run_job(job.job_id)
+
+    assert result.state in {JobState.COMPLETED, JobState.REVIEW_REQUIRED}
+    design_spec = engine.checkpoints.payload(job.job_id, "design_spec")
+    assert design_spec["exact_text"] == ["HELLO"]
+    assert design_spec["typography"]["evidence_provider"] == "tesseract"
+    local_ocr = engine.checkpoints.payload(job.job_id, "local_ocr")
+    assert local_ocr["exact_text"] == ["HELLO"]
+    candidate = engine.checkpoints.payload(job.job_id, "candidate")
+    assert candidate["recognized_text"] == ["HELLO"]

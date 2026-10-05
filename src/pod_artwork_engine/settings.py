@@ -38,6 +38,9 @@ class Settings:
     remote_provider_name: str = "remote"
     remote_provider_timeout_seconds: float = 120.0
     provider_recipe_path: Path | None = None
+    local_ocr_enabled: bool = True
+    tesseract_path: Path | None = None
+    tesseract_language: str = "eng"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -70,6 +73,14 @@ class Settings:
                 if os.environ.get("POD_PROVIDER_RECIPE_PATH")
                 else None
             ),
+            local_ocr_enabled=os.environ.get("POD_LOCAL_OCR_ENABLED", "1").strip().lower()
+            not in {"0", "false", "no", "off"},
+            tesseract_path=(
+                Path(os.environ["POD_TESSERACT_PATH"]).expanduser()
+                if os.environ.get("POD_TESSERACT_PATH")
+                else None
+            ),
+            tesseract_language=os.environ.get("POD_TESSERACT_LANGUAGE", "eng"),
         )
 
     def ensure_directories(self) -> None:

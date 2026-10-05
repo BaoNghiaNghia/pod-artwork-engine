@@ -1,0 +1,28 @@
+{
+  "recipe_id": "local-precision-v1",
+  "version": "1",
+  "description": "CPU-first local precision baseline with optional Tesseract OCR.",
+  "stages": [
+    {
+      "name": "analysis",
+      "implementation": "local-preflight-ocr",
+      "version": "phase1d"
+    },
+    {
+      "name": "reconstruction",
+      "implementation": "deterministic-precision",
+      "version": "phase1d"
+    },
+    {
+      "name": "qc",
+      "implementation": "two-gate-qc",
+      "version": "phase1d"
+    }
+  ],
+  "router_version": "phase1d",
+  "qc_policy_version": "phase1d",
+  "metadata": {
+    "local_ocr_enabled": true,
+    "tesseract_language": "eng"
+  }
+}

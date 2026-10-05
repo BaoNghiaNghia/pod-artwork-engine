@@ -11,6 +11,7 @@ import psutil
 
 from . import __version__
 from .hardware import detect_hardware
+from .local_ocr import available as local_ocr_available
 from .settings import Settings
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -49,6 +50,10 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "release_manifest_configured": bool(settings.release_manifest_url),
             "remote_provider_configured": bool(settings.remote_provider_url),
             "remote_provider_name": settings.remote_provider_name,
+            "provider_recipe_configured": settings.provider_recipe_path is not None,
+            "local_ocr_enabled": settings.local_ocr_enabled,
+            "local_ocr_available": local_ocr_available(settings),
+            "tesseract_language": settings.tesseract_language,
         }
         (root / "config-redacted.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw
 
-from .contracts import GeometryKind, GeometryPrimitive, GeometrySpec
+from .contracts import GeometryKind, GeometryPrimitive, GeometrySpec, PathCommandKind
 
 
 class GeometryRenderUnavailable(RuntimeError):
@@ -55,6 +55,63 @@ def _points_pixels(
     ]
 
 
+def _path_points_pixels(
+    primitive: GeometryPrimitive,
+    canvas: Image.Image,
+    *,
+    cubic_steps: int = 24,
+) -> tuple[list[tuple[int, int]], bool]:
+    points: list[tuple[int, int]] = []
+    current: tuple[float, float] | None = None
+    start: tuple[float, float] | None = None
+    closed = False
+
+    def scaled(point) -> tuple[float, float]:
+        return (
+            max(0.0, min(canvas.width - 1.0, point.x * canvas.width)),
+            max(0.0, min(canvas.height - 1.0, point.y * canvas.height)),
+        )
+
+    for command in primitive.path:
+        if command.kind is PathCommandKind.MOVE:
+            current = scaled(command.points[0])
+            start = current
+            points.append((round(current[0]), round(current[1])))
+        elif command.kind is PathCommandKind.LINE:
+            current = scaled(command.points[0])
+            points.append((round(current[0]), round(current[1])))
+        elif command.kind is PathCommandKind.CUBIC:
+            if current is None:
+                raise GeometryRenderUnavailable("cubic path command requires a current point")
+            c1 = scaled(command.points[0])
+            c2 = scaled(command.points[1])
+            end = scaled(command.points[2])
+            x0, y0 = current
+            for step in range(1, cubic_steps + 1):
+                t = step / cubic_steps
+                mt = 1.0 - t
+                x = (
+                    mt ** 3 * x0
+                    + 3 * mt ** 2 * t * c1[0]
+                    + 3 * mt * t ** 2 * c2[0]
+                    + t ** 3 * end[0]
+                )
+                y = (
+                    mt ** 3 * y0
+                    + 3 * mt ** 2 * t * c1[1]
+                    + 3 * mt * t ** 2 * c2[1]
+                    + t ** 3 * end[1]
+                )
+                points.append((round(x), round(y)))
+            current = end
+        elif command.kind is PathCommandKind.CLOSE:
+            if start is not None:
+                points.append((round(start[0]), round(start[1])))
+                current = start
+                closed = True
+    return points, closed
+
+
 def _validate_primitive(primitive: GeometryPrimitive) -> None:
     if primitive.confidence < 0.80:
         raise GeometryRenderUnavailable(
@@ -79,6 +136,31 @@ def _validate_primitive(primitive: GeometryPrimitive) -> None:
             raise GeometryRenderUnavailable(
                 "polygon primitive requires at least three points"
             )
+    elif primitive.kind is GeometryKind.PATH:
+        if not primitive.path:
+            raise GeometryRenderUnavailable("path primitive requires path commands")
+        if primitive.path[0].kind is not PathCommandKind.MOVE:
+            raise GeometryRenderUnavailable("path primitive must start with move")
+        for index, command in enumerate(primitive.path):
+            required = {
+                PathCommandKind.MOVE: 1,
+                PathCommandKind.LINE: 1,
+                PathCommandKind.CUBIC: 3,
+                PathCommandKind.CLOSE: 0,
+            }[command.kind]
+            if len(command.points) != required:
+                raise GeometryRenderUnavailable(
+                    f"{command.kind.value} path command requires {required} points"
+                )
+            if command.kind is PathCommandKind.MOVE and index != 0:
+                raise GeometryRenderUnavailable(
+                    "multiple path subpaths are not supported by deterministic rasterization"
+                )
+            if (
+                command.kind is PathCommandKind.CLOSE
+                and index != len(primitive.path) - 1
+            ):
+                raise GeometryRenderUnavailable("close must be the final path command")
 
 
 def validate_geometry_spec(spec: GeometrySpec) -> None:
@@ -133,6 +215,18 @@ def apply_geometry(
             if stroke:
                 closed = [*points, points[0]]
                 draw.line(closed, fill=stroke, width=width, joint="curve")
+        elif primitive.kind is GeometryKind.PATH:
+            points, closed = _path_points_pixels(primitive, result)
+            if len(points) < 2:
+                raise GeometryRenderUnavailable("path primitive produced too few points")
+            if fill is not None:
+                if not closed:
+                    raise GeometryRenderUnavailable(
+                        "filled path primitive must be explicitly closed"
+                    )
+                draw.polygon(points, fill=fill)
+            if stroke is not None:
+                draw.line(points, fill=stroke, width=width, joint="curve")
         else:
             raise GeometryRenderUnavailable(
                 f"unsupported geometry primitive: {primitive.kind}"
@@ -167,7 +261,13 @@ def geometry_to_svg(
     width, height = view_box
 
     def svg_color(value: str | None) -> str:
-        return value or "none"
+        parsed = _color(value)
+        if parsed is None:
+            return "none"
+        red, green, blue, alpha = parsed
+        if alpha == 255:
+            return f"#{red:02x}{green:02x}{blue:02x}"
+        return f"rgba({red},{green},{blue},{alpha / 255:.4f})"
 
     elements: list[str] = []
     for primitive in spec.primitives:
@@ -214,6 +314,30 @@ def geometry_to_svg(
                 for point in primitive.points
             )
             elements.append(f'<polygon points="{points}" {common}/>')
+        elif primitive.kind is GeometryKind.PATH:
+            commands: list[str] = []
+            for command in primitive.path:
+                if command.kind is PathCommandKind.MOVE:
+                    point = command.points[0]
+                    commands.append(
+                        f"M {point.x * width:.3f} {point.y * height:.3f}"
+                    )
+                elif command.kind is PathCommandKind.LINE:
+                    point = command.points[0]
+                    commands.append(
+                        f"L {point.x * width:.3f} {point.y * height:.3f}"
+                    )
+                elif command.kind is PathCommandKind.CUBIC:
+                    c1, c2, end = command.points
+                    commands.append(
+                        "C "
+                        f"{c1.x * width:.3f} {c1.y * height:.3f} "
+                        f"{c2.x * width:.3f} {c2.y * height:.3f} "
+                        f"{end.x * width:.3f} {end.y * height:.3f}"
+                    )
+                elif command.kind is PathCommandKind.CLOSE:
+                    commands.append("Z")
+            elements.append(f'<path d="{" ".join(commands)}" {common}/>')
 
     svg = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

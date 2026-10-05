@@ -8,12 +8,13 @@ import uvicorn
 
 from . import __version__
 from .api import create_app
-from .contracts import DatasetSplit
+from .contracts import DatasetSplit, QualityMode
 from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
+from .harness_engine import HarnessEngineRunner
 from .harness_models import BenchmarkTier, PromotionPolicy
 from .logging_config import LoggingRuntime
 from .settings import Settings
@@ -67,6 +68,21 @@ def main() -> None:
     harness_run.add_argument("--recipe", type=Path, required=True)
     harness_run.add_argument("--candidates", type=Path, required=True)
     harness_run.add_argument("--limit", type=int)
+
+    harness_engine_run = sub.add_parser("harness-engine-run")
+    harness_engine_run.add_argument("dataset_id")
+    harness_engine_run.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        required=True,
+    )
+    harness_engine_run.add_argument("--recipe", type=Path, required=True)
+    harness_engine_run.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    harness_engine_run.add_argument("--limit", type=int)
 
     sub.add_parser("harness-scorecards")
 
@@ -186,6 +202,20 @@ def main() -> None:
             manifest,
             manifest_base=manifest_path.parent,
             limit=args.limit,
+        )
+        print(json.dumps(scorecard.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-engine-run":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        recipe_path = args.recipe.resolve()
+        recipe = load_recipe(recipe_path)
+        scorecard = HarnessEngineRunner(settings, registry, store).run(
+            args.dataset_id,
+            BenchmarkTier(args.tier),
+            recipe,
+            quality_mode=QualityMode(args.quality_mode),
+            limit=args.limit,
+            recipe_base=recipe_path.parent,
         )
         print(json.dumps(scorecard.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-scorecards":

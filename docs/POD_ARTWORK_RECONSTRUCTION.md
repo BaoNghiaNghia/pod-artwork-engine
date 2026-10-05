@@ -1375,24 +1375,52 @@ Phase 1C deterministic precision foundation:
 - geometry can be rendered to a high-resolution raster master and retained as a reusable SVG geometry artifact;
 - low-confidence or structurally incomplete geometry is rejected instead of being presented as recovered vector truth.
 
+Phase 1D local text, Bezier and production-Harness foundation:
+
+- optional Tesseract adapter provides a concrete local OCR path without introducing a large always-resident OCR model;
+- OCR is capability-gated: the engine runs it only for likely typography/logo/mixed artwork and only when the executable is actually available;
+- confidence-filtered OCR output becomes versioned `TypographySpec` evidence with normalized line boxes and exact-text candidates;
+- OCR evidence remains data, never instructions; it can be supplied to provider analysis/QC but does not bypass typed validation or policy gates;
+- installed and user-local fonts are indexed by actual family/style metadata, with canonical same-family alias normalization and strict weight matching;
+- `<data-root>/font_aliases.json` can extend normalization without modifying engine source;
+- provider font hints can be normalized to an actually installed family, but unresolved/weight-mismatched fonts remain unresolved instead of silently substituting;
+- geometry adds a typed cubic-Bezier path representation; SVG retains exact control points while deterministic raster output uses a bounded sampled approximation;
+- deterministic path rendering rejects unsupported multi-subpath/structurally ambiguous geometry instead of pretending to recover it exactly;
+- mixed-art text cleanup adds explicit polygon replacement masks; every mask is constrained to a guarded expansion of its approved text bbox;
+- arbitrary illustration-aware inpainting is still delegated to a semantic/region-rescue provider rather than faked deterministically;
+- real `HarnessEngineRunner` executes the actual production engine against versioned Dataset Registry cases and then reuses the same scorecard/evaluator path;
+- benchmark recipes can override provider-recipe path and local-OCR policy, so local, GPT-gateway and other challenger recipes can be measured with the same dataset/tier;
+- Harness scorecards now record precision-path coverage (`local_ocr`, `typography_rebuilt`, `mixed_text_refined`, `geometry_vector`, masked-region use and provider-recipe use).
+
+Example real-engine benchmark:
+
+```powershell
+python -m pod_artwork_engine harness-engine-run historical-v1 --tier smoke --recipe config/benchmark-recipe.local.json --quality-mode print_ready --limit 8
+```
+
+`config/benchmark-recipe.remote.example.json` demonstrates a remote challenger whose provider recipe is resolved relative to the benchmark recipe. Provider URL/token remain local environment configuration. This intentionally separates benchmark recipe identity from secrets and from concrete provider credentials.
+
 Current truthfulness limits:
 
-- the local analyzer is still not a full OCR/VLM replacement;
-- exact typography redraw requires a sufficiently confident layout plus an actually matched font; the system must not silently substitute a visually different font;
-- mixed-art destructive replacement is intentionally limited to safe solid-background regions; complex illustration-aware inpainting/masks remain later work;
-- current logo geometry covers deterministic primitives but is not yet a general Bezier/SVG tracer;
-- border-color alpha extraction is a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
-- `REVIEW_REQUIRED` is expected when semantic reconstruction is required but no acceptable remote result exists;
-- concrete production GPT-6/provider mapping stays configurable until Harness evidence selects it.
+- local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
+- Tesseract provides text/location evidence but not trusted visual font identification;
+- exact typography redraw still requires sufficiently confident layout plus an actually matched installed/local font;
+- font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
+- polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
+- Bezier support currently allows one guarded subpath per primitive; compound paths/holes/general SVG tracing remain later work;
+- border-color alpha extraction remains a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
+- `REVIEW_REQUIRED` remains expected when semantic reconstruction is needed but no acceptable provider/local result exists;
+- concrete GPT/provider model aliases remain configurable until Golden Holdout evidence selects them.
 
 Remaining Phase 1 work:
 
-- concrete production OCR/font-identification backend and font-family normalization database;
-- Bezier/complex logo tracing and richer shape reconstruction;
-- mixed-art masks for non-solid or illustration-overlapping text regions;
-- provider recipe infrastructure is implemented; concrete GPT-6/provider aliases and fallback mappings still require Harness-backed selection;
-- run Smoke/Regression/Golden benchmarks against real historical pairs;
-- calibrate semantic/technical thresholds from those results rather than hand-tuning them.
+- choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
+- add visual font identification/ranking beyond provider hints and exact installed-family normalization;
+- add compound/multi-subpath Bezier topology and richer logo tracing;
+- add illustration-aware/inpainting masks for text overlapping non-solid art;
+- run Smoke → Regression → Golden against the user's real historical source/final pairs;
+- calibrate semantic/technical/router thresholds from those scorecards;
+- select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 
 Build:
 

@@ -263,6 +263,7 @@ class HarnessRunner:
                         success=False,
                         error="candidate file not found",
                         operational=entry.operational,
+                        precision=entry.precision,
                         cohorts=case.cohorts,
                     )
                 else:
@@ -298,6 +299,7 @@ class HarnessRunner:
                             semantic=semantic,
                             technical=technical,
                             operational=entry.operational,
+                            precision=entry.precision,
                             semantic_score=semantic_score,
                             technical_score=technical_score,
                             quality_score=quality_score,
@@ -313,6 +315,7 @@ class HarnessRunner:
                             success=False,
                             error=f"{type(exc).__name__}: {exc}",
                             operational=entry.operational,
+                            precision=entry.precision,
                             cohorts=case.cohorts,
                         )
 
@@ -379,6 +382,25 @@ def _metric_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
     }
 
 
+def _precision_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
+    successes = [result for result in results if result.success]
+    if not successes:
+        return {}
+
+    predicates = {
+        "local_ocr": lambda result: result.precision.local_ocr,
+        "typography_rebuilt": lambda result: result.precision.typography_rebuilt,
+        "mixed_text_refined": lambda result: result.precision.mixed_text_refined,
+        "geometry_vector": lambda result: result.precision.geometry_vector,
+        "masked_text_regions": lambda result: result.precision.masked_text_regions > 0,
+        "provider_recipe": lambda result: bool(result.precision.provider_recipe_id),
+    }
+    return {
+        name: sum(bool(predicate(result)) for result in successes) / len(successes)
+        for name, predicate in predicates.items()
+    }
+
+
 def build_scorecard(
     *,
     run_id: str,
@@ -433,6 +455,7 @@ def build_scorecard(
         retries=sum(result.operational.retries for result in results),
         total_cost_usd=sum(result.operational.cost_usd for result in results),
         metric_coverage=_metric_coverage(results),
+        precision_coverage=_precision_coverage(results),
         cohorts={
             cohort: _cohort_score(cohort, cohort_results)
             for cohort, cohort_results in sorted(cohorts.items())

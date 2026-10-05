@@ -81,6 +81,17 @@ class OperationalMetrics(StrictModel):
     manual_review: bool = False
 
 
+class PrecisionEvidence(StrictModel):
+    local_ocr: bool = False
+    ocr_backend: str = ""
+    typography_rebuilt: bool = False
+    mixed_text_refined: bool = False
+    geometry_vector: bool = False
+    masked_text_regions: int = Field(default=0, ge=0)
+    provider_recipe_id: str = ""
+    precision_ops: list[str] = Field(default_factory=list)
+
+
 class SemanticMetrics(StrictModel):
     exact_text: float | None = Field(default=None, ge=0, le=1)
     layout: float | None = Field(default=None, ge=0, le=1)
@@ -110,6 +121,7 @@ class BenchmarkCaseResult(StrictModel):
     semantic: SemanticMetrics = Field(default_factory=SemanticMetrics)
     technical: TechnicalMetrics = Field(default_factory=TechnicalMetrics)
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
+    precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
     semantic_score: float | None = Field(default=None, ge=0, le=1)
     technical_score: float | None = Field(default=None, ge=0, le=1)
     quality_score: float | None = Field(default=None, ge=0, le=1)
@@ -151,6 +163,7 @@ class BenchmarkScorecard(StrictModel):
     retries: int = Field(default=0, ge=0)
     total_cost_usd: float = Field(default=0, ge=0)
     metric_coverage: dict[str, float] = Field(default_factory=dict)
+    precision_coverage: dict[str, float] = Field(default_factory=dict)
     cohorts: dict[str, CohortScore] = Field(default_factory=dict)
     result_paths: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
@@ -182,6 +195,7 @@ class CandidateManifestEntry(StrictModel):
     recognized_text: list[str] = Field(default_factory=list)
     semantic_judge: SemanticJudgeResult | None = None
     operational: OperationalMetrics = Field(default_factory=OperationalMetrics)
+    precision: PrecisionEvidence = Field(default_factory=PrecisionEvidence)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -27,6 +27,7 @@ from .engine import Engine
 from .hardware import detect_hardware
 from .harness import HarnessStore
 from .harness_models import BenchmarkScorecard
+from .local_ocr import available as local_ocr_available
 from .settings import Settings
 from .updater import UpdateManager
 
@@ -86,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "harness_run_count": len(harness.list_scorecards()),
             "remote_provider_configured": engine.provider.available,
             "remote_provider_name": settings.remote_provider_name,
+            "local_ocr_enabled": settings.local_ocr_enabled,
+            "local_ocr_available": local_ocr_available(settings),
         }
 
     @app.get("/datasets", response_model=list[DatasetRecord])

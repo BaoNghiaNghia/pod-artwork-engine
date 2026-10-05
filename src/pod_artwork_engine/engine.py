@@ -28,6 +28,8 @@ from .contracts import (
 from .exporter import export_master
 from .geometry import GeometryRenderUnavailable, geometry_to_svg, render_geometry_master
 from .job_store import JobStore
+from .font_catalog import get_font_catalog
+from .local_ocr import LocalOCRUnavailable, analyze_artwork_text, available as local_ocr_available
 from .logging_config import log_event
 from .preflight import inspect_image, sha256_file
 from .providers import (
@@ -208,10 +210,84 @@ class Engine:
         started = time.perf_counter()
         local_spec = analyze_locally(source_paths, preflights)
         provider_result: ProviderResult | None = None
+
+        should_run_local_ocr = (
+            local_spec.artwork_bbox is not None
+            and local_ocr_available(self.settings)
+            and (
+                local_spec.artwork_type
+                in {ArtworkType.TYPOGRAPHY, ArtworkType.LOGO, ArtworkType.MIXED}
+                or "need_exact_text" in local_spec.required_capabilities
+            )
+        )
+        if should_run_local_ocr:
+            primary_index = max(
+                range(len(preflights)),
+                key=lambda index: (
+                    preflights[index].artwork_confidence,
+                    preflights[index].source_quality,
+                    preflights[index].width * preflights[index].height,
+                ),
+            )
+            try:
+                ocr_result = analyze_artwork_text(
+                    source_paths[primary_index],
+                    local_spec.artwork_bbox,
+                    self.settings,
+                )
+                if (
+                    ocr_result.exact_text
+                    and ocr_result.typography.line_order_confidence >= 0.75
+                ):
+                    local_spec.exact_text = list(ocr_result.exact_text)
+                    local_spec.typography = ocr_result.typography
+                    if "need_exact_text" not in local_spec.required_capabilities:
+                        local_spec.required_capabilities.append("need_exact_text")
+                    self.checkpoints.write(
+                        job.job_id,
+                        "local_ocr",
+                        {
+                            "backend": ocr_result.backend,
+                            "backend_version": ocr_result.backend_version,
+                            "exact_text": ocr_result.exact_text,
+                            "typography": ocr_result.typography.model_dump(mode="json"),
+                        },
+                    )
+                    self._log_stage(
+                        job,
+                        "local_ocr_completed",
+                        stage="analyzing",
+                    )
+            except LocalOCRUnavailable as exc:
+                self._log_stage(
+                    job,
+                    "local_ocr_unavailable",
+                    stage="analyzing",
+                    failure_reason=str(exc),
+                )
+
+        local_ocr_text = list(local_spec.exact_text)
+        local_ocr_typography = (
+            local_spec.typography
+            if local_spec.typography is not None
+            and local_spec.typography.evidence_provider == "tesseract"
+            else None
+        )
+
+        typography_needs_identification = (
+            "need_exact_text" in local_spec.required_capabilities
+            and (
+                not local_spec.exact_text
+                or local_spec.typography is None
+                or not local_spec.typography.lines
+                or local_spec.typography.font_match_confidence < 0.70
+                or any(not line.font_family for line in local_spec.typography.lines)
+            )
+        )
         needs_remote_analysis = self.provider.available and (
             job.quality_mode is QualityMode.QUICK_2D
             or "need_semantic_reconstruction" in local_spec.required_capabilities
-            or "need_exact_text" in local_spec.required_capabilities
+            or typography_needs_identification
             or local_spec.confidence < 0.55
             or job.quality_mode is QualityMode.MAX_FIDELITY
         )
@@ -230,6 +306,42 @@ class Engine:
                 )
                 if provider_result.design_spec is not None:
                     local_spec = provider_result.design_spec
+                    if not local_spec.exact_text and local_ocr_text:
+                        local_spec.exact_text = list(local_ocr_text)
+                    if (
+                        (local_spec.typography is None or not local_spec.typography.lines)
+                        and local_ocr_typography is not None
+                    ):
+                        local_spec.typography = local_ocr_typography
+                if (
+                    local_spec.typography is not None
+                    and local_spec.typography.lines
+                    and any(line.font_family for line in local_spec.typography.lines)
+                ):
+                    catalog = get_font_catalog(self.settings)
+                    normalized_lines = [
+                        line.model_copy(
+                            update={
+                                "font_family": catalog.normalize_known_family(
+                                    line.font_family
+                                )
+                                if line.font_family
+                                else ""
+                            }
+                        )
+                        for line in local_spec.typography.lines
+                    ]
+                    local_spec.typography = local_spec.typography.model_copy(
+                        update={"lines": normalized_lines}
+                    )
+                self.checkpoints.write(
+                    job.job_id,
+                    "analysis_provider",
+                    {
+                        "provider": provider_result.provider,
+                        "model_version": provider_result.model_version,
+                    },
+                )
                 if provider_result.recognized_text and not local_spec.exact_text:
                     local_spec.exact_text = list(provider_result.recognized_text)
                 if (
@@ -327,6 +439,16 @@ class Engine:
         provider_result: ProviderResult | None = None
         used_remote = False
         recognized_text: list[str] = []
+        precision_ops: list[str] = []
+        if (
+            design_spec.typography is not None
+            and design_spec.typography.lines
+            and design_spec.typography.line_order_confidence >= 0.75
+            and design_spec.exact_text
+        ):
+            evidence_text = [line.text for line in design_spec.typography.lines]
+            if evidence_text == design_spec.exact_text:
+                recognized_text = list(evidence_text)
         temp_dir = self._job_dir(job.job_id) / "temp"
 
         deterministic_typography = (
@@ -371,6 +493,7 @@ class Engine:
                     source_path=source_paths[0],
                 )
                 deterministic_complete = True
+                precision_ops.append("deterministic_geometry")
                 self._log_stage(
                     job,
                     "deterministic_geometry_rendered",
@@ -403,6 +526,7 @@ class Engine:
                     line.text for line in design_spec.typography.lines
                 ]
                 deterministic_complete = True
+                precision_ops.append("deterministic_typography")
                 self._log_stage(
                     job,
                     "deterministic_typography_rendered",
@@ -446,6 +570,7 @@ class Engine:
                         source_path=source_paths[0],
                     )
                     used_remote = True
+                    precision_ops.append("remote_reconstruction")
                     recognized_text = list(provider_result.recognized_text)
                 else:
                     raise ProviderProtocolError("provider returned no reconstruction image")
@@ -463,6 +588,7 @@ class Engine:
                     design_spec,
                     temp_dir / "candidate.png",
                 )
+                precision_ops.append("local_baseline")
         elif not deterministic_complete:
             candidate = reconstruct_local_baseline(
                 source_paths,
@@ -470,6 +596,7 @@ class Engine:
                 design_spec,
                 temp_dir / "candidate.png",
             )
+            precision_ops.append("local_baseline")
 
         if (
             design_spec.artwork_type is ArtworkType.MIXED
@@ -495,6 +622,7 @@ class Engine:
                     for text_value in replaced_text:
                         if text_value not in recognized_text:
                             recognized_text.append(text_value)
+                precision_ops.append("mixed_typography")
                 self._log_stage(
                     job,
                     "mixed_typography_refined",
@@ -524,6 +652,7 @@ class Engine:
                 "provider": provider_result.provider if provider_result else None,
                 "model_version": provider_result.model_version if provider_result else None,
                 "recognized_text": recognized_text,
+                "precision_ops": sorted(set(precision_ops)),
             },
         )
         self._log_stage(

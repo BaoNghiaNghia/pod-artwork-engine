@@ -1,0 +1,34 @@
+{
+  "recipe_id": "remote-balanced-v1",
+  "version": "1",
+  "description": "Provider-gateway challenger using capability aliases; concrete models stay outside the engine.",
+  "stages": [
+    {
+      "name": "analysis",
+      "implementation": "provider-gateway",
+      "version": "1"
+    },
+    {
+      "name": "reconstruction",
+      "implementation": "hybrid-provider-plus-deterministic",
+      "version": "phase1d"
+    },
+    {
+      "name": "judge",
+      "implementation": "provider-gateway",
+      "version": "1"
+    }
+  ],
+  "router_version": "phase1d",
+  "provider_mapping": {
+    "analyze": "vision_reasoning",
+    "reconstruct": "image_reconstruction",
+    "judge": "vision_judge"
+  },
+  "qc_policy_version": "phase1d",
+  "metadata": {
+    "provider_recipe_path": "provider-recipe.example.json",
+    "local_ocr_enabled": true,
+    "tesseract_language": "eng"
+  }
+}

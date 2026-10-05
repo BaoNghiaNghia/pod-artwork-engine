@@ -180,13 +180,50 @@ Implemented:
 - geometry SVG is recorded in the final artifact manifest;
 - geometry/text reconstruction refuses low-confidence primitives or missing evidence rather than guessing.
 
+### Phase 1D — Local Text/Bezier + Real Engine Harness
+
+Implemented:
+
+- optional local Tesseract OCR adapter with confidence-filtered line ordering and normalized text boxes;
+- OCR runs only when the source looks text/logo/mixed and the local executable is actually available, so machines without Tesseract do not pay OCR runtime cost;
+- local OCR evidence is typed as `TypographySpec`, recorded in checkpoints and reused by QC/provider analysis;
+- installed/local font catalog reads real family/style metadata through Pillow instead of relying only on filenames;
+- canonical font-name aliases plus `<data-root>/font_aliases.json` override support;
+- strict font-weight matching: a regular font is never silently used when the requested evidence says bold;
+- cubic Bezier `path` geometry with deterministic raster approximation and exact SVG path retention;
+- SVG colors are normalized/validated before writing so untrusted provider strings cannot be injected into vector markup;
+- mixed-art text replacement supports explicit polygon masks, with a guard that refuses masks extending outside the approved text region;
+- real `HarnessEngineRunner` executes the production engine against Dataset Registry cases instead of requiring pre-generated candidate manifests;
+- benchmark recipes can select a provider-recipe file and local-OCR policy through typed metadata;
+- scorecards report precision-path coverage such as local OCR, deterministic typography, mixed text refinement and geometry-vector use.
+
+Run the real production engine through the Harness:
+
+```powershell
+python -m pod_artwork_engine harness-engine-run historical-v1 --tier smoke --recipe config/benchmark-recipe.local.json --quality-mode print_ready --limit 8
+```
+
+For a remote/GPT/JEV-gateway challenger, use `config/benchmark-recipe.remote.example.json`. Its `provider_recipe_path` is resolved relative to the benchmark recipe, while provider URL/token stay in local environment settings. This keeps concrete model names outside core engine code and lets Smoke/Regression/Golden evidence choose the mapping.
+
+Local OCR configuration:
+
+```text
+POD_LOCAL_OCR_ENABLED=1
+POD_TESSERACT_PATH=
+POD_TESSERACT_LANGUAGE=eng
+```
+
+Tesseract is currently auto-detected or explicitly configured; it is **not yet bundled into the installer**. This is a concrete local OCR adapter/fallback foundation, not yet the final zero-dependency OCR packaging decision.
+
 Still pending in Phase 1:
 
-- a concrete production OCR/font-identification backend and font-family normalization database;
-- more logo primitives/Bezier paths and complex shape tracing;
-- mixed-art masks beyond safe solid-background text regions;
-- provider recipe infrastructure is implemented; concrete GPT-6/provider aliases and benchmark-selected model mappings remain deployment/benchmark configuration;
-- real historical Smoke/Regression/Golden benchmark runs and threshold calibration.
+- choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on the Golden Holdout;
+- visual font identification beyond provider hints plus exact installed-family normalization;
+- multi-subpath/compound Bezier tracing and more complex logo topology;
+- illustration-aware/inpainting masks for text that overlaps non-solid artwork;
+- run the real historical Smoke → Regression → Golden benchmark sequence;
+- calibrate QC/router thresholds from those scorecards;
+- select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.
 

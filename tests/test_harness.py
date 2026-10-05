@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from pod_artwork_engine.contracts import SemanticJudgeResult
+from pod_artwork_engine.contracts import QualityMode, SemanticJudgeResult
 from pod_artwork_engine.dataset_registry import DatasetRegistry
 from pod_artwork_engine.harness import (
     HarnessCaseFactory,
@@ -12,6 +12,7 @@ from pod_artwork_engine.harness import (
     HarnessStore,
     compare_scorecards,
 )
+from pod_artwork_engine.harness_engine import HarnessEngineRunner
 from pod_artwork_engine.harness_metrics import aggregate_metric_scores, evaluate_images
 from pod_artwork_engine.harness_models import (
     BenchmarkRecipe,
@@ -22,9 +23,11 @@ from pod_artwork_engine.harness_models import (
     CohortScore,
     HarnessRunStatus,
     OperationalMetrics,
+    PrecisionEvidence,
     PromotionPolicy,
     RecipeStage,
 )
+from pod_artwork_engine.settings import Settings
 
 
 def _art(path: Path, color: tuple[int, int, int], offset: int = 0) -> Path:
@@ -143,6 +146,12 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
                     provider_calls=1,
                     cost_usd=0.01,
                 ),
+                precision=PrecisionEvidence(
+                    local_ocr=True,
+                    ocr_backend="fixture-ocr",
+                    geometry_vector=True,
+                    precision_ops=["deterministic_geometry"],
+                ),
             )
             for case in cases
         }
@@ -174,6 +183,8 @@ def test_runner_writes_scorecard_results_and_visual_diff(tmp_path: Path) -> None
     assert scorecard.latency_p50_ms == 1200
     assert scorecard.provider_calls == len(cases)
     assert scorecard.metric_coverage["semantic.object_fidelity"] == 1.0
+    assert scorecard.precision_coverage["local_ocr"] == 1.0
+    assert scorecard.precision_coverage["geometry_vector"] == 1.0
     assert scorecard.result_paths
     assert all(Path(path).is_file() for path in scorecard.result_paths)
     assert store.get_scorecard(scorecard.run_id) is not None
@@ -296,3 +307,65 @@ def test_promotion_gate_requires_golden_by_default() -> None:
         challenger,
         PromotionPolicy(require_golden=False),
     ).eligible
+
+
+def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
+    registry, dataset_id = _seed_dataset(tmp_path, count=10)
+    settings = Settings(
+        data_root=tmp_path / "runtime",
+        local_ocr_enabled=False,
+    )
+    store = HarnessStore(settings.harness_dir)
+    recipe = BenchmarkRecipe(
+        recipe_id="real-engine-local",
+        version="1",
+        stages=[
+            RecipeStage(
+                name="reconstruction",
+                implementation="production-engine",
+                version="phase1d",
+            )
+        ],
+    )
+
+    scorecard = HarnessEngineRunner(settings, registry, store).run(
+        dataset_id,
+        BenchmarkTier.SMOKE,
+        recipe,
+        quality_mode=QualityMode.QUICK_2D,
+        limit=1,
+    )
+
+    assert scorecard.case_count == 1
+    assert scorecard.success_count == 1
+    assert scorecard.status is HarnessRunStatus.COMPLETE
+    assert scorecard.latency_p50_ms > 0
+    assert scorecard.precision_coverage
+
+
+def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:
+    registry, _ = _seed_dataset(tmp_path, count=10)
+    settings = Settings(data_root=tmp_path / "runtime")
+    runner = HarnessEngineRunner(
+        settings,
+        registry,
+        HarnessStore(settings.harness_dir),
+    )
+    recipe = BenchmarkRecipe(
+        recipe_id="challenger",
+        version="1",
+        metadata={
+            "provider_recipe_path": "provider.json",
+            "local_ocr_enabled": False,
+            "tesseract_language": "vie+eng",
+        },
+    )
+
+    effective = runner._settings_for_recipe(recipe, tmp_path / "recipes")
+
+    assert effective.provider_recipe_path == (
+        tmp_path / "recipes" / "provider.json"
+    ).resolve()
+    assert effective.local_ocr_enabled is False
+    assert effective.tesseract_language == "vie+eng"
+    assert effective.remote_provider_token == settings.remote_provider_token

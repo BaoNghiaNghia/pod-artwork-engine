@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
-import re
 from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from .contracts import RegionReplacementMode, TypographyLine, TypographySpec
+from .font_catalog import get_font_catalog
 from .settings import Settings
 
 
@@ -14,52 +13,9 @@ class TypographyRenderUnavailable(RuntimeError):
     pass
 
 
-def _normalize_font_name(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.casefold())
-
-
-def _font_candidates(settings: Settings) -> list[Path]:
-    roots = [settings.fonts_dir]
-    if os.name == "nt":
-        windows = Path(os.environ.get("WINDIR", r"C:\Windows"))
-        roots.append(windows / "Fonts")
-
-    candidates: list[Path] = []
-    for root in roots:
-        if not root.exists():
-            continue
-        for pattern in ("*.ttf", "*.otf", "*.ttc"):
-            candidates.extend(root.glob(pattern))
-    return sorted(set(path.resolve() for path in candidates))
-
-
 def resolve_font(settings: Settings, family: str, weight: int = 400) -> Path | None:
-    wanted = _normalize_font_name(family)
-    if not wanted:
-        return None
-
-    weighted_terms: list[str] = []
-    if weight >= 700:
-        weighted_terms = ["bold", "bd", "semibold", "demi"]
-    elif weight <= 300:
-        weighted_terms = ["light", "thin", "lt"]
-
-    ranked: list[tuple[int, int, int, str, Path]] = []
-    for path in _font_candidates(settings):
-        stem = _normalize_font_name(path.stem)
-        if wanted not in stem and stem not in wanted:
-            continue
-        exact = 0 if stem == wanted else 1
-        weight_penalty = 0
-        if weighted_terms and not any(term in stem for term in weighted_terms):
-            weight_penalty = 1
-        containment_penalty = abs(len(stem) - len(wanted))
-        ranked.append((exact, weight_penalty, containment_penalty, str(path), path))
-
-    if not ranked:
-        return None
-    ranked.sort(key=lambda item: item[:4])
-    return ranked[0][4]
+    entry = get_font_catalog(settings).resolve(family, weight)
+    return entry.path if entry is not None else None
 
 
 def _parse_color(value: str) -> tuple[int, int, int, int]:
@@ -208,28 +164,60 @@ def apply_typography(
     processed: list[str] = []
 
     for line in spec.lines:
-        if safe_replacements_only:
-            if line.replacement_mode is not RegionReplacementMode.REPLACE_SOLID:
-                continue
-            if not line.replacement_fill:
-                raise TypographyRenderUnavailable(
-                    f"safe replacement fill missing for line: {line.text}"
-                )
-            left, top, right, bottom = _line_box_pixels(line, result)
-            ImageDraw.Draw(result).rectangle(
-                (left, top, right, bottom),
-                fill=_parse_color(line.replacement_fill),
-            )
-        elif line.replacement_mode is RegionReplacementMode.REPLACE_SOLID:
+        replacement_mode = line.replacement_mode
+        if safe_replacements_only and replacement_mode not in {
+            RegionReplacementMode.REPLACE_SOLID,
+            RegionReplacementMode.REPLACE_MASK,
+        }:
+            continue
+
+        if replacement_mode in {
+            RegionReplacementMode.REPLACE_SOLID,
+            RegionReplacementMode.REPLACE_MASK,
+        }:
             if not line.replacement_fill:
                 raise TypographyRenderUnavailable(
                     f"replacement fill missing for line: {line.text}"
                 )
-            left, top, right, bottom = _line_box_pixels(line, result)
-            ImageDraw.Draw(result).rectangle(
-                (left, top, right, bottom),
-                fill=_parse_color(line.replacement_fill),
-            )
+            draw = ImageDraw.Draw(result)
+            if replacement_mode is RegionReplacementMode.REPLACE_SOLID:
+                left, top, right, bottom = _line_box_pixels(line, result)
+                draw.rectangle(
+                    (left, top, right, bottom),
+                    fill=_parse_color(line.replacement_fill),
+                )
+            else:
+                if len(line.replacement_mask) < 3:
+                    raise TypographyRenderUnavailable(
+                        f"replacement mask requires at least 3 points: {line.text}"
+                    )
+                pad_x = max(0.01, line.bbox.width * 0.08)
+                pad_y = max(0.015, line.bbox.height * 0.20)
+                min_x = max(0.0, line.bbox.x - pad_x)
+                min_y = max(0.0, line.bbox.y - pad_y)
+                max_x = min(1.0, line.bbox.x + line.bbox.width + pad_x)
+                max_y = min(1.0, line.bbox.y + line.bbox.height + pad_y)
+                if any(
+                    point.x < min_x
+                    or point.x > max_x
+                    or point.y < min_y
+                    or point.y > max_y
+                    for point in line.replacement_mask
+                ):
+                    raise TypographyRenderUnavailable(
+                        f"replacement mask exceeds guarded text region: {line.text}"
+                    )
+                mask_points = [
+                    (
+                        max(0, min(result.width - 1, round(point.x * result.width))),
+                        max(0, min(result.height - 1, round(point.y * result.height))),
+                    )
+                    for point in line.replacement_mask
+                ]
+                draw.polygon(
+                    mask_points,
+                    fill=_parse_color(line.replacement_fill),
+                )
 
         _draw_line(result, line, settings)
         processed.append(line.text)

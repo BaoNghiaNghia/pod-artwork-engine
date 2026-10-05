@@ -49,7 +49,7 @@ class RemoteProvider:
     def available(self) -> bool:
         return bool(self.settings.remote_provider_url.strip())
 
-    def _recipe(self) -> ProviderRecipe:
+    def recipe(self) -> ProviderRecipe:
         path = self.settings.provider_recipe_path
         if path is None:
             return ProviderRecipe(provider_name=self.settings.remote_provider_name)
@@ -65,7 +65,7 @@ class RemoteProvider:
             raise ProviderProtocolError(f"invalid provider recipe: {exc}") from exc
 
     def _action_recipe(self, request: ProviderRequest) -> tuple[ProviderRecipe, ProviderActionRecipe]:
-        recipe = self._recipe()
+        recipe = self.recipe()
         action_recipe = recipe.for_action(request.action)
         if action_recipe is None:
             action_recipe = ProviderActionRecipe(action=request.action)
