@@ -1755,9 +1755,28 @@ Phase 2K Golden SR experiment orchestration and policy proposal:
 
 This phase turns the previous manual benchmark assembly into one reproducible experiment, but it still produces a proposal—not a deployed production SR policy.
 
+Phase 2L geometric multi-reference alignment / dewarp foundation:
+
+- `ReferenceAlignmentEvidence` is emitted per reference after global fusion and records one of `identity`, `affine_candidate`, `homography_candidate`, `semantic_required` or `manual_review`;
+- the primary reference receives an identity transform only when its artwork bbox exists; missing primary localization fails closed to manual review;
+- globally consistent secondary references with trusted artwork localization and compatible artwork aspect receive a deterministic bbox scale/translate affine candidate in normalized coordinates;
+- source/target bbox corners are recorded as normalized quadrilaterals, and the deterministic affine candidate stores a stable 3×3 matrix;
+- the bbox transform is explicitly tagged `bbox_correspondence_only`; it is not treated as measured feature registration and therefore does not claim a reprojection error;
+- moderate perspective/aspect drift produces `homography_candidate` with no transform matrix and missing capabilities `need_feature_correspondence` / `need_homography_benchmark`;
+- high perspective, occlusion or severe aspect incompatibility produces `semantic_required` rather than a guessed warp;
+- ambiguous/conflicting references, missing bboxes and low artwork-localization confidence are excluded and fail closed to manual review;
+- aggregate evidence records aligned/excluded indices, affine/homography/semantic/manual counts, mean geometry confidence and fail-closed state;
+- the production preflight checkpoint `reference_alignment` is persisted after `reference_fusion`, included in `ArtifactManifest.precision_evidence`, and mapped into Harness `PrecisionEvidence`;
+- Harness scorecards expose `reference_alignment` precision coverage plus aligned/affine/homography/semantic/manual counts and mean confidence;
+- API/status diagnostics expose `geometric_reference_alignment_v1`;
+- Phase 2L deliberately does not feed the candidate matrix into Pillow warping, region-confidence sampling, rescue execution or reconstruction output; there is no new precision op;
+- no OpenCV, feature-model weights or other storage-heavy dependency is introduced.
+
+Truthfulness boundary: the current affine candidate is bbox geometry, not image-feature registration. The homography lane is readiness evidence only. Real feature correspondences, reprojection-error measurement, dewarp execution and registration-aware region evidence must be benchmarked separately before any pixel-level use.
+
 Current truthfulness limits:
 
-- Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
+- Phase 2A remains global reference evidence fusion; Phase 2L adds conservative bbox-based alignment readiness, not measured feature registration, dewarp execution or region-level compositing;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1800,11 +1819,12 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2K foundation is implemented:
+Phase 2A–2L foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
 - conflict/ambiguity provenance and semantic-disambiguation routing;
+- conservative normalized bbox-based affine alignment candidates plus fail-closed homography/semantic/manual readiness evidence;
 - coarse normalized 4×4 region confidence/evidence maps;
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
@@ -1816,11 +1836,11 @@ Phase 2A–2K foundation is implemented:
 - concrete benchmark-only local-command and remote-provider SR adapter materialization with fail-closed validation and provenance;
 - fair pre-SR cohort materialization with target-leakage rejection and per-case cohort/source-hash identity;
 - Golden Holdout SR experiment orchestration that chains cohort, configured adapters, matrix scoring and an evidence-only human-review policy proposal;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, fair SR cohort generation, SR candidate materialization, SR challenger comparison and SR policy evidence gates.
+- Harness coverage for global multi-reference consensus, reference-alignment readiness, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, fair SR cohort generation, SR candidate materialization, SR challenger comparison and SR policy evidence gates.
 
 Remaining Phase 2 work:
 
-- true geometric multi-reference alignment/dewarp and region-level registration;
+- benchmarked feature correspondence, measured homography/dewarp execution and registration-aware region-level sampling/compositing;
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;

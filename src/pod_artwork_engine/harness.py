@@ -480,6 +480,7 @@ def _precision_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
 
     predicates = {
         "multi_reference_fusion": lambda result: result.precision.multi_reference_fusion,
+        "reference_alignment": lambda result: result.precision.reference_alignment,
         "region_confidence_map": lambda result: result.precision.region_confidence_map,
         "region_rescue_plan": lambda result: result.precision.region_rescue_plan,
         "representation_plan": lambda result: result.precision.representation_plan,

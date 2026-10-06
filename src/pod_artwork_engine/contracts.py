@@ -87,6 +87,14 @@ class ReferenceEvidenceStatus(StrEnum):
     CONFLICTING = "conflicting"
 
 
+class ReferenceAlignmentDisposition(StrEnum):
+    IDENTITY = "identity"
+    AFFINE_CANDIDATE = "affine_candidate"
+    HOMOGRAPHY_CANDIDATE = "homography_candidate"
+    SEMANTIC_REQUIRED = "semantic_required"
+    MANUAL_REVIEW = "manual_review"
+
+
 class RegionRescueDisposition(StrEnum):
     NONE = "none"
     SEMANTIC_PROVIDER_CANDIDATE = "semantic_provider_candidate"
@@ -271,6 +279,51 @@ class MultiReferenceFusionEvidence(StrictModel):
     ambiguous_indices: list[int] = Field(default_factory=list)
     conflicting_indices: list[int] = Field(default_factory=list)
     references: list[ReferenceEvidence] = Field(default_factory=list)
+
+
+class ReferenceAlignmentEvidence(StrictModel):
+    index: int = Field(ge=0)
+    disposition: ReferenceAlignmentDisposition
+    source_bbox: BoundingBox | None = None
+    target_bbox: BoundingBox | None = None
+    source_quad: list[NormalizedPoint] = Field(
+        default_factory=list,
+        max_length=4,
+    )
+    target_quad: list[NormalizedPoint] = Field(
+        default_factory=list,
+        max_length=4,
+    )
+    transform_matrix: list[float] = Field(
+        default_factory=list,
+        max_length=9,
+    )
+    geometry_confidence: float = Field(default=0, ge=0, le=1)
+    aspect_compatibility: float = Field(default=0, ge=0, le=1)
+    perspective_severity: float = Field(default=0, ge=0, le=1)
+    occlusion: float = Field(default=0, ge=0, le=1)
+    reprojection_error: float | None = Field(default=None, ge=0)
+    fail_closed: bool = False
+    execution_enabled: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class MultiReferenceAlignmentEvidence(StrictModel):
+    method: str = "geometric_reference_alignment_v1"
+    reference_count: int = Field(ge=1)
+    primary_index: int = Field(ge=0)
+    mean_geometry_confidence: float = Field(default=0, ge=0, le=1)
+    aligned_indices: list[int] = Field(default_factory=list)
+    excluded_indices: list[int] = Field(default_factory=list)
+    affine_candidate_count: int = Field(default=0, ge=0)
+    homography_candidate_count: int = Field(default=0, ge=0)
+    semantic_required_count: int = Field(default=0, ge=0)
+    manual_review_count: int = Field(default=0, ge=0)
+    fail_closed: bool = False
+    execution_enabled: bool = False
+    references: list[ReferenceAlignmentEvidence] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class RegionEvidenceCell(StrictModel):

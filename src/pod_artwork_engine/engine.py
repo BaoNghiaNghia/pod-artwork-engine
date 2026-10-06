@@ -19,6 +19,7 @@ from .contracts import (
     JobRecord,
     JobState,
     MaterialSeparationEvidence,
+    MultiReferenceAlignmentEvidence,
     MultiReferenceFusionEvidence,
     PreflightResult,
     ProviderAction,
@@ -60,6 +61,7 @@ from .providers import (
 from .qc import semantic_qc, technical_qc
 from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
+from .reference_alignment import build_reference_alignment
 from .region_evidence import build_region_confidence_map
 from .region_rescue import build_region_rescue_plan
 from .representation_plan import build_representation_plan
@@ -279,6 +281,35 @@ class Engine:
         )
         return fusion
 
+    def _reference_alignment(
+        self,
+        job: JobRecord,
+        preflights: list[PreflightResult],
+        fusion: MultiReferenceFusionEvidence,
+    ) -> MultiReferenceAlignmentEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "reference_alignment")
+        if isinstance(checkpoint, dict):
+            return MultiReferenceAlignmentEvidence.model_validate(checkpoint)
+
+        evidence = build_reference_alignment(preflights, fusion)
+        self.checkpoints.write(
+            job.job_id,
+            "reference_alignment",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "reference_alignment_completed",
+            stage="preflight",
+            quality_score=evidence.mean_geometry_confidence,
+            failure_reason=(
+                ", ".join(evidence.reason_codes)
+                if evidence.fail_closed
+                else None
+            ),
+        )
+        return evidence
+
     def _region_confidence_map(
         self,
         job: JobRecord,
@@ -379,6 +410,7 @@ class Engine:
                 source_paths,
                 preflights,
             )
+            self._reference_alignment(job, preflights, fusion)
             region_map = self._region_confidence_map(
                 job,
                 source_paths,
@@ -1290,6 +1322,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "reference_fusion")
                     or {}
                 ),
+                "reference_alignment": (
+                    self.checkpoints.payload(job.job_id, "reference_alignment")
+                    or {}
+                ),
                 "region_confidence_map": (
                     self.checkpoints.payload(job.job_id, "region_confidence_map")
                     or {}
@@ -1359,6 +1395,7 @@ class Engine:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
             fusion = self._reference_fusion(job, source_paths, preflights)
+            self._reference_alignment(job, preflights, fusion)
             region_map = self._region_confidence_map(
                 job,
                 source_paths,

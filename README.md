@@ -616,6 +616,26 @@ python -m pod_artwork_engine harness-sr-experiment historical-v1 --pre-sr-candid
 
 If one SR backend is not configured, omit that adapter flag. The resulting proposal remains evidence-only and cannot activate SR in production.
 
+### Phase 2L — Geometric Multi-Reference Alignment / Dewarp Foundation
+
+Implemented:
+
+- typed `ReferenceAlignmentDisposition`, `ReferenceAlignmentEvidence` and `MultiReferenceAlignmentEvidence` contracts;
+- primary reference identity is represented explicitly in normalized coordinates when its artwork bbox is trustworthy;
+- globally consistent secondary references can become deterministic bbox-based `affine_candidate` entries with a 3×3 scale/translate matrix mapping the secondary normalized artwork bbox onto the primary bbox;
+- every candidate records normalized source/target quadrilaterals, geometry confidence, aspect compatibility, optional perspective/occlusion evidence, reason codes and missing capabilities;
+- affine matrices are deterministic and serialized with stable numeric precision, but `execution_enabled=false`: Phase 2L does not warp any production pixels;
+- bbox correspondence is not misreported as feature reprojection: `reprojection_error` remains unset until real point/feature correspondence exists;
+- moderate perspective/aspect shift becomes a fail-closed `homography_candidate` requiring feature correspondence + benchmark evidence rather than inventing a projective matrix;
+- severe perspective, occlusion or strong aspect incompatibility becomes `semantic_required`;
+- ambiguous/conflicting references, missing artwork localization or low-confidence localization become `manual_review` and are excluded from alignment support;
+- alignment evidence is persisted immediately after reference fusion in preflight, included in artifact manifests and exposed to Harness precision evidence/coverage;
+- API/diagnostics expose `geometric_reference_alignment_v1`;
+- the current 4×4 region-confidence implementation is intentionally unchanged; Phase 2L prepares the shared-coordinate evidence contract before registration-aware regional sampling is enabled;
+- no OpenCV/model dependency was added, and `Engine.run_job`, RouterPolicy, precision ops and production pixels remain unchanged.
+
+This phase is an alignment **planning/readiness** foundation. Full feature matching, homography estimation, dewarp execution and region-level compositing still require Golden Holdout calibration.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

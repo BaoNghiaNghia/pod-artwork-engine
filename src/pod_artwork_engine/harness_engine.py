@@ -143,6 +143,10 @@ class HarnessEngineRunner:
             job_id,
             "reference_fusion",
         )
+        reference_alignment = self.engine.checkpoints.payload(
+            job_id,
+            "reference_alignment",
+        )
         region_confidence = self.engine.checkpoints.payload(
             job_id,
             "region_confidence_map",
@@ -242,6 +246,42 @@ class HarnessEngineRunner:
                 float(reference_fusion.get("consensus_confidence") or 0)
                 if isinstance(reference_fusion, dict)
                 else 0
+            ),
+            reference_alignment=isinstance(reference_alignment, dict),
+            reference_alignment_aligned_count=(
+                len(reference_alignment.get("aligned_indices") or [])
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_affine_count=(
+                int(reference_alignment.get("affine_candidate_count") or 0)
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_homography_count=(
+                int(reference_alignment.get("homography_candidate_count") or 0)
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_semantic_count=(
+                int(reference_alignment.get("semantic_required_count") or 0)
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_manual_count=(
+                int(reference_alignment.get("manual_review_count") or 0)
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_mean_confidence=(
+                float(reference_alignment.get("mean_geometry_confidence") or 0)
+                if isinstance(reference_alignment, dict)
+                else 0
+            ),
+            reference_alignment_fail_closed=(
+                bool(reference_alignment.get("fail_closed"))
+                if isinstance(reference_alignment, dict)
+                else False
             ),
             region_confidence_map=isinstance(region_confidence, dict),
             region_grid_cells=(

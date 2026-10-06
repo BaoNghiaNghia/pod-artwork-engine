@@ -349,6 +349,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.status is HarnessRunStatus.COMPLETE
     assert scorecard.latency_p50_ms > 0
     assert scorecard.precision_coverage
+    assert scorecard.precision_coverage["reference_alignment"] == 1.0
     assert scorecard.precision_coverage["region_confidence_map"] == 1.0
     assert scorecard.precision_coverage["region_rescue_plan"] == 1.0
     assert scorecard.precision_coverage["representation_plan"] == 1.0
@@ -366,6 +367,11 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     result = store.get_results(scorecard.run_id)[0]
     assert result.runtime_qc.semantic_score is not None
     assert result.runtime_qc.technical_score is not None
+    assert result.precision.reference_alignment is True
+    assert result.precision.reference_alignment_aligned_count == 1
+    assert result.precision.reference_alignment_affine_count == 0
+    assert result.precision.reference_alignment_homography_count == 0
+    assert result.precision.reference_alignment_fail_closed is False
     assert result.precision.region_confidence_map is True
     assert result.precision.region_grid_cells == 16
     assert 0 <= result.precision.region_mean_confidence <= 1

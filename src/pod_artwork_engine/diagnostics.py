@@ -70,6 +70,7 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
                 settings.visual_font_match_max_candidates
             ),
             "reference_fusion_method": "deterministic_reference_fusion_v1",
+            "reference_alignment_method": "geometric_reference_alignment_v1",
             "region_confidence_method": "normalized_region_evidence_v1",
             "region_rescue_planner_method": "region_rescue_plan_v1",
             "representation_planner_method": "representation_plan_v1",

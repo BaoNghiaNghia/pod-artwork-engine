@@ -44,6 +44,7 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert "executable" not in status["local_ocr_backend"]
     assert status["visual_font_match_enabled"] is True
     assert status["reference_fusion_method"] == "deterministic_reference_fusion_v1"
+    assert status["reference_alignment_method"] == "geometric_reference_alignment_v1"
     assert status["region_confidence_method"] == "normalized_region_evidence_v1"
     assert status["region_rescue_planner_method"] == "region_rescue_plan_v1"
     assert status["representation_planner_method"] == "representation_plan_v1"

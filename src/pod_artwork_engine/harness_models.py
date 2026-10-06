@@ -104,6 +104,14 @@ class PrecisionEvidence(StrictModel):
     consistent_reference_count: int = Field(default=0, ge=0)
     conflicting_reference_count: int = Field(default=0, ge=0)
     reference_consensus_confidence: float = Field(default=0, ge=0, le=1)
+    reference_alignment: bool = False
+    reference_alignment_aligned_count: int = Field(default=0, ge=0)
+    reference_alignment_affine_count: int = Field(default=0, ge=0)
+    reference_alignment_homography_count: int = Field(default=0, ge=0)
+    reference_alignment_semantic_count: int = Field(default=0, ge=0)
+    reference_alignment_manual_count: int = Field(default=0, ge=0)
+    reference_alignment_mean_confidence: float = Field(default=0, ge=0, le=1)
+    reference_alignment_fail_closed: bool = False
     region_confidence_map: bool = False
     region_grid_cells: int = Field(default=0, ge=0)
     region_mean_confidence: float = Field(default=0, ge=0, le=1)

@@ -1,22 +1,22 @@
 {
-  "recipe_id": "remote-balanced-v16",
-  "version": "16",
-  "description": "Provider-gateway challenger with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v17",
+  "version": "17",
+  "description": "Provider-gateway challenger with deterministic multi-reference fusion, geometric reference-alignment/dewarp readiness evidence, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-region-rescue-representation-material-texture-sr-readiness-plus-provider-analysis",
-      "version": "phase2k"
+      "implementation": "multi-reference-alignment-region-rescue-representation-material-texture-sr-readiness-plus-provider-analysis",
+      "version": "phase2l"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase2k"
+      "version": "phase2l"
     },
     {
       "name": "judge",
       "implementation": "provider-gateway-plus-golden-sr-experiment-policy",
-      "version": "phase2k"
+      "version": "phase2l"
     }
   ],
   "router_version": "phase2a",
