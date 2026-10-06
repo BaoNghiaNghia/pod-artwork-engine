@@ -1584,6 +1584,21 @@ Phase 2B coarse region confidence evidence map:
 - region-evidence computation is failure-isolated: missing/unsafe crop evidence produces a zero-confidence unavailable record instead of failing reconstruction;
 - Phase 2B does not yet alter pixels, auto-repair regions or claim geometric alignment; it establishes a bounded evidence layer for later region rescue/QC policy.
 
+Phase 2C fail-closed region rescue planning:
+
+- every job derives a typed `RegionRescuePlanEvidence` from the Phase 2B region map;
+- only low-confidence/disagreement/no-consensus cells are eligible rescue targets;
+- horizontal low-confidence runs merge vertically only when the column span is identical, so every merged bbox is an exact rectangle fully backed by low-confidence cells;
+- irregular target shapes remain split instead of expanding across a supported/good cell;
+- dispositions are `none`, `semantic_provider_candidate` and `manual_review`;
+- unavailable regional evidence and global multi-reference conflicts force `manual_review` with `fail_closed=true`;
+- low-confidence target regions become semantic-provider candidates only when the provider is available; planner output alone never authorizes reconstruction;
+- without a provider, the same bounded targets remain available to review but the planner fails closed;
+- each target retains normalized bbox, exact grid cells, mean/maximum confidence, reason codes and required capabilities;
+- the planner checkpoint is copied into ArtifactManifest precision evidence and Harness reports planner coverage, disposition, target counts and fail-closed status;
+- Phase 2C does not call the provider, enter `REGION_RESCUE`, retry work, or mutate candidate/final pixels;
+- the planner adds only compact JSON metadata and therefore does not materially change the 40 GB storage envelope.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1627,14 +1642,15 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2B foundation is implemented:
+Phase 2A–2C foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
 - conflict/ambiguity provenance and semantic-disambiguation routing;
 - coarse normalized 4×4 region confidence/evidence maps;
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
-- Harness coverage for global multi-reference consensus and regional confidence.
+- fail-closed bounded region-rescue planning without pixel mutation;
+- Harness coverage for global multi-reference consensus, regional confidence and rescue-plan decisions.
 
 Remaining Phase 2 work:
 
@@ -1643,7 +1659,7 @@ Remaining Phase 2 work:
 - vector/raster split;
 - difficult texture handling;
 - SR comparison;
-- policy-driven use of region confidence for targeted rescue.
+- Golden Holdout calibration before enabling targeted rescue execution.
 
 ### Phase 3 — Reliability
 

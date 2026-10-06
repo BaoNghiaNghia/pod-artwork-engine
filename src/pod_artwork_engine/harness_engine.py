@@ -147,6 +147,10 @@ class HarnessEngineRunner:
             job_id,
             "region_confidence_map",
         )
+        region_rescue_plan = self.engine.checkpoints.payload(
+            job_id,
+            "region_rescue_plan",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -243,6 +247,27 @@ class HarnessEngineRunner:
                 int(region_confidence.get("low_confidence_cells") or 0)
                 if isinstance(region_confidence, dict)
                 else 0
+            ),
+            region_rescue_plan=isinstance(region_rescue_plan, dict),
+            region_rescue_disposition=(
+                str(region_rescue_plan.get("disposition") or "")
+                if isinstance(region_rescue_plan, dict)
+                else ""
+            ),
+            region_rescue_target_count=(
+                len(region_rescue_plan.get("targets") or [])
+                if isinstance(region_rescue_plan, dict)
+                else 0
+            ),
+            region_rescue_target_cell_count=(
+                int(region_rescue_plan.get("target_cell_count") or 0)
+                if isinstance(region_rescue_plan, dict)
+                else 0
+            ),
+            region_rescue_fail_closed=(
+                bool(region_rescue_plan.get("fail_closed"))
+                if isinstance(region_rescue_plan, dict)
+                else False
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
             ocr_backend=(

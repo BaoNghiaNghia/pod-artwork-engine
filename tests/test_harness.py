@@ -350,6 +350,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.latency_p50_ms > 0
     assert scorecard.precision_coverage
     assert scorecard.precision_coverage["region_confidence_map"] == 1.0
+    assert scorecard.precision_coverage["region_rescue_plan"] == 1.0
     assert scorecard.precision_coverage["multi_reference_fusion"] == 0.0
     assert "local_text_repair" in scorecard.precision_coverage
     assert scorecard.provenance.execution_kind == "production_engine"
@@ -365,6 +366,12 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert result.precision.region_grid_cells == 16
     assert 0 <= result.precision.region_mean_confidence <= 1
     assert 0 <= result.precision.region_support_coverage <= 1
+    assert result.precision.region_rescue_plan is True
+    assert result.precision.region_rescue_disposition in {
+        "none",
+        "manual_review",
+        "semantic_provider_candidate",
+    }
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:

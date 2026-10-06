@@ -412,6 +412,24 @@ Implemented:
 
 The normalized-grid comparison is intentionally conservative and is not equivalent to geometric registration. Side views, perspective changes and occluded references can be excluded or show low confidence until a future alignment/dewarp stage is benchmarked.
 
+### Phase 2C — Fail-Closed Region Rescue Planning
+
+Implemented:
+
+- every job now converts the region confidence map into a typed `RegionRescuePlanEvidence` checkpoint;
+- only cells below the conservative confidence policy (or explicitly marked local disagreement/no consensus) become rescue candidates;
+- adjacent cells are merged only when they form exact rectangular runs; irregular shapes stay split so a rescue bbox never expands across a known-good cell;
+- plans have exactly three dispositions: `none`, `semantic_provider_candidate` or `manual_review`;
+- global multi-reference conflicts and unavailable region evidence always produce `manual_review` with `fail_closed=true`;
+- low-confidence regions may become semantic-provider candidates only when a provider is available; this phase records that eligibility but does not execute reconstruction;
+- when no provider is available, target regions are retained for review while the plan fails closed;
+- each target stores normalized bbox, exact contributing grid cells, mean/max confidence, reason codes and required capabilities;
+- ArtifactManifest precision evidence and Harness now record planner presence, disposition, target count/cell count and fail-closed state;
+- the production pipeline does not transition into `REGION_RESCUE`, call a provider, retry, or modify pixels in Phase 2C;
+- the planner is deterministic metadata only and adds no meaningful storage/model footprint.
+
+This establishes a measurable boundary between “a weak region exists” and “the system is authorized to alter that region.” Actual rescue execution remains disabled until Golden Holdout evidence establishes safe trigger thresholds and provider/local rescue behavior.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

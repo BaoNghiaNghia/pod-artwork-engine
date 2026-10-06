@@ -26,6 +26,7 @@ from .contracts import (
     QCResult,
     QualityMode,
     RegionConfidenceMapEvidence,
+    RegionRescuePlanEvidence,
     RegionReplacementMode,
     RouteDecision,
     RouteKind,
@@ -55,6 +56,7 @@ from .qc import semantic_qc, technical_qc
 from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
 from .region_evidence import build_region_confidence_map
+from .region_rescue import build_region_rescue_plan
 from .resources import capture_resources
 from .router import choose_route, forced_route_decision
 from .router_policy import load_router_policy
@@ -317,6 +319,46 @@ class Engine:
         )
         return evidence
 
+    def _region_rescue_plan(
+        self,
+        job: JobRecord,
+        region_map: RegionConfidenceMapEvidence,
+        fusion: MultiReferenceFusionEvidence,
+    ) -> RegionRescuePlanEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "region_rescue_plan")
+        if isinstance(checkpoint, dict):
+            return RegionRescuePlanEvidence.model_validate(checkpoint)
+
+        plan = build_region_rescue_plan(
+            region_map,
+            fusion,
+            provider_available=self.provider.available,
+        )
+        self.checkpoints.write(
+            job.job_id,
+            "region_rescue_plan",
+            plan.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "region_rescue_plan_completed",
+            stage="preflight",
+            quality_score=(
+                1.0
+                if plan.disposition.value == "none"
+                else max(
+                    0.0,
+                    1.0 - min(1.0, plan.target_cell_count / 16.0),
+                )
+            ),
+            failure_reason=(
+                ", ".join(plan.reason_codes)
+                if plan.fail_closed
+                else None
+            ),
+        )
+        return plan
+
     def run_preflight(self, job_id: str) -> JobRecord:
         job = self.jobs.get(job_id)
         if not job:
@@ -329,12 +371,13 @@ class Engine:
                 source_paths,
                 preflights,
             )
-            self._region_confidence_map(
+            region_map = self._region_confidence_map(
                 job,
                 source_paths,
                 preflights,
                 fusion,
             )
+            self._region_rescue_plan(job, region_map, fusion)
             return self.jobs.transition(
                 job_id,
                 JobState.WAITING_PROVIDER,
@@ -1090,6 +1133,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "region_confidence_map")
                     or {}
                 ),
+                "region_rescue_plan": (
+                    self.checkpoints.payload(job.job_id, "region_rescue_plan")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1132,12 +1179,13 @@ class Engine:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
             fusion = self._reference_fusion(job, source_paths, preflights)
-            self._region_confidence_map(
+            region_map = self._region_confidence_map(
                 job,
                 source_paths,
                 preflights,
                 fusion,
             )
+            self._region_rescue_plan(job, region_map, fusion)
             job = self.jobs.get(job_id) or job
 
             profile = ExportProfile()

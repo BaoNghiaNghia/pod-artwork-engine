@@ -109,6 +109,11 @@ class PrecisionEvidence(StrictModel):
     region_mean_confidence: float = Field(default=0, ge=0, le=1)
     region_support_coverage: float = Field(default=0, ge=0, le=1)
     low_confidence_region_count: int = Field(default=0, ge=0)
+    region_rescue_plan: bool = False
+    region_rescue_disposition: str = ""
+    region_rescue_target_count: int = Field(default=0, ge=0)
+    region_rescue_target_cell_count: int = Field(default=0, ge=0)
+    region_rescue_fail_closed: bool = False
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""

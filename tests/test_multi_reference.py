@@ -292,6 +292,11 @@ def test_engine_preflight_persists_reference_fusion_checkpoint(
     assert region_map["columns"] == 4
     assert len(region_map["cells"]) == 16
 
+    rescue_plan = engine.checkpoints.payload(job.job_id, "region_rescue_plan")
+    assert rescue_plan["method"] == "region_rescue_plan_v1"
+    assert rescue_plan["disposition"] == "none"
+    assert rescue_plan["targets"] == []
+
 
 def test_region_confidence_map_fallback_does_not_fail_job_without_bbox(
     tmp_path: Path,

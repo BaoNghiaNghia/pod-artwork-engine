@@ -87,6 +87,12 @@ class ReferenceEvidenceStatus(StrEnum):
     CONFLICTING = "conflicting"
 
 
+class RegionRescueDisposition(StrEnum):
+    NONE = "none"
+    SEMANTIC_PROVIDER_CANDIDATE = "semantic_provider_candidate"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -255,6 +261,32 @@ class RegionConfidenceMapEvidence(StrictModel):
     support_coverage: float = Field(ge=0, le=1)
     low_confidence_cells: int = Field(ge=0)
     cells: list[RegionEvidenceCell] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class RegionCellRef(StrictModel):
+    row: int = Field(ge=0)
+    column: int = Field(ge=0)
+
+
+class RegionRescueTarget(StrictModel):
+    bbox: BoundingBox
+    cells: list[RegionCellRef] = Field(default_factory=list)
+    mean_confidence: float = Field(ge=0, le=1)
+    maximum_confidence: float = Field(ge=0, le=1)
+    reason_codes: list[str] = Field(default_factory=list)
+    required_capabilities: list[str] = Field(default_factory=list)
+
+
+class RegionRescuePlanEvidence(StrictModel):
+    method: str = "region_rescue_plan_v1"
+    disposition: RegionRescueDisposition = RegionRescueDisposition.NONE
+    primary_index: int = Field(ge=0)
+    provider_available: bool = False
+    fail_closed: bool = False
+    target_cell_count: int = Field(default=0, ge=0)
+    targets: list[RegionRescueTarget] = Field(default_factory=list)
+    required_capabilities: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
