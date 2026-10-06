@@ -213,7 +213,7 @@ POD_TESSERACT_PATH=
 POD_TESSERACT_LANGUAGE=eng
 ```
 
-Tesseract is currently auto-detected or explicitly configured; it is **not yet bundled into the installer**. This is a concrete local OCR adapter/fallback foundation, not yet the final zero-dependency OCR packaging decision.
+Tesseract can be explicitly configured, discovered from the host, or supplied as the bundled `runtime/tesseract/` sidecar described in Phase 1J. The repository does not commit third-party OCR binaries; approved release binaries/language packs are supplied through `vendor/tesseract/` at build time.
 
 ### Phase 1E — Benchmark Suite + Safe QC Calibration
 
@@ -348,10 +348,38 @@ POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE=0.82
 
 This is intentionally a conservative deterministic repair path, not unrestricted semantic inpainting. Highly textured, occluded or structurally complex regions should still escalate to provider reconstruction/region rescue or manual review.
 
+### Phase 1J — Standalone OCR Runtime Packaging
+
+Implemented:
+
+- Tesseract discovery is deterministic: explicit `POD_TESSERACT_PATH` → bundled runtime beside the engine → system `PATH` → standard Windows install folders;
+- standalone releases use the layout `runtime/tesseract/tesseract.exe` plus `runtime/tesseract/tessdata/*.traineddata`;
+- when a sibling `tessdata` directory exists, the OCR subprocess receives a scoped `TESSDATA_PREFIX` without mutating the parent process environment;
+- OCR checkpoints now record backend name, backend version, discovery source and executable SHA-256, and ArtifactManifest retains that provenance;
+- API status and diagnostic bundles expose only redacted backend metadata such as `bundled`, `configured` or `path`; they do not expose the executable path;
+- Harness precision evidence retains OCR backend source/version so bundled and system-backed runs can be compared separately;
+- release assembly automatically copies `vendor/tesseract/` into `runtime/tesseract/` when an approved runtime is present;
+- updater validation rejects partial bundled runtimes such as an executable without any `tessdata/*.traineddata`;
+- initial release seeding, staged updates and rollback releases preserve the optional `runtime/` tree;
+- `vendor/tesseract/` is Git-ignored so OCR binaries/language data are never accidentally committed to source control.
+
+To build a release with standalone OCR, place the approved redistributable runtime before running the normal desktop build:
+
+```text
+vendor/
+  tesseract/
+    tesseract.exe
+    tessdata/
+      eng.traineddata
+      ...other approved languages...
+```
+
+The source tree intentionally does not embed third-party OCR binaries. Redistribution/licensing review and the exact language-pack set remain release inputs, while the runtime/search/update path is now production-ready.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
-- choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
+- supply the approved Tesseract runtime/language packs for release builds and validate OCR quality on Golden Holdout;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 

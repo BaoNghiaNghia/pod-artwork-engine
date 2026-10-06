@@ -11,7 +11,7 @@ import psutil
 
 from . import __version__
 from .hardware import detect_hardware
-from .local_ocr import available as local_ocr_available
+from .local_ocr import backend_status as local_ocr_backend_status
 from .settings import Settings
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -39,6 +39,7 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
         }
         (root / "system.json").write_text(json.dumps(system, indent=2), encoding="utf-8")
 
+        ocr_status = local_ocr_backend_status(settings)
         config = {
             "data_root": str(settings.data_root),
             "host": settings.host,
@@ -60,7 +61,8 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
                 str(settings.router_policy_path) if settings.router_policy_path else ""
             ),
             "local_ocr_enabled": settings.local_ocr_enabled,
-            "local_ocr_available": local_ocr_available(settings),
+            "local_ocr_available": bool(ocr_status["available"]),
+            "local_ocr_backend": ocr_status,
             "visual_font_match_enabled": settings.visual_font_match_enabled,
             "visual_font_match_min_score": settings.visual_font_match_min_score,
             "visual_font_match_min_margin": settings.visual_font_match_min_margin,

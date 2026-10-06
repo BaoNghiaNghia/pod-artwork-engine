@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,13 @@ from pod_artwork_engine.font_matcher import (
     match_typography_fonts,
     merge_verified_font_matches,
 )
-from pod_artwork_engine.local_ocr import _parse_tsv
+import pod_artwork_engine.local_ocr as local_ocr
+from pod_artwork_engine.local_ocr import (
+    LocalOCRBackend,
+    _parse_tsv,
+    _resolve_tesseract,
+    analyze_artwork_text,
+)
 from pod_artwork_engine.settings import Settings
 from pod_artwork_engine.typography import (
     TypographyRenderUnavailable,
@@ -46,6 +53,84 @@ def test_local_ocr_tsv_parser_builds_ordered_normalized_lines() -> None:
     assert 0.19 <= first.bbox.x <= 0.21
     assert 0.29 <= first.bbox.y <= 0.31
     assert 0.45 <= first.bbox.width <= 0.47
+
+
+def test_tesseract_resolution_prefers_configured_then_bundled_then_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    configured = tmp_path / "configured" / "tesseract.exe"
+    configured.parent.mkdir()
+    configured.write_bytes(b"configured")
+
+    runtime_root = tmp_path / "release"
+    bundled = runtime_root / "runtime" / "tesseract" / "tesseract.exe"
+    bundled.parent.mkdir(parents=True)
+    bundled.write_bytes(b"bundled")
+    (bundled.parent / "tessdata").mkdir()
+    (bundled.parent / "tessdata" / "eng.traineddata").write_bytes(b"eng")
+
+    path_executable = tmp_path / "path" / "tesseract.exe"
+    path_executable.parent.mkdir()
+    path_executable.write_bytes(b"path")
+
+    monkeypatch.setattr(local_ocr, "_runtime_roots", lambda: [runtime_root])
+    monkeypatch.setattr(local_ocr.shutil, "which", lambda name: str(path_executable))
+
+    explicit = _resolve_tesseract(
+        Settings(data_root=tmp_path / "data-explicit", tesseract_path=configured)
+    )
+    assert explicit is not None
+    assert explicit.executable == configured.resolve()
+    assert explicit.source == "configured"
+
+    bundled_result = _resolve_tesseract(Settings(data_root=tmp_path / "data-bundled"))
+    assert bundled_result is not None
+    assert bundled_result.executable == bundled.resolve()
+    assert bundled_result.source == "bundled"
+
+    bundled.unlink()
+    path_result = _resolve_tesseract(Settings(data_root=tmp_path / "data-path"))
+    assert path_result is not None
+    assert path_result.executable == path_executable.resolve()
+    assert path_result.source == "path"
+
+
+def test_local_ocr_records_bundled_backend_provenance(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "runtime" / "tesseract" / "tesseract.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"fixture-tesseract")
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (240, 120), (255, 255, 255)).save(source)
+    tsv = (
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        "5\t1\t1\t1\t1\t1\t20\t30\t120\t40\t96\tHELLO\n"
+    )
+
+    monkeypatch.setattr(
+        local_ocr,
+        "_resolve_tesseract",
+        lambda settings: LocalOCRBackend(executable.resolve(), "bundled"),
+    )
+    monkeypatch.setattr(local_ocr, "_run_tsv", lambda executable, image_path, language: tsv)
+    monkeypatch.setattr(local_ocr, "_version", lambda executable: "tesseract 5.4.1")
+
+    result = analyze_artwork_text(
+        source,
+        BoundingBox(x=0, y=0, width=1, height=1),
+        Settings(data_root=tmp_path / "runtime-data"),
+    )
+
+    assert result.exact_text == ["HELLO"]
+    assert result.backend == "tesseract"
+    assert result.backend_source == "bundled"
+    assert result.backend_version == "tesseract 5.4.1"
+    assert result.executable_sha256 == hashlib.sha256(b"fixture-tesseract").hexdigest()
+    assert result.typography.evidence_version == "tesseract 5.4.1"
 
 
 def test_font_catalog_normalizes_alias_but_never_downgrades_bold(

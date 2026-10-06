@@ -703,6 +703,8 @@ def test_engine_merges_high_confidence_local_ocr_evidence(
             typography=typography,
             backend="tesseract",
             backend_version="fixture",
+            backend_source="bundled",
+            executable_sha256="b" * 64,
         ),
     )
 
@@ -715,6 +717,8 @@ def test_engine_merges_high_confidence_local_ocr_evidence(
     assert design_spec["typography"]["evidence_provider"] == "tesseract"
     local_ocr = engine.checkpoints.payload(job.job_id, "local_ocr")
     assert local_ocr["exact_text"] == ["HELLO"]
+    assert local_ocr["backend_source"] == "bundled"
+    assert local_ocr["executable_sha256"] == "b" * 64
     candidate = engine.checkpoints.payload(job.job_id, "candidate")
     assert candidate["recognized_text"] == ["HELLO"]
 

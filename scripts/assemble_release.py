@@ -8,7 +8,12 @@ import zipfile
 from pathlib import Path
 
 from pod_artwork_engine import __version__
-from pod_artwork_engine.updater import DESKTOP_EXECUTABLE, ENGINE_EXECUTABLE
+from pod_artwork_engine.updater import (
+    DESKTOP_EXECUTABLE,
+    ENGINE_EXECUTABLE,
+    OCR_RUNTIME_RELATIVE,
+    validate_release_dir,
+)
 
 
 LAUNCHER_EXECUTABLE = "PODArtworkTool.exe"
@@ -42,11 +47,31 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
     for name, source in sources.items():
         shutil.copy2(source, release_dir / name)
 
+    ocr_runtime_source = repo_root / "vendor" / "tesseract"
+    ocr_runtime_included = ocr_runtime_source.is_dir()
+    if ocr_runtime_included:
+        shutil.copytree(
+            ocr_runtime_source,
+            release_dir / OCR_RUNTIME_RELATIVE,
+        )
+
+    valid, reason = validate_release_dir(release_dir)
+    if not valid:
+        raise RuntimeError(f"assembled release is invalid: {reason}")
+
     package_path = package_dir / f"PODArtworkTool-{__version__}.zip"
     package_path.unlink(missing_ok=True)
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         archive.write(release_dir / DESKTOP_EXECUTABLE, DESKTOP_EXECUTABLE)
         archive.write(release_dir / ENGINE_EXECUTABLE, ENGINE_EXECUTABLE)
+        runtime_dir = release_dir / "runtime"
+        if runtime_dir.is_dir():
+            for runtime_file in sorted(runtime_dir.rglob("*")):
+                if runtime_file.is_file():
+                    archive.write(
+                        runtime_file,
+                        runtime_file.relative_to(release_dir).as_posix(),
+                    )
 
     digest = sha256(package_path)
     sha_path = package_dir / f"PODArtworkTool-{__version__}.sha256"
@@ -73,6 +98,7 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
         "launcher": str(release_dir / LAUNCHER_EXECUTABLE),
         "package": str(package_path),
         "sha256": digest,
+        "ocr_runtime_included": ocr_runtime_included,
         "manifest": str(manifest_path) if manifest_path else None,
     }
 

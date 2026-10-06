@@ -21,6 +21,8 @@ UPDATER_VERSION = "0.1.0"
 DESKTOP_EXECUTABLE = "pod-artwork-desktop.exe"
 ENGINE_EXECUTABLE = "pod-artwork-engine.exe"
 REQUIRED_RELEASE_FILES = (DESKTOP_EXECUTABLE, ENGINE_EXECUTABLE)
+OCR_RUNTIME_RELATIVE = Path("runtime") / "tesseract"
+OCR_RUNTIME_EXECUTABLE = "tesseract.exe"
 
 
 class ReleaseManifest(BaseModel):
@@ -84,6 +86,15 @@ def validate_release_dir(path: Path) -> tuple[bool, str]:
     missing = [name for name in REQUIRED_RELEASE_FILES if not (path / name).is_file()]
     if missing:
         return False, f"release is missing required files: {', '.join(missing)}"
+
+    ocr_runtime = path / OCR_RUNTIME_RELATIVE
+    if ocr_runtime.exists():
+        executable = ocr_runtime / OCR_RUNTIME_EXECUTABLE
+        tessdata = ocr_runtime / "tessdata"
+        if not executable.is_file():
+            return False, "bundled OCR runtime is missing tesseract.exe"
+        if not tessdata.is_dir() or not any(tessdata.glob("*.traineddata")):
+            return False, "bundled OCR runtime is missing tessdata language files"
     return True, "ok"
 
 
@@ -248,6 +259,14 @@ class UpdateManager:
             staging.mkdir(parents=True, exist_ok=True)
             for name in REQUIRED_RELEASE_FILES:
                 shutil.copy2(source_dir / name, staging / name)
+
+            runtime_source = source_dir / "runtime"
+            if runtime_source.is_dir():
+                shutil.copytree(runtime_source, staging / "runtime")
+
+            seeded_valid, seeded_reason = validate_release_dir(staging)
+            if not seeded_valid:
+                raise RuntimeError(f"cannot seed installed release: {seeded_reason}")
 
             if target.exists():
                 shutil.rmtree(target)

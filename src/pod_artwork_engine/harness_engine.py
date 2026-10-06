@@ -197,6 +197,16 @@ class HarnessEngineRunner:
                 if isinstance(local_ocr, dict)
                 else ""
             ),
+            ocr_backend_source=(
+                str(local_ocr.get("backend_source") or "")
+                if isinstance(local_ocr, dict)
+                else ""
+            ),
+            ocr_backend_version=(
+                str(local_ocr.get("backend_version") or "")
+                if isinstance(local_ocr, dict)
+                else ""
+            ),
             visual_font_match=matched_font_lines > 0,
             matched_font_lines=matched_font_lines,
             typography_rebuilt="deterministic_typography" in precision_ops,

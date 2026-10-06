@@ -326,6 +326,8 @@ class Engine:
                         {
                             "backend": ocr_result.backend,
                             "backend_version": ocr_result.backend_version,
+                            "backend_source": ocr_result.backend_source,
+                            "executable_sha256": ocr_result.executable_sha256,
                             "exact_text": ocr_result.exact_text,
                             "typography": local_spec.typography.model_dump(mode="json"),
                         },
@@ -947,6 +949,10 @@ class Engine:
             ),
             export_profile="default_pod",
             precision_evidence={
+                "local_ocr": (
+                    self.checkpoints.payload(job.job_id, "local_ocr")
+                    or {}
+                ),
                 "font_match": (
                     self.checkpoints.payload(job.job_id, "font_match")
                     or {}

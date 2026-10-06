@@ -1523,9 +1523,35 @@ POD_LOCAL_TEXT_REPAIR_ENABLED=1
 POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE=0.82
 ```
 
+Phase 1J standalone OCR runtime packaging:
+
+- Tesseract discovery order is explicit and deterministic: configured `POD_TESSERACT_PATH`, bundled runtime beside the engine, system `PATH`, then standard Windows installation folders;
+- bundled runtime layout is `runtime/tesseract/tesseract.exe` with `runtime/tesseract/tessdata/*.traineddata`;
+- source/development runs look for the same runtime layout at the repository root, while a frozen PyInstaller engine resolves it relative to the engine executable;
+- when a sibling `tessdata` directory exists, the OCR subprocess receives a scoped `TESSDATA_PREFIX`; the global parent-process environment is not rewritten;
+- OCR results record backend source, backend version and executable SHA-256 without persisting the absolute executable path;
+- the `local_ocr` checkpoint is copied into ArtifactManifest precision evidence, and Harness precision evidence records backend source/version for cohort comparison;
+- `/status` and diagnostic bundles expose only redacted backend metadata (`configured`, `bundled`, `path`, `system_install`) rather than local filesystem paths;
+- release assembly detects an approved `vendor/tesseract/` input and copies it to the canonical runtime layout;
+- release validation treats the OCR runtime as optional, but if it is present it must contain `tesseract.exe` plus at least one `tessdata/*.traineddata` file;
+- update packages include the runtime tree, and initial seed/update/rollback flows preserve that tree rather than retaining only the engine/desktop executables;
+- `vendor/tesseract/` is Git-ignored so large third-party binaries and language packs cannot be accidentally committed;
+- no large AI model is added by this phase, so the 40 GB storage architecture remains unchanged.
+
+Standalone OCR release input:
+
+```text
+vendor/
+  tesseract/
+    tesseract.exe
+    tessdata/
+      eng.traineddata
+      ...approved language packs...
+```
+
 Current truthfulness limits:
 
-- local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
+- the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
 - visual font matching identifies the best candidate only from fonts actually present on the machine/user font directory; it cannot recover an unavailable proprietary font;
 - `TypographyLine.bbox` used for local font verification is interpreted inside the detected artwork region; heavy perspective, curved text, occlusion or textured fills may reduce confidence and intentionally leave the font unresolved;
 - exact typography redraw still requires sufficiently confident layout plus an accepted installed/local font match or other sufficiently trusted explicit typography evidence;
@@ -1543,7 +1569,7 @@ Current truthfulness limits:
 Remaining Phase 1 work:
 
 - import and run the user's real historical source/final pairs through the suite and route matrix, then establish the first measured champion and RouterPolicy;
-- choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
+- supply the approved Tesseract runtime/language packs for release builds and validate OCR quality/routing on Golden Holdout;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 

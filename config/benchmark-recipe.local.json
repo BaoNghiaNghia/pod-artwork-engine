@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v4",
-  "version": "4",
-  "description": "CPU-first local precision baseline with guarded OCR/font matching, compound vector topology and guarded local text repair.",
+  "recipe_id": "local-precision-v5",
+  "version": "5",
+  "description": "CPU-first local precision baseline with guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "local-preflight-ocr-fontmatch",
-      "version": "phase1i"
+      "version": "phase1j"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase1i"
+      "version": "phase1j"
     },
     {
       "name": "qc",
       "implementation": "two-gate-qc",
-      "version": "phase1i"
+      "version": "phase1j"
     }
   ],
   "router_version": "phase1f",

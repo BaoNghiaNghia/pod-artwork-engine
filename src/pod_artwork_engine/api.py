@@ -27,7 +27,7 @@ from .engine import Engine
 from .hardware import detect_hardware
 from .harness import HarnessStore
 from .harness_models import BenchmarkScorecard
-from .local_ocr import available as local_ocr_available
+from .local_ocr import backend_status as local_ocr_backend_status
 from .settings import Settings
 from .updater import UpdateManager
 
@@ -74,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         memory = psutil.virtual_memory()
         historical_pairs = datasets.list_pairs()
         dataset_records = datasets.list_datasets()
+        ocr_status = local_ocr_backend_status(settings)
         return {
             "version": __version__,
             "storage": engine.storage.status().model_dump(mode="json"),
@@ -94,7 +95,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "router_policy_version": engine.router_policy.version,
             "router_policy_configured": settings.router_policy_path is not None,
             "local_ocr_enabled": settings.local_ocr_enabled,
-            "local_ocr_available": local_ocr_available(settings),
+            "local_ocr_available": bool(ocr_status["available"]),
+            "local_ocr_backend": ocr_status,
             "visual_font_match_enabled": settings.visual_font_match_enabled,
             "visual_font_match_min_score": settings.visual_font_match_min_score,
             "visual_font_match_min_margin": settings.visual_font_match_min_margin,

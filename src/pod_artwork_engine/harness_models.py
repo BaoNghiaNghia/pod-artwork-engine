@@ -101,6 +101,8 @@ class OperationalMetrics(StrictModel):
 class PrecisionEvidence(StrictModel):
     local_ocr: bool = False
     ocr_backend: str = ""
+    ocr_backend_source: str = ""
+    ocr_backend_version: str = ""
     visual_font_match: bool = False
     matched_font_lines: int = Field(default=0, ge=0)
     typography_rebuilt: bool = False

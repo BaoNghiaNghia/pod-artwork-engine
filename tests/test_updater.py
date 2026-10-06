@@ -21,6 +21,14 @@ def _make_release(path: Path) -> Path:
     return path
 
 
+def _add_ocr_runtime(path: Path) -> Path:
+    runtime = path / "runtime" / "tesseract"
+    (runtime / "tessdata").mkdir(parents=True, exist_ok=True)
+    (runtime / "tesseract.exe").write_bytes(b"tesseract")
+    (runtime / "tessdata" / "eng.traineddata").write_bytes(b"eng")
+    return runtime
+
+
 def test_version_comparison() -> None:
     assert _is_newer("0.2.0", "0.1.9")
     assert not _is_newer("0.1.0", "0.1.0")
@@ -55,13 +63,35 @@ def test_release_validation_requires_desktop_and_engine(tmp_path: Path) -> None:
     assert reason == "ok"
 
 
+def test_release_validation_rejects_partial_bundled_ocr_runtime(tmp_path: Path) -> None:
+    release = _make_release(tmp_path / "release")
+    runtime = release / "runtime" / "tesseract"
+    runtime.mkdir(parents=True)
+    (runtime / "tesseract.exe").write_bytes(b"tesseract")
+
+    valid, reason = validate_release_dir(release)
+    assert valid is False
+    assert "tessdata" in reason
+
+    (runtime / "tessdata").mkdir()
+    (runtime / "tessdata" / "eng.traineddata").write_bytes(b"eng")
+    valid, reason = validate_release_dir(release)
+    assert valid is True
+    assert reason == "ok"
+
+
 def test_seed_activate_and_rollback_state(tmp_path: Path) -> None:
     settings = Settings(data_root=tmp_path / "data")
     manager = UpdateManager(settings, "1.0.0")
     installed = _make_release(tmp_path / "installed")
+    _add_ocr_runtime(installed)
 
     seeded = manager.seed_current_release(installed, "1.0.0")
     assert seeded == settings.updates_dir / "releases" / "1.0.0"
+    assert (seeded / "runtime" / "tesseract" / "tesseract.exe").is_file()
+    assert (
+        seeded / "runtime" / "tesseract" / "tessdata" / "eng.traineddata"
+    ).is_file()
     assert manager.active_version() == "1.0.0"
 
     _make_release(settings.updates_dir / "releases" / "1.1.0")
