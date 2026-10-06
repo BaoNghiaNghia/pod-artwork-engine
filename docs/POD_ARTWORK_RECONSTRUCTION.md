@@ -1568,6 +1568,22 @@ Phase 2A guarded multi-reference evidence fusion:
 
 The initial thresholds (`consistent >= 0.62`, high-quality conflict `< 0.42`, quality floor `>= 0.55`) are conservative engineering defaults. They are not domain-calibrated until historical Golden Holdout evidence demonstrates acceptable false-consistency and false-conflict rates.
 
+Phase 2B coarse region confidence evidence map:
+
+- a deterministic 4×4 evidence grid is expressed in normalized coordinates of the selected primary artwork crop;
+- only Phase 2A references already classified as globally consistent are eligible to contribute supporting regional evidence;
+- eligible references must additionally pass artwork-crop aspect compatibility (`>=0.90`), preventing strongly different views from being forced into the same coordinate grid;
+- exact duplicate source hashes do not count as independent support;
+- ambiguous, conflicting, duplicate and aspect-incompatible references are excluded from raising regional confidence;
+- compatible crops are resized only into a small canonical comparison surface; this is evidence extraction, not output compositing;
+- each cell compares local difference-hash structure plus mean RGB similarity and records `confidence`, `agreement`, `support_count`, `comparison_count` and typed normalized bbox coordinates;
+- a supporting reference contributes positive local support only when local similarity is at least `0.58`; disagreement can therefore lower confidence in one region while leaving other cells supported;
+- primary-only cells receive deliberately limited confidence, reflecting that one source alone is not multi-reference corroboration;
+- aggregate evidence records mean/minimum confidence, support coverage and count of cells below the initial `0.60` low-confidence threshold;
+- the map is checkpointed, copied into ArtifactManifest precision evidence and surfaced through Harness metrics;
+- region-evidence computation is failure-isolated: missing/unsafe crop evidence produces a zero-confidence unavailable record instead of failing reconstruction;
+- Phase 2B does not yet alter pixels, auto-repair regions or claim geometric alignment; it establishes a bounded evidence layer for later region rescue/QC policy.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1611,21 +1627,23 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A foundation is implemented:
+Phase 2A–2B foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
 - conflict/ambiguity provenance and semantic-disambiguation routing;
-- Harness coverage for multi-reference consensus.
+- coarse normalized 4×4 region confidence/evidence maps;
+- exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
+- Harness coverage for global multi-reference consensus and regional confidence.
 
 Remaining Phase 2 work:
 
-- geometric/region-level multi-reference alignment and evidence maps;
+- true geometric multi-reference alignment/dewarp and region-level registration;
 - material separation;
 - vector/raster split;
 - difficult texture handling;
 - SR comparison;
-- region confidence.
+- policy-driven use of region confidence for targeted rescue.
 
 ### Phase 3 — Reliability
 

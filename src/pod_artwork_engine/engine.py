@@ -25,6 +25,7 @@ from .contracts import (
     ProviderResult,
     QCResult,
     QualityMode,
+    RegionConfidenceMapEvidence,
     RegionReplacementMode,
     RouteDecision,
     RouteKind,
@@ -53,6 +54,7 @@ from .providers import (
 from .qc import semantic_qc, technical_qc
 from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
+from .region_evidence import build_region_confidence_map
 from .resources import capture_resources
 from .router import choose_route, forced_route_decision
 from .router_policy import load_router_policy
@@ -267,16 +269,71 @@ class Engine:
         )
         return fusion
 
+    def _region_confidence_map(
+        self,
+        job: JobRecord,
+        source_paths: list[Path],
+        preflights: list[PreflightResult],
+        fusion: MultiReferenceFusionEvidence,
+    ) -> RegionConfidenceMapEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "region_confidence_map")
+        if isinstance(checkpoint, dict):
+            return RegionConfidenceMapEvidence.model_validate(checkpoint)
+
+        failure_reason: str | None = None
+        try:
+            evidence = build_region_confidence_map(
+                source_paths,
+                preflights,
+                fusion,
+            )
+        except (OSError, ValueError) as exc:
+            failure_reason = f"{type(exc).__name__}: {exc}"
+            evidence = RegionConfidenceMapEvidence(
+                primary_index=fusion.primary_index,
+                excluded_indices=[
+                    index
+                    for index in range(len(source_paths))
+                    if index != fusion.primary_index
+                ],
+                mean_confidence=0.0,
+                minimum_confidence=0.0,
+                support_coverage=0.0,
+                low_confidence_cells=0,
+                reason_codes=["region_evidence_unavailable"],
+            )
+
+        self.checkpoints.write(
+            job.job_id,
+            "region_confidence_map",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "region_confidence_map_completed",
+            stage="preflight",
+            quality_score=evidence.mean_confidence,
+            failure_reason=failure_reason,
+        )
+        return evidence
+
     def run_preflight(self, job_id: str) -> JobRecord:
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
         try:
             preflights = self._perform_preflight(job)
-            self._reference_fusion(
+            source_paths = [Path(path) for path in job.source_paths]
+            fusion = self._reference_fusion(
                 job,
-                [Path(path) for path in job.source_paths],
+                source_paths,
                 preflights,
+            )
+            self._region_confidence_map(
+                job,
+                source_paths,
+                preflights,
+                fusion,
             )
             return self.jobs.transition(
                 job_id,
@@ -1029,6 +1086,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "reference_fusion")
                     or {}
                 ),
+                "region_confidence_map": (
+                    self.checkpoints.payload(job.job_id, "region_confidence_map")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1071,6 +1132,12 @@ class Engine:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
             fusion = self._reference_fusion(job, source_paths, preflights)
+            self._region_confidence_map(
+                job,
+                source_paths,
+                preflights,
+                fusion,
+            )
             job = self.jobs.get(job_id) or job
 
             profile = ExportProfile()

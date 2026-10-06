@@ -349,6 +349,9 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.status is HarnessRunStatus.COMPLETE
     assert scorecard.latency_p50_ms > 0
     assert scorecard.precision_coverage
+    assert scorecard.precision_coverage["region_confidence_map"] == 1.0
+    assert scorecard.precision_coverage["multi_reference_fusion"] == 0.0
+    assert "local_text_repair" in scorecard.precision_coverage
     assert scorecard.provenance.execution_kind == "production_engine"
     assert scorecard.provenance.quality_mode is QualityMode.QUICK_2D
     assert scorecard.provenance.recipe_sha256
@@ -358,6 +361,10 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     result = store.get_results(scorecard.run_id)[0]
     assert result.runtime_qc.semantic_score is not None
     assert result.runtime_qc.technical_score is not None
+    assert result.precision.region_confidence_map is True
+    assert result.precision.region_grid_cells == 16
+    assert 0 <= result.precision.region_mean_confidence <= 1
+    assert 0 <= result.precision.region_support_coverage <= 1
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:

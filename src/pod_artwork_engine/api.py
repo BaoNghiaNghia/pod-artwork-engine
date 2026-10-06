@@ -101,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "visual_font_match_min_score": settings.visual_font_match_min_score,
             "visual_font_match_min_margin": settings.visual_font_match_min_margin,
             "reference_fusion_method": "deterministic_reference_fusion_v1",
+            "region_confidence_method": "normalized_region_evidence_v1",
             "geometry_path_capabilities": [
                 "cubic",
                 "multi_subpath",

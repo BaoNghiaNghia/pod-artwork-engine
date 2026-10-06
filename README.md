@@ -394,6 +394,24 @@ Implemented:
 
 The initial visual-similarity thresholds are conservative implementation defaults, not learned production optima. They must be evaluated on the real historical/Golden Holdout set before being promoted as domain-calibrated policy.
 
+### Phase 2B — Coarse Region Confidence Evidence Map
+
+Implemented:
+
+- every job now records a deterministic `RegionConfidenceMapEvidence` checkpoint over a 4×4 grid in normalized primary-artwork coordinates;
+- only references already classified as globally `consistent` can support a region, and they must also have a sufficiently compatible artwork-crop aspect ratio;
+- ambiguous/conflicting references, aspect-incompatible views and exact duplicate source hashes are excluded from increasing regional confidence;
+- compatible supporting crops are normalized only for coarse comparison; the engine still performs no image blending, multi-view warping or pixel replacement;
+- each region records confidence, local visual agreement, independent support count, comparison count and reason codes such as `local_disagreement`, `primary_only` or `low_confidence`;
+- local agreement combines lightweight block structure and mean-color similarity, allowing a globally consistent reference to reveal one locally inconsistent quadrant without invalidating every region;
+- aggregate evidence records mean/minimum confidence, support coverage and low-confidence cell count;
+- the region map is persisted into ArtifactManifest precision evidence and surfaced in Harness for later rescue/QC calibration;
+- if region evidence cannot be computed (for example, no reliable artwork bbox), the feature degrades to an unavailable/zero-confidence metadata record and does not fail the job;
+- this phase does not alter reconstruction pixels or trigger automatic repair yet; it establishes the compact evidence layer future region rescue can consume;
+- the implementation remains CPU/Pillow-only and adds no model/cache footprint beyond small JSON checkpoint data.
+
+The normalized-grid comparison is intentionally conservative and is not equivalent to geometric registration. Side views, perspective changes and occluded references can be excluded or show low confidence until a future alignment/dewarp stage is benchmarked.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

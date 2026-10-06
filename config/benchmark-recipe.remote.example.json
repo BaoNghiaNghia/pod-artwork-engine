@@ -1,17 +1,17 @@
 {
-  "recipe_id": "remote-balanced-v6",
-  "version": "6",
-  "description": "Provider-gateway challenger with deterministic multi-reference evidence fusion, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v7",
+  "version": "7",
+  "description": "Provider-gateway challenger with deterministic multi-reference fusion, coarse region-confidence evidence, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-fusion-plus-provider-analysis",
-      "version": "phase2a"
+      "implementation": "multi-reference-plus-region-evidence-plus-provider-analysis",
+      "version": "phase2b"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase2a"
+      "version": "phase2b"
     },
     {
       "name": "judge",

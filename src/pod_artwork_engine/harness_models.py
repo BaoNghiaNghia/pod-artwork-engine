@@ -104,6 +104,11 @@ class PrecisionEvidence(StrictModel):
     consistent_reference_count: int = Field(default=0, ge=0)
     conflicting_reference_count: int = Field(default=0, ge=0)
     reference_consensus_confidence: float = Field(default=0, ge=0, le=1)
+    region_confidence_map: bool = False
+    region_grid_cells: int = Field(default=0, ge=0)
+    region_mean_confidence: float = Field(default=0, ge=0, le=1)
+    region_support_coverage: float = Field(default=0, ge=0, le=1)
+    low_confidence_region_count: int = Field(default=0, ge=0)
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""

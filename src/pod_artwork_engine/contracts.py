@@ -232,6 +232,32 @@ class MultiReferenceFusionEvidence(StrictModel):
     references: list[ReferenceEvidence] = Field(default_factory=list)
 
 
+class RegionEvidenceCell(StrictModel):
+    row: int = Field(ge=0)
+    column: int = Field(ge=0)
+    bbox: BoundingBox
+    confidence: float = Field(ge=0, le=1)
+    agreement: float = Field(ge=0, le=1)
+    support_count: int = Field(ge=1)
+    comparison_count: int = Field(ge=0)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class RegionConfidenceMapEvidence(StrictModel):
+    method: str = "normalized_region_evidence_v1"
+    rows: int = Field(default=4, ge=1, le=16)
+    columns: int = Field(default=4, ge=1, le=16)
+    primary_index: int = Field(ge=0)
+    supporting_indices: list[int] = Field(default_factory=list)
+    excluded_indices: list[int] = Field(default_factory=list)
+    mean_confidence: float = Field(ge=0, le=1)
+    minimum_confidence: float = Field(ge=0, le=1)
+    support_coverage: float = Field(ge=0, le=1)
+    low_confidence_cells: int = Field(ge=0)
+    cells: list[RegionEvidenceCell] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class SemanticJudgeResult(StrictModel):
     exact_text: float | None = Field(default=None, ge=0, le=1)
     layout: float | None = Field(default=None, ge=0, le=1)

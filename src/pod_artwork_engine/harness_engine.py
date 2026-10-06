@@ -143,6 +143,10 @@ class HarnessEngineRunner:
             job_id,
             "reference_fusion",
         )
+        region_confidence = self.engine.checkpoints.payload(
+            job_id,
+            "region_confidence_map",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -217,6 +221,27 @@ class HarnessEngineRunner:
             reference_consensus_confidence=(
                 float(reference_fusion.get("consensus_confidence") or 0)
                 if isinstance(reference_fusion, dict)
+                else 0
+            ),
+            region_confidence_map=isinstance(region_confidence, dict),
+            region_grid_cells=(
+                len(region_confidence.get("cells") or [])
+                if isinstance(region_confidence, dict)
+                else 0
+            ),
+            region_mean_confidence=(
+                float(region_confidence.get("mean_confidence") or 0)
+                if isinstance(region_confidence, dict)
+                else 0
+            ),
+            region_support_coverage=(
+                float(region_confidence.get("support_coverage") or 0)
+                if isinstance(region_confidence, dict)
+                else 0
+            ),
+            low_confidence_region_count=(
+                int(region_confidence.get("low_confidence_cells") or 0)
+                if isinstance(region_confidence, dict)
                 else 0
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
