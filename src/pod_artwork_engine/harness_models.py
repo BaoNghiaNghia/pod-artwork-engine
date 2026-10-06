@@ -510,14 +510,67 @@ class SRAdapterRunReport(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class SRCohortSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str = Field(default_factory=lambda: "sr_cohort_" + uuid4().hex)
+    dataset_id: str
+    tier: BenchmarkTier
+    input_manifest_path: str
+    scale_factor: float = Field(default=2.0, gt=1, le=4)
+    max_output_megapixels: float = Field(default=80, gt=0, le=200)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SRCohortCaseEvidence(StrictModel):
+    pair_id: str
+    case_id: str
+    artwork_identity: str
+    success: bool = False
+    source_path: str = ""
+    source_sha256: str = ""
+    input_width: int = Field(default=0, ge=0)
+    input_height: int = Field(default=0, ge=0)
+    lanczos_width: int = Field(default=0, ge=0)
+    lanczos_height: int = Field(default=0, ge=0)
+    native_path: str | None = None
+    lanczos_path: str | None = None
+    fail_closed: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class SRCohortReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    input_manifest_path: str
+    source_manifest_path: str
+    native_manifest_path: str
+    lanczos_manifest_path: str
+    dataset_manifest_sha256: str = ""
+    scale_factor: float = Field(gt=1, le=4)
+    case_count: int = Field(default=0, ge=0)
+    success_count: int = Field(default=0, ge=0)
+    failure_count: int = Field(default=0, ge=0)
+    shared_input_identity: bool = True
+    benchmark_only: bool = True
+    production_execution_enabled: bool = False
+    cases: list[SRCohortCaseEvidence] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class SRBenchmarkLane(StrEnum):
     NATIVE = "native"
+    LANCZOS = "lanczos"
     LOCAL_SR = "local_sr"
     REMOTE_SR = "remote_sr"
 
 
 class SRCasePreference(StrEnum):
     NATIVE = "native"
+    LANCZOS = "lanczos"
     LOCAL_SR = "local_sr"
     REMOTE_SR = "remote_sr"
     TIE = "tie"
@@ -527,6 +580,7 @@ class SRCasePreference(StrEnum):
 class SRBenchmarkRecommendation(StrEnum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     KEEP_NATIVE = "keep_native"
+    KEEP_LANCZOS = "keep_lanczos"
     LOCAL_SR_FOR_HUMAN_REVIEW = "local_sr_for_human_review"
     REMOTE_SR_FOR_HUMAN_REVIEW = "remote_sr_for_human_review"
     MIXED_POLICY_FOR_HUMAN_REVIEW = "mixed_policy_for_human_review"
@@ -539,6 +593,7 @@ class SRBenchmarkSpec(StrictModel):
     tier: BenchmarkTier
     recipe_path: str
     native_manifest_path: str | None = None
+    lanczos_manifest_path: str | None = None
     local_sr_manifest_path: str | None = None
     remote_sr_manifest_path: str | None = None
     quality_mode: QualityMode = QualityMode.PRINT_READY
@@ -618,6 +673,7 @@ class SRBenchmarkReport(StrictModel):
     comparisons: list[SRCaseComparison] = Field(default_factory=list)
     comparable_case_count: int = Field(default=0, ge=0)
     native_preferred_count: int = Field(default=0, ge=0)
+    lanczos_preferred_count: int = Field(default=0, ge=0)
     local_sr_preferred_count: int = Field(default=0, ge=0)
     remote_sr_preferred_count: int = Field(default=0, ge=0)
     tie_count: int = Field(default=0, ge=0)

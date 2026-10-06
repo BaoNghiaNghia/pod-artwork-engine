@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v14",
-  "version": "14",
-  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, Harness-only native/local/remote SR comparison, concrete benchmark-only SR adapter materialization, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
+  "recipe_id": "local-precision-v15",
+  "version": "15",
+  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, Harness-only native/Lanczos/local/remote SR comparison, concrete benchmark-only SR adapter materialization, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "multi-reference-region-rescue-representation-material-texture-sr-readiness-plus-local-analysis",
-      "version": "phase2i"
+      "version": "phase2j"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase2i"
+      "version": "phase2j"
     },
     {
       "name": "qc",
-      "implementation": "two-gate-qc-plus-sr-benchmark-adapters",
-      "version": "phase2i"
+      "implementation": "two-gate-qc-plus-fair-sr-cohort-and-adapters",
+      "version": "phase2j"
     }
   ],
   "router_version": "phase2a",

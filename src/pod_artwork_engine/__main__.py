@@ -23,6 +23,7 @@ from .harness_models import (
     PromotionPolicy,
     RouteMatrixSpec,
     SRBenchmarkSpec,
+    SRCohortSpec,
 )
 from .logging_config import LoggingRuntime
 from .qc_policy import load_qc_policy
@@ -31,6 +32,7 @@ from .router_calibration import RouterPolicyCalibrator
 from .router_policy import load_router_policy
 from .settings import Settings
 from .sr_adapters import SRAdapterMaterializer, load_sr_adapter_spec
+from .sr_cohort import SRCohortMaterializer
 from .sr_matrix import SRBenchmarkMatrixRunner
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -169,6 +171,7 @@ def main() -> None:
     )
     sr_matrix.add_argument("--recipe", type=Path, required=True)
     sr_matrix.add_argument("--native-candidates", type=Path)
+    sr_matrix.add_argument("--lanczos-candidates", type=Path)
     sr_matrix.add_argument("--local-sr-candidates", type=Path)
     sr_matrix.add_argument("--remote-sr-candidates", type=Path)
     sr_matrix.add_argument(
@@ -207,6 +210,22 @@ def main() -> None:
         default=QualityMode.PRINT_READY.value,
     )
     sr_materialize.add_argument("--limit", type=int)
+
+    sr_cohort = sub.add_parser("harness-sr-cohort")
+    sr_cohort.add_argument("dataset_id")
+    sr_cohort.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        required=True,
+    )
+    sr_cohort.add_argument(
+        "--input-candidates",
+        type=Path,
+        required=True,
+    )
+    sr_cohort.add_argument("--scale-factor", type=float, default=2.0)
+    sr_cohort.add_argument("--max-output-megapixels", type=float, default=80.0)
+    sr_cohort.add_argument("--limit", type=int)
 
     router_calibrate = sub.add_parser("harness-router-calibrate")
     router_calibrate.add_argument("matrix_ids", nargs="+")
@@ -446,6 +465,11 @@ def main() -> None:
                 if args.native_candidates is not None
                 else None
             ),
+            lanczos_manifest_path=(
+                str(args.lanczos_candidates)
+                if args.lanczos_candidates is not None
+                else None
+            ),
             local_sr_manifest_path=(
                 str(args.local_sr_candidates)
                 if args.local_sr_candidates is not None
@@ -490,6 +514,23 @@ def main() -> None:
                 else None
             ),
         )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-sr-cohort":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = SRCohortSpec(
+            dataset_id=args.dataset_id,
+            tier=BenchmarkTier(args.tier),
+            input_manifest_path=str(args.input_candidates.resolve()),
+            scale_factor=args.scale_factor,
+            max_output_megapixels=args.max_output_megapixels,
+            limit=args.limit,
+        )
+        report = SRCohortMaterializer(
+            settings,
+            registry,
+            store,
+        ).materialize(spec)
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-router-calibrate":
         store = HarnessStore(settings.harness_dir)

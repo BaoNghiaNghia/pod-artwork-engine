@@ -522,7 +522,7 @@ Implemented:
 - an SR challenger is promotable only when both quality and small-detail survival improve past configured floors, semantic score stays within the allowed regression bound, and manual-review/fail-closed state is absent;
 - optional latency-ratio and cost-per-case ceilings can independently reject an otherwise higher-quality SR challenger;
 - a conservative `hallucination_risk` signal is raised when exact text, object-fidelity evidence or aggregate semantic score regresses beyond the configured bound; this is a benchmark safety signal, **not** a claim that the Harness has a complete hallucination detector;
-- reports recommend only `keep_native` or a local/remote/mixed SR policy **for human review**; `auto_applied=false` and `production_execution_enabled=false` are fixed;
+- reports recommend `keep_native`, `keep_lanczos`, or a local/remote/mixed SR policy **for human review**; when a valid Lanczos cohort lane is supplied, SR promotion is measured against Lanczos instead of the smaller native source; `auto_applied=false` and `production_execution_enabled=false` are fixed;
 - matrix artifacts are persisted under the Harness `sr-matrices/` directory for later Golden Holdout review/calibration;
 - API/diagnostics expose `sr_benchmark_matrix_v1` as the capability version;
 - the matrix adds no SR model dependency and therefore does not consume the 40 GB tool-storage budget beyond compact reports/diffs and whatever candidate images the operator explicitly benchmarks.
@@ -530,7 +530,7 @@ Implemented:
 Example:
 
 ```powershell
-python -m pod_artwork_engine harness-sr-matrix historical-v1 --tier golden --recipe config/benchmark-recipe.local.json --local-sr-candidates local-sr-candidates.json --remote-sr-candidates remote-sr-candidates.json --min-quality-gain 0.01 --min-detail-gain 0.03
+python -m pod_artwork_engine harness-sr-matrix historical-v1 --tier golden --recipe config/benchmark-recipe.local.json --native-candidates native-candidates.json --lanczos-candidates lanczos-candidates.json --local-sr-candidates local-sr-candidates.json --remote-sr-candidates remote-sr-candidates.json --min-quality-gain 0.01 --min-detail-gain 0.03
 ```
 
 Omit `--native-candidates` to generate the native baseline with the current production engine. Omit either SR candidate manifest when that backend is not available; the missing lane remains explicitly unavailable and cannot win promotion.
@@ -563,6 +563,31 @@ python -m pod_artwork_engine harness-sr-materialize historical-v1 --tier golden 
 ```
 
 Then pass the generated manifest to Phase 2H as `--local-sr-candidates` or `--remote-sr-candidates`. The input manifest should represent the image stage intended for SR benchmarking; blindly applying 2× SR to an already-final 4500×5400 print master is intentionally constrained by the megapixel guard and is not the recommended comparison design.
+
+### Phase 2J — Fair Native/Lanczos Pre-SR Cohort Foundation
+
+Implemented:
+
+- typed `SRCohortSpec` / `SRCohortReport` contracts create one benchmark-only pre-SR cohort for a Dataset Registry tier;
+- the cohort consumes an explicit pre-SR CandidateManifest and never uses historical `target_path` as an input; direct target paths and normalized-artwork-equivalent target copies are rejected as ground-truth leakage;
+- each valid input is EXIF-normalized once into `<harness>/sr-cohorts/<cohort_id>/source/`; the `source` and `native` manifests point to the same normalized pixels, so native performs no enlargement;
+- a deterministic Pillow Lanczos baseline is generated from those exact normalized pixels at the requested scale factor;
+- source/native/Lanczos entries preserve pair/case/artwork identity and record one `cohort_id + source_input_sha256` signature plus input/output dimensions and transform provenance;
+- Local/Remote SR adapters now propagate that same cohort signature from the source manifest into their output candidates;
+- Phase 2H accepts `--lanczos-candidates`; when Lanczos evidence is valid and shares the same cohort signature, SR gain is measured against Lanczos rather than native;
+- a challenger with a different cohort id or source hash is rejected with `pre-SR cohort source mismatch`, preventing cross-input benchmark wins;
+- missing inputs, target leakage, invalid images, megapixel overflow or 40 GB hard-cap pressure fail closed instead of materializing fake baselines;
+- generated source/native/Lanczos images and manifests remain under Harness storage, and the phase adds no model weights;
+- CLI `harness-sr-cohort` creates the fair cohort; API/diagnostics expose `sr_fair_cohort_v1`;
+- `Engine.run_job`, RouterPolicy and production pixels remain unchanged.
+
+Example workflow:
+
+```powershell
+python -m pod_artwork_engine harness-sr-cohort historical-v1 --tier golden --input-candidates pre-sr-candidates.json --scale-factor 2
+```
+
+Use the returned `source_manifest_path` as the input for both Phase 2I Local/Remote SR materializers, then pass the returned `native_manifest_path` and `lanczos_manifest_path` plus the SR manifests into `harness-sr-matrix`.
 
 Still pending in Phase 1:
 

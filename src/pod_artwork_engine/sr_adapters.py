@@ -550,6 +550,7 @@ class SRAdapterMaterializer:
                     if isinstance(reason_codes, list)
                     else []
                 )
+                source_cohort = source_entry.metadata.get("sr_cohort")
                 metadata = {
                     "benchmark_only": True,
                     "production_execution_enabled": False,
@@ -577,6 +578,9 @@ class SRAdapterMaterializer:
                     "backend_metadata": backend_metadata,
                     "source_candidate_metadata": dict(source_entry.metadata),
                 }
+                if isinstance(source_cohort, dict):
+                    metadata["sr_cohort"] = dict(source_cohort)
+                    metadata["sr_cohort"]["lane"] = adapter_spec.kind.value
                 entries[case.pair_id] = CandidateManifestEntry(
                     result_path=str(candidate_path),
                     recognized_text=recognized_text,

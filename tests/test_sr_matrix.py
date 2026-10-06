@@ -129,6 +129,7 @@ def _run_matrix(
     monkeypatch,
     *,
     results: dict[SRBenchmarkLane, BenchmarkCaseResult],
+    lanczos: bool = False,
     local: bool = True,
     remote: bool = True,
     max_latency_ratio: float | None = None,
@@ -154,6 +155,11 @@ def _run_matrix(
         tier=BenchmarkTier.SMOKE,
         recipe_path=str(recipe_path),
         native_manifest_path=str(tmp_path / "native.json"),
+        lanczos_manifest_path=(
+            str(tmp_path / "lanczos.json")
+            if lanczos
+            else None
+        ),
         local_sr_manifest_path=(
             str(tmp_path / "local.json")
             if local
@@ -467,3 +473,96 @@ def test_sr_matrix_requires_shared_dataset_fingerprint(
 
     with pytest.raises(ValueError, match="shared dataset manifest fingerprint"):
         runner.run(spec, spec_base=tmp_path)
+
+
+def test_lanczos_becomes_fair_sr_baseline_when_same_cohort(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    shared = {
+        "sr_cohort": {
+            "cohort_id": "cohort-1",
+            "source_input_sha256": "a" * 64,
+        }
+    }
+    report, _ = _run_matrix(
+        tmp_path,
+        monkeypatch,
+        lanczos=True,
+        remote=False,
+        results={
+            SRBenchmarkLane.NATIVE: _result(
+                quality=0.80,
+                detail=0.50,
+                semantic=0.90,
+                metadata=shared,
+            ),
+            SRBenchmarkLane.LANCZOS: _result(
+                quality=0.84,
+                detail=0.60,
+                semantic=0.90,
+                metadata=shared,
+            ),
+            SRBenchmarkLane.LOCAL_SR: _result(
+                quality=0.85,
+                detail=0.62,
+                semantic=0.90,
+                metadata=shared,
+            ),
+        },
+    )
+
+    comparison = report.comparisons[0]
+    assert comparison.preferred_lane is SRCasePreference.LANCZOS
+    assert report.lanczos_preferred_count == 1
+    assert report.recommendation is SRBenchmarkRecommendation.KEEP_LANCZOS
+    local = next(
+        item
+        for item in comparison.lanes
+        if item.lane is SRBenchmarkLane.LOCAL_SR
+    )
+    assert "small-detail gain below promotion floor" in local.reasons
+
+
+def test_pre_sr_cohort_mismatch_blocks_sr_promotion(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    report, _ = _run_matrix(
+        tmp_path,
+        monkeypatch,
+        remote=False,
+        results={
+            SRBenchmarkLane.NATIVE: _result(
+                quality=0.80,
+                detail=0.50,
+                semantic=0.90,
+                metadata={
+                    "sr_cohort": {
+                        "cohort_id": "cohort-a",
+                        "source_input_sha256": "a" * 64,
+                    }
+                },
+            ),
+            SRBenchmarkLane.LOCAL_SR: _result(
+                quality=0.95,
+                detail=0.90,
+                semantic=0.95,
+                metadata={
+                    "sr_cohort": {
+                        "cohort_id": "cohort-a",
+                        "source_input_sha256": "b" * 64,
+                    }
+                },
+            ),
+        },
+    )
+
+    comparison = report.comparisons[0]
+    assert comparison.preferred_lane is SRCasePreference.NATIVE
+    local = next(
+        item
+        for item in comparison.lanes
+        if item.lane is SRBenchmarkLane.LOCAL_SR
+    )
+    assert "pre-SR cohort source mismatch" in local.reasons

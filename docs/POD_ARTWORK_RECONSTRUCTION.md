@@ -1718,6 +1718,24 @@ Phase 2I concrete SR adapter foundation:
 
 Benchmark-design constraint: the input CandidateManifest should represent the image stage at which SR is intended to operate. Applying 2× SR directly to an already-final 4500×5400 print master is not the intended experiment and is normally rejected by the default megapixel safety guard. Native/Lanczos and SR challengers should be generated from the same pre-SR cohort before Phase 2H comparison.
 
+Phase 2J fair native/Lanczos pre-SR cohort foundation:
+
+- `SRCohortSpec` / `SRCohortReport` define a benchmark-only cohort bound to one Dataset Registry dataset/tier and one explicit pre-SR CandidateManifest;
+- historical ground-truth targets remain evaluation-only: a pre-SR input is rejected if it resolves to `BenchmarkCase.target_path` or has the same normalized artwork hash as that target, preventing target leakage through renamed/re-encoded copies;
+- valid inputs are EXIF-normalized and materialized exactly once under `<harness>/sr-cohorts/<cohort_id>/source/`;
+- the generated source and native manifests point to those exact normalized source pixels, so native does not perform any enlargement;
+- the Lanczos manifest is generated deterministically from the exact same normalized source using Pillow `Image.Resampling.LANCZOS` and the configured scale factor;
+- every source/native/Lanczos entry records pair/case/artwork identity, `cohort_id`, `source_input_sha256`, input/output dimensions, transform name and scale;
+- Local/Remote Phase 2I adapters propagate the source cohort signature into their output manifests instead of dropping it;
+- Phase 2H now accepts a separate Lanczos lane; if its evidence is valid and shares the native cohort signature, Local/Remote SR promotion is measured against Lanczos rather than against the lower-resolution native source;
+- the matrix preserves backward compatibility for older manifests without cohort metadata, while Phase 2J-aware lanes are rejected when cohort id/source hash differ;
+- missing input, invalid source, target leakage, output megapixel overflow or projected 40 GB hard-cap pressure produce fail-closed/manual-review manifest entries rather than synthetic baselines;
+- cohort artifacts are persisted under Harness storage with typed spec/report/source/native/Lanczos manifests; no model weights are added;
+- CLI `harness-sr-cohort` creates the fair cohort, and API/status diagnostics expose `sr_fair_cohort_v1`;
+- Phase 2J does not modify `Engine.run_job`, RouterPolicy, reconstruction routing or production pixels.
+
+The intended benchmark sequence is: materialize one Phase 2J pre-SR cohort, feed its source manifest to each Phase 2I SR adapter, then feed native/Lanczos/Local-SR/Remote-SR manifests into Phase 2H. This makes the comparison source-identical per case and blocks cross-input promotion.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1763,7 +1781,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2I foundation is implemented:
+Phase 2A–2J foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1775,9 +1793,10 @@ Phase 2A–2I foundation is implemented:
 - material-separation evidence/readiness planning without alpha/output mutation;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
-- native/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
+- native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
 - concrete benchmark-only local-command and remote-provider SR adapter materialization with fail-closed validation and provenance;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, SR candidate materialization and SR challenger comparison.
+- fair pre-SR cohort materialization with target-leakage rejection and per-case cohort/source-hash identity;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, fair SR cohort generation, SR candidate materialization and SR challenger comparison.
 
 Remaining Phase 2 work:
 

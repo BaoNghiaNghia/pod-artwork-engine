@@ -194,6 +194,37 @@ class SRBenchmarkMatrixRunner:
         )
 
     @staticmethod
+    def _cohort_signature(
+        result: BenchmarkCaseResult,
+    ) -> tuple[str, str] | None:
+        raw = result.metadata.get("sr_cohort")
+        if not isinstance(raw, dict):
+            return None
+        cohort_id = raw.get("cohort_id")
+        source_sha = raw.get("source_input_sha256")
+        if not isinstance(cohort_id, str) or not cohort_id:
+            return None
+        if not isinstance(source_sha, str) or not source_sha:
+            return None
+        return cohort_id, source_sha
+
+    @classmethod
+    def _same_pre_sr_source(
+        cls,
+        baseline: BenchmarkCaseResult,
+        challenger: BenchmarkCaseResult,
+    ) -> bool:
+        baseline_signature = cls._cohort_signature(baseline)
+        challenger_signature = cls._cohort_signature(challenger)
+        if baseline_signature is None and challenger_signature is None:
+            return True
+        return (
+            baseline_signature is not None
+            and challenger_signature is not None
+            and baseline_signature == challenger_signature
+        )
+
+    @staticmethod
     def _hallucination_risk(
         native: BenchmarkCaseResult,
         challenger: BenchmarkCaseResult,
@@ -234,6 +265,8 @@ class SRBenchmarkMatrixRunner:
         spec: SRBenchmarkSpec,
     ) -> tuple[bool, float | None, float | None, float | None, list[str]]:
         reasons: list[str] = []
+        if not SRBenchmarkMatrixRunner._same_pre_sr_source(native, challenger):
+            reasons.append("pre-SR cohort source mismatch")
         if not challenger.success or challenger.quality_score is None:
             reasons.append("challenger result unavailable")
             return False, None, None, None, reasons
@@ -322,6 +355,10 @@ class SRBenchmarkMatrixRunner:
                 spec.native_manifest_path,
                 spec_base,
             ),
+            SRBenchmarkLane.LANCZOS: self._resolve(
+                spec.lanczos_manifest_path,
+                spec_base,
+            ),
             SRBenchmarkLane.LOCAL_SR: self._resolve(
                 spec.local_sr_manifest_path,
                 spec_base,
@@ -377,16 +414,22 @@ class SRBenchmarkMatrixRunner:
             )
         )
 
-        for lane in (SRBenchmarkLane.LOCAL_SR, SRBenchmarkLane.REMOTE_SR):
+        for lane in (
+            SRBenchmarkLane.LANCZOS,
+            SRBenchmarkLane.LOCAL_SR,
+            SRBenchmarkLane.REMOTE_SR,
+        ):
             manifest_path = manifest_paths[lane]
             if manifest_path is None:
+                results_by_lane[lane] = {}
+                if lane is SRBenchmarkLane.LANCZOS:
+                    continue
                 runs.append(
                     self._unavailable_run(
                         lane,
                         "no candidate manifest/backend configured",
                     )
                 )
-                results_by_lane[lane] = {}
                 continue
 
             try:
@@ -430,6 +473,7 @@ class SRBenchmarkMatrixRunner:
         native_map = results_by_lane[SRBenchmarkLane.NATIVE]
         pair_ids = sorted(
             set(native_map)
+            | set(results_by_lane[SRBenchmarkLane.LANCZOS])
             | set(results_by_lane[SRBenchmarkLane.LOCAL_SR])
             | set(results_by_lane[SRBenchmarkLane.REMOTE_SR])
         )
@@ -437,10 +481,12 @@ class SRBenchmarkMatrixRunner:
         comparisons: list[SRCaseComparison] = []
         for pair_id in pair_ids:
             native = native_map.get(pair_id)
+            lanczos = results_by_lane[SRBenchmarkLane.LANCZOS].get(pair_id)
             local = results_by_lane[SRBenchmarkLane.LOCAL_SR].get(pair_id)
             remote = results_by_lane[SRBenchmarkLane.REMOTE_SR].get(pair_id)
             all_results = {
                 SRBenchmarkLane.NATIVE: native,
+                SRBenchmarkLane.LANCZOS: lanczos,
                 SRBenchmarkLane.LOCAL_SR: local,
                 SRBenchmarkLane.REMOTE_SR: remote,
             }
@@ -478,6 +524,17 @@ class SRBenchmarkMatrixRunner:
                 )
                 continue
 
+            baseline_lane = SRBenchmarkLane.NATIVE
+            baseline = native
+            if (
+                lanczos is not None
+                and lanczos.success
+                and lanczos.quality_score is not None
+                and self._same_pre_sr_source(native, lanczos)
+            ):
+                baseline_lane = SRBenchmarkLane.LANCZOS
+                baseline = lanczos
+
             eligible: list[
                 tuple[
                     SRBenchmarkLane,
@@ -500,13 +557,13 @@ class SRBenchmarkMatrixRunner:
                     detail_delta,
                     semantic_delta,
                     reasons,
-                ) = self._challenger_qualifies(native, challenger, spec)
+                ) = self._challenger_qualifies(baseline, challenger, spec)
 
                 evidence = next(
                     item for item in lane_evidence if item.lane is lane
                 )
                 evidence.hallucination_risk = self._hallucination_risk(
-                    native,
+                    baseline,
                     challenger,
                     max_semantic_drop=spec.max_semantic_drop,
                 )
@@ -535,13 +592,18 @@ class SRBenchmarkMatrixRunner:
                         pair_id=pair_id,
                         artwork_identity=native.artwork_identity,
                         lanes=lane_evidence,
-                        preferred_lane=SRCasePreference.NATIVE,
+                        preferred_lane=SRCasePreference(
+                            baseline_lane.value
+                        ),
                         quality_gain=0.0,
                         detail_gain=0.0,
                         semantic_delta=0.0,
                         reasons=(
                             comparison_reasons
-                            or ["no SR challenger has promotable evidence"]
+                            or [
+                                "no SR challenger has promotable evidence; "
+                                f"keeping {baseline_lane.value} baseline"
+                            ]
                         ),
                     )
                 )
@@ -596,6 +658,10 @@ class SRBenchmarkMatrixRunner:
             item.preferred_lane is SRCasePreference.NATIVE
             for item in comparable
         )
+        lanczos_count = sum(
+            item.preferred_lane is SRCasePreference.LANCZOS
+            for item in comparable
+        )
         local_count = sum(
             item.preferred_lane is SRCasePreference.LOCAL_SR
             for item in comparable
@@ -628,7 +694,8 @@ class SRBenchmarkMatrixRunner:
             run
             for run in runs
             if (
-                run.lane is not SRBenchmarkLane.NATIVE
+                run.lane
+                in {SRBenchmarkLane.LOCAL_SR, SRBenchmarkLane.REMOTE_SR}
                 and run.available
             )
         ]
@@ -646,6 +713,8 @@ class SRBenchmarkMatrixRunner:
             recommendation = (
                 SRBenchmarkRecommendation.REMOTE_SR_FOR_HUMAN_REVIEW
             )
+        elif lanczos_count:
+            recommendation = SRBenchmarkRecommendation.KEEP_LANCZOS
         else:
             recommendation = SRBenchmarkRecommendation.KEEP_NATIVE
 
@@ -664,6 +733,7 @@ class SRBenchmarkMatrixRunner:
             comparisons=comparisons,
             comparable_case_count=len(comparable),
             native_preferred_count=native_count,
+            lanczos_preferred_count=lanczos_count,
             local_sr_preferred_count=local_count,
             remote_sr_preferred_count=remote_count,
             tie_count=tie_count,
