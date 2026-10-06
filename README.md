@@ -742,8 +742,8 @@ Implemented:
 - proposals that already claim automatic application or production execution are explicitly ineligible;
 - review packets persist under `<harness>/policy-review/<packet_id>/review-packet.json` and record proposal id/path/hash, experiment/dataset provenance, source run ids and admission reasons;
 - packet ids are immutable once written, preventing silent replacement of the artifact a human is expected to review;
-- CLI: `harness-policy-review-packet --kind registration|material_separation --proposal <policy-proposal.json>`;
-- API/diagnostics expose `human_policy_review_packet_v1`;
+- CLI: `harness-policy-review-packet --kind registration|material_separation|super_resolution --proposal <policy-proposal.json>`;
+- API/diagnostics expose the current `human_policy_review_packet_v2`;
 - Phase 2R intentionally contains no approve/activate command, never changes `Engine.run_job`, and always keeps `automatically_applied=false` plus `production_execution_enabled=false`.
 
 Phase 2R does not change benchmark recipes because it is a governance/promotion boundary, not a reconstruction or scoring change; recipes remain `local-precision-v22` / `remote-balanced-v22`.
@@ -765,6 +765,24 @@ Implemented:
 - there is still no production activation command and `Engine.run_job` remains unchanged.
 
 Phase 2S is governance-only, so benchmark recipes remain `local-precision-v22` / `remote-balanced-v22`.
+
+### Phase 2T — Production Activation Readiness Dry-Run
+
+Implemented:
+
+- a fail-closed readiness builder starts from a Phase 2S decision receipt and re-verifies the full receipt → review packet → proposal chain;
+- readiness requires an explicit human `approve` decision, `human_approval_recorded=true`, reviewer identity, the separate-activation boundary and safe non-production flags;
+- the exact review packet and proposal are re-hashed and compared with the hashes frozen into the decision chain;
+- packet/proposal ids, policy kind, recommendation, experiment/dataset provenance, Golden tier, dataset fingerprint and sufficient-evidence state must remain mutually consistent;
+- rejected decisions, missing artifacts, hash mismatches, invalid typed artifacts, pre-Golden evidence, unsafe flags or recommendation drift produce `blocked`;
+- a clean chain produces only `ready_for_explicit_activation`; this is readiness evidence, not activation;
+- immutable assessments persist under `<harness>/policy-activation-readiness/<assessment_id>/readiness.json`;
+- CLI: `harness-policy-activation-readiness --receipt <decision-receipt.json>`;
+- API/diagnostics expose `human_policy_activation_readiness_v1`;
+- every assessment keeps `requires_explicit_activation_confirmation=true`, `automatically_applied=false` and `production_execution_enabled=false`;
+- Phase 2T adds no activation command and does not change `Engine.run_job`.
+
+The SHA-256 chain is an integrity/audit mechanism for local artifacts; it is not a cryptographic signature of reviewer identity. Phase 2T is governance-only, so benchmark recipes remain `local-precision-v22` / `remote-balanced-v22`.
 
 Still pending in Phase 1:
 

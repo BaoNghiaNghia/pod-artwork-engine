@@ -1864,14 +1864,14 @@ Phase 2Q material-separation benchmark execution and Golden policy calibration:
 
 Phase 2R adds the governance boundary between a measured Golden proposal and any future human approval:
 
-- `PolicyReviewPacketBuilder` accepts only typed Phase 2P production-registration proposals or Phase 2Q material-separation proposals;
+- `PolicyReviewPacketBuilder` accepts typed Phase 2P production-registration, Phase 2Q material-separation and measured SR policy proposals;
 - the exact proposal file is SHA-256 fingerprinted so later review can prove which immutable evidence artifact was examined;
 - admission requires Golden Holdout tier, a dataset fingerprint, `sufficient_evidence=true`, `candidate_for_human_approval`, and the original proposal's human-approval boundary;
 - a proposal that claims it was automatically applied or already enables production execution is marked `not_eligible`, never promoted;
 - eligible packets are only `pending_human_approval`; Phase 2R does not create approval receipts and does not expose an activation command;
 - packets persist under `<harness>/policy-review/<packet_id>/review-packet.json` with proposal provenance, source run ids and admission reasons;
 - packet ids cannot overwrite an existing packet, preventing silent mutation of the review target;
-- CLI `harness-policy-review-packet` generates the packet; API/diagnostics expose `human_policy_review_packet_v1`;
+- CLI `harness-policy-review-packet` generates the packet; API/diagnostics expose the current `human_policy_review_packet_v2`;
 - all packets keep `automatically_applied=false` and `production_execution_enabled=false`; `Engine.run_job` remains unchanged.
 
 Phase 2R intentionally does not bump benchmark recipe versions because no reconstruction, scoring or candidate pixels change.
@@ -1894,9 +1894,27 @@ Phase 2S records an explicit human decision while keeping production activation 
 
 Phase 2S is governance-only and does not bump benchmark recipe versions.
 
+#### Phase 2T — Production activation readiness dry-run
+
+Phase 2T adds a final fail-closed evidence gate before any future activation implementation:
+
+- `PolicyActivationReadinessBuilder` starts only from a Phase 2S decision receipt and reconstructs the receipt → review packet → proposal chain;
+- readiness requires an explicit `approve` decision, `human_approval_recorded=true`, a non-empty reviewer identity, `requires_separate_activation=true`, and no automatic/production-enabled state in the receipt;
+- the current review packet SHA-256 must match the packet hash frozen into the receipt, and the current proposal SHA-256 must match the proposal hash frozen into the receipt;
+- packet and proposal ids, policy kind, proposal path/hash, experiment id, dataset id/fingerprint, recommendation, Golden tier and sufficient-evidence flags are cross-checked;
+- the original typed proposal must still satisfy the policy-kind-specific human-approval candidate rule;
+- rejected decisions, missing/invalid artifacts, hash drift, provenance drift, recommendation drift, pre-Golden evidence or unsafe execution flags produce `blocked`;
+- a fully clean chain produces only `ready_for_explicit_activation`; it does not activate anything;
+- assessments persist immutably under `<harness>/policy-activation-readiness/<assessment_id>/readiness.json`;
+- CLI `harness-policy-activation-readiness --receipt <decision-receipt.json>` generates the dry-run assessment; API/diagnostics expose `human_policy_activation_readiness_v1`;
+- every report keeps `requires_explicit_activation_confirmation=true`, `automatically_applied=false` and `production_execution_enabled=false`;
+- there is still no production activation command and `Engine.run_job` remains unchanged.
+
+The SHA-256 chain is a local artifact-integrity/audit mechanism, not a digital signature authenticating reviewer identity. Phase 2T is governance-only and does not bump benchmark recipe versions.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, and Phase 2Q executes material separation only inside benchmark artifacts; production dewarp/material separation remains disabled;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, Phase 2Q executes material separation only inside benchmark artifacts, Phase 2R/2S only create review/decision artifacts, and Phase 2T only assesses activation readiness; production dewarp/material separation/SR activation remains disabled;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1939,7 +1957,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2S foundation is implemented:
+Phase 2A–2T foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1959,6 +1977,7 @@ Phase 2A–2S foundation is implemented:
 - Golden material-separation matrix scoring plus evidence-only human-review policy proposals;
 - immutable SHA-256-bound human review packets for registration/material-separation/SR candidates;
 - immutable one-decision-per-packet human approval/rejection receipts with proposal + review-packet hash binding and no production activation;
+- fail-closed production activation readiness dry-runs that re-verify the approved receipt → review packet → proposal chain and still keep production disabled;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
 - native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
@@ -1969,12 +1988,12 @@ Phase 2A–2S foundation is implemented:
 
 Remaining Phase 2 work:
 
-- run Phase 2P on the real Golden Holdout, generate a Phase 2R review packet and record the explicit Phase 2S human decision before any production registration activation work;
-- run Phase 2Q on the real Golden Holdout, generate a Phase 2R review packet and record the explicit Phase 2S human decision before any production material-separation activation work;
+- run Phase 2P on the real Golden Holdout, generate Phase 2R/2S artifacts and a clean Phase 2T readiness assessment before any separate production registration activation implementation;
+- run Phase 2Q on the real Golden Holdout, generate Phase 2R/2S artifacts and a clean Phase 2T readiness assessment before any separate production material-separation activation implementation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
 - configure approved concrete local/remote SR backends and run the Phase 2K Golden experiment on the real historical holdout;
-- run the measured Phase 2K SR proposal through the Phase 2R/2S review + decision chain before any production SR activation work;
+- run the measured Phase 2K SR proposal through Phase 2R/2S and produce a clean Phase 2T readiness assessment before any separate production SR activation implementation;
 - Golden Holdout calibration before enabling targeted rescue execution.
 
 ### Phase 3 — Reliability

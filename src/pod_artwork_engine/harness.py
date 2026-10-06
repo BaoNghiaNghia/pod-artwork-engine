@@ -278,6 +278,9 @@ class HarnessStore:
     def policy_decision_dir(self, packet_id: str) -> Path:
         return self.root / "policy-decisions" / packet_id
 
+    def policy_activation_readiness_dir(self, assessment_id: str) -> Path:
+        return self.root / "policy-activation-readiness" / assessment_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

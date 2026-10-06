@@ -22,6 +22,7 @@ from .material_separation_benchmark import (
     MaterialSeparationMaterializer,
 )
 from .material_separation_experiment import MaterialSeparationExperimentRunner
+from .policy_activation import PolicyActivationReadinessBuilder
 from .policy_review import (
     PolicyDecision,
     PolicyDecisionReceiptBuilder,
@@ -497,6 +498,12 @@ def main() -> None:
     policy_decision.add_argument("--reviewer", required=True)
     policy_decision.add_argument("--note", default="")
     policy_decision.add_argument("--receipt-id")
+
+    policy_activation_readiness = sub.add_parser(
+        "harness-policy-activation-readiness"
+    )
+    policy_activation_readiness.add_argument("--receipt", type=Path, required=True)
+    policy_activation_readiness.add_argument("--assessment-id")
 
     registration_calibrate = sub.add_parser("harness-registration-calibrate")
     registration_calibrate.add_argument("run_ids", nargs="+")
@@ -990,6 +997,19 @@ def main() -> None:
             receipt_id=args.receipt_id,
         )
         print(json.dumps(receipt.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-policy-activation-readiness":
+        store = HarnessStore(settings.harness_dir)
+        readiness = PolicyActivationReadinessBuilder(store).build(
+            args.receipt.resolve(),
+            assessment_id=args.assessment_id,
+        )
+        print(
+            json.dumps(
+                readiness.model_dump(mode="json"),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     elif args.command == "harness-registration-calibrate":
         store = HarnessStore(settings.harness_dir)
         proposal = RegistrationPolicyCalibrator(store).propose(
