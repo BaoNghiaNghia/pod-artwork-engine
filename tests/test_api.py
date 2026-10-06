@@ -47,6 +47,7 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert status["reference_alignment_method"] == "geometric_reference_alignment_v1"
     assert status["feature_correspondence_method"] == "feature_correspondence_benchmark_v1"
     assert status["registration_calibration_method"] == "golden_registration_calibration_v1"
+    assert status["dewarp_benchmark_method"] == "benchmark_dewarp_registration_v1"
     assert status["region_confidence_method"] == "normalized_region_evidence_v1"
     assert status["region_rescue_planner_method"] == "region_rescue_plan_v1"
     assert status["representation_planner_method"] == "representation_plan_v1"

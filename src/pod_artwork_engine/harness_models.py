@@ -865,6 +865,124 @@ class RegistrationPolicyProposal(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class DewarpRegionCellEvidence(StrictModel):
+    row: int = Field(ge=0)
+    column: int = Field(ge=0)
+    native_similarity: float = Field(ge=0, le=1)
+    dewarped_similarity: float = Field(ge=0, le=1)
+    delta: float = Field(ge=-1, le=1)
+
+
+class DewarpCaseEvidence(StrictModel):
+    pair_id: str
+    case_id: str
+    artwork_identity: str
+    success: bool = False
+    reference_index: int | None = Field(default=None, ge=0)
+    model: str = ""
+    source_path: str = ""
+    primary_path: str = ""
+    native_path: str | None = None
+    dewarped_path: str | None = None
+    native_region_mean: float | None = Field(default=None, ge=0, le=1)
+    dewarped_region_mean: float | None = Field(default=None, ge=0, le=1)
+    region_mean_delta: float | None = Field(default=None, ge=-1, le=1)
+    improved_region_cells: int = Field(default=0, ge=0)
+    region_cells: list[DewarpRegionCellEvidence] = Field(default_factory=list)
+    fail_closed: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class DewarpMaterializationSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str = Field(default_factory=lambda: "dewarp_cohort_" + uuid4().hex)
+    dataset_id: str
+    source_run_id: str
+    registration_policy_path: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    canonical_size: int = Field(default=512, ge=128, le=2048)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DewarpMaterializationReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str
+    dataset_id: str
+    source_run_id: str
+    registration_policy_id: str
+    tier: BenchmarkTier
+    dataset_manifest_sha256: str = ""
+    native_manifest_path: str
+    dewarp_manifest_path: str
+    case_count: int = Field(default=0, ge=0)
+    success_count: int = Field(default=0, ge=0)
+    failure_count: int = Field(default=0, ge=0)
+    affine_count: int = Field(default=0, ge=0)
+    homography_count: int = Field(default=0, ge=0)
+    region_improved_case_count: int = Field(default=0, ge=0)
+    cases: list[DewarpCaseEvidence] = Field(default_factory=list)
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DewarpBenchmarkRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    KEEP_NATIVE = "keep_native"
+    DEWARP_FOR_HUMAN_REVIEW = "dewarp_for_human_review"
+    MANUAL_REVIEW = "manual_review"
+
+
+class DewarpBenchmarkSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str = Field(default_factory=lambda: "dewarp_matrix_" + uuid4().hex)
+    dataset_id: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    recipe_path: str
+    native_manifest_path: str
+    dewarp_manifest_path: str
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_technical_gain: float = Field(default=0.0, ge=0, le=1)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    max_failure_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    max_manual_review_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DewarpBenchmarkReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_id: str
+    recipe_version: str
+    native_run_id: str
+    dewarp_run_id: str
+    native_scorecard_id: str
+    dewarp_scorecard_id: str
+    comparable_case_count: int = Field(default=0, ge=0)
+    quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    technical_delta: float | None = Field(default=None, ge=-1, le=1)
+    small_detail_delta: float | None = Field(default=None, ge=-1, le=1)
+    failure_rate_delta: float = Field(default=0, ge=-1, le=1)
+    manual_review_rate_delta: float = Field(default=0, ge=-1, le=1)
+    recommendation: DewarpBenchmarkRecommendation = (
+        DewarpBenchmarkRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    sufficient_evidence: bool = False
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class RouterThresholdCalibrationMetric(StrictModel):
     metric: str
     sample_count: int = Field(ge=0)

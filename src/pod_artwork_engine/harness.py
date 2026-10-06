@@ -254,6 +254,12 @@ class HarnessStore:
     def registration_calibration_dir(self, proposal_id: str) -> Path:
         return self.root / "registration-calibration" / proposal_id
 
+    def dewarp_cohort_dir(self, cohort_id: str) -> Path:
+        return self.root / "dewarp-cohorts" / cohort_id
+
+    def dewarp_matrix_dir(self, matrix_id: str) -> Path:
+        return self.root / "dewarp-matrices" / matrix_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

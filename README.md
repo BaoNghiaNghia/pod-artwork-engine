@@ -674,6 +674,26 @@ Implemented:
 
 Recipes are now `local-precision-v19` / `remote-balanced-v19`, phase `phase2n`.
 
+### Phase 2O — Benchmark-only Dewarp Execution & Registration-aware Region Sampling
+
+Implemented:
+
+- explicit Golden-only dewarp materializer consuming a Phase 2N `RegistrationPolicyProposal` plus one of its source Golden runs;
+- benchmark policy validation rejects dataset/run provenance mismatches, non-Golden policy sources, insufficient calibration, auto-applied policy or any policy with production execution enabled;
+- affine/homography references must independently satisfy calibrated match/inlier/coverage/reprojection thresholds before dewarp;
+- full-image normalized correspondence matrices are composed into artwork-crop coordinates before pixel execution, avoiding direct misuse of whole-image transforms on cropped artwork;
+- Pillow perspective transform performs inverse-mapped benchmark warp with no NumPy/OpenCV/model dependency;
+- paired manifests preserve the same secondary reference as an unregistered native control and a registered/dewarped challenger;
+- if dewarp fails policy thresholds, the native control is still materialized whenever measured source evidence is usable;
+- registration-aware 4×4 evidence compares primary-vs-native and primary-vs-dewarped local similarity per cell, recording mean delta and improved-cell count without replacing production `region_confidence_map`;
+- Golden dewarp matrix scores native and registered manifests with the normal Harness metrics and records quality, technical, small-detail, failure-rate and manual-review deltas;
+- recommendation is limited to `keep_native`, `dewarp_for_human_review`, `manual_review` or `insufficient_evidence`;
+- CLI: `harness-dewarp-materialize` and `harness-dewarp-matrix`;
+- API/diagnostics expose `benchmark_dewarp_registration_v1`;
+- `Engine.run_job` remains unchanged: no dewarp checkpoint, no dewarp precision op and no production final-pixel mutation.
+
+Recipes are now `local-precision-v20` / `remote-balanced-v20`, phase `phase2o`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
