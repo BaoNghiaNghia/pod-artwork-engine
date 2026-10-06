@@ -159,6 +159,10 @@ class HarnessEngineRunner:
             job_id,
             "material_separation",
         )
+        texture_handling = self.engine.checkpoints.payload(
+            job_id,
+            "texture_handling",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -322,6 +326,42 @@ class HarnessEngineRunner:
             material_edge_contact_ratio=(
                 float(material_separation.get("edge_contact_ratio") or 0)
                 if isinstance(material_separation, dict)
+                else 0
+            ),
+            texture_handling=isinstance(texture_handling, dict),
+            texture_handling_disposition=(
+                str(texture_handling.get("disposition") or "")
+                if isinstance(texture_handling, dict)
+                else ""
+            ),
+            texture_handling_confidence=(
+                float(texture_handling.get("confidence") or 0)
+                if isinstance(texture_handling, dict)
+                else 0
+            ),
+            texture_handling_fail_closed=(
+                bool(texture_handling.get("fail_closed"))
+                if isinstance(texture_handling, dict)
+                else False
+            ),
+            texture_edge_density=(
+                float(texture_handling.get("edge_density") or 0)
+                if isinstance(texture_handling, dict)
+                else 0
+            ),
+            texture_local_contrast=(
+                float(texture_handling.get("local_contrast") or 0)
+                if isinstance(texture_handling, dict)
+                else 0
+            ),
+            texture_local_variation=(
+                float(texture_handling.get("local_variation") or 0)
+                if isinstance(texture_handling, dict)
+                else 0
+            ),
+            texture_native_long_edge=(
+                int(texture_handling.get("native_long_edge") or 0)
+                if isinstance(texture_handling, dict)
                 else 0
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),

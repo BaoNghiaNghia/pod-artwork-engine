@@ -1635,6 +1635,25 @@ Phase 2E material-separation evidence planning:
 
 The initial thresholds are conservative and must be calibrated against historical/Golden Holdout material-separation cases before they can control reconstruction behavior.
 
+Phase 2F difficult-texture evidence planning:
+
+- every analyzed primary artwork derives typed `TextureHandlingEvidence` after region and material evidence are available;
+- disposition is `preserve_raster`, `local_detail_enhancement_candidate`, `semantic_required` or `manual_review`;
+- the planner computes lightweight grayscale edge density, local contrast, neighboring-pixel variation and native artwork-crop long-edge resolution;
+- those measurements are combined with preflight source quality/compression, region mean confidence, material-separation disposition and DesignSpec texture/perspective/occlusion evidence;
+- smooth/painterly texture is preserved as raster by default;
+- fine detail with sufficient native resolution, source quality, low compression and reliable regional evidence is also preserved without unbenchmarked sharpening;
+- fine detail becomes `semantic_required` when source quality is below `0.70`, compression risk is at least `0.40`, native artwork long edge is below `1200`, source-compression evidence exists or region confidence is below `0.45`;
+- outlined detail can be marked `local_detail_enhancement_candidate` only when source quality is at least `0.65`, compression risk is below `0.35`, native long edge is at least `900`, region confidence is at least `0.45`, and measured edge/contrast/variation evidence is present;
+- perspective above `0.10`, occlusion above `0.10` or explicit semantic-reconstruction requirements force semantic handling;
+- `semantic_required` material separation propagates to texture handling, while unresolved material separation or unavailable/very weak region evidence propagates to manual review;
+- the checkpoint is copied into ArtifactManifest precision evidence and Harness reports coverage, disposition, confidence, fail-closed state, edge density, local contrast/variation and native long-edge resolution;
+- API/status diagnostics expose `texture_handling_evidence_v1` only;
+- Phase 2F does not invoke sharpening, super-resolution, provider rescue or any pixel mutation; local enhancement remains a benchmark candidate only;
+- the planner is Pillow/CPU-only and adds no persistent model/cache footprint.
+
+Texture thresholds are implementation defaults, not learned production policy. Golden Holdout detail/texture cohorts must prove local enhancement or SR behavior before execution is enabled.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1678,7 +1697,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2E foundation is implemented:
+Phase 2A–2F foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1688,14 +1707,15 @@ Phase 2A–2E foundation is implemented:
 - fail-closed bounded region-rescue planning without pixel mutation;
 - conservative component-level vector/raster/hybrid representation planning;
 - material-separation evidence/readiness planning without alpha/output mutation;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans and material-separation evidence.
+- difficult-texture/detail readiness planning without sharpening/SR/output mutation;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material-separation evidence and texture-handling evidence.
 
 Remaining Phase 2 work:
 
 - true geometric multi-reference alignment/dewarp and region-level registration;
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
-- difficult texture handling;
+- benchmarked execution policy for local detail enhancement/difficult textures;
 - SR comparison;
 - Golden Holdout calibration before enabling targeted rescue execution.
 

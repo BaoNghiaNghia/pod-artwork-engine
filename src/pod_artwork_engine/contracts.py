@@ -113,6 +113,13 @@ class MaterialSeparationDisposition(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class TextureHandlingDisposition(StrEnum):
+    PRESERVE_RASTER = "preserve_raster"
+    LOCAL_DETAIL_ENHANCEMENT_CANDIDATE = "local_detail_enhancement_candidate"
+    SEMANTIC_REQUIRED = "semantic_required"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -345,6 +352,25 @@ class MaterialSeparationEvidence(StrictModel):
     border_uniformity: float = Field(default=0, ge=0, le=1)
     edge_contact_ratio: float = Field(default=0, ge=0, le=1)
     foreground_contrast: float = Field(default=0, ge=0, le=1)
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class TextureHandlingEvidence(StrictModel):
+    method: str = "texture_handling_evidence_v1"
+    disposition: TextureHandlingDisposition
+    primary_index: int = Field(ge=0)
+    confidence: float = Field(ge=0, le=1)
+    fail_closed: bool = False
+    artwork_bbox: BoundingBox | None = None
+    edge_density: float = Field(default=0, ge=0, le=1)
+    local_contrast: float = Field(default=0, ge=0, le=1)
+    local_variation: float = Field(default=0, ge=0, le=1)
+    native_long_edge: int = Field(default=0, ge=0)
+    source_quality: float = Field(default=0, ge=0, le=1)
+    compression_risk: float = Field(default=0, ge=0, le=1)
+    region_mean_confidence: float = Field(default=0, ge=0, le=1)
+    material_disposition: MaterialSeparationDisposition
     reason_codes: list[str] = Field(default_factory=list)
     missing_capabilities: list[str] = Field(default_factory=list)
 

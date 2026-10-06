@@ -32,6 +32,7 @@ from .contracts import (
     RepresentationPlanEvidence,
     RouteDecision,
     RouteKind,
+    TextureHandlingEvidence,
     TypographySpec,
 )
 from .exporter import export_master
@@ -66,6 +67,7 @@ from .router import choose_route, forced_route_decision
 from .router_policy import load_router_policy
 from .settings import Settings
 from .storage import StorageLimitExceeded, StorageManager
+from .texture_handling import build_texture_handling_evidence
 from .typography import (
     TypographyRenderUnavailable,
     overlay_typography,
@@ -689,6 +691,47 @@ class Engine:
         )
         return evidence
 
+    def _texture_handling_evidence(
+        self,
+        job: JobRecord,
+        source_path: Path,
+        preflight: PreflightResult,
+        design_spec: DesignSpec,
+        material: MaterialSeparationEvidence,
+        region_map: RegionConfidenceMapEvidence,
+        *,
+        primary_index: int,
+    ) -> TextureHandlingEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "texture_handling")
+        if isinstance(checkpoint, dict):
+            return TextureHandlingEvidence.model_validate(checkpoint)
+
+        evidence = build_texture_handling_evidence(
+            source_path,
+            preflight,
+            design_spec,
+            material,
+            region_map,
+            primary_index=primary_index,
+        )
+        self.checkpoints.write(
+            job.job_id,
+            "texture_handling",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "texture_handling_evidence_completed",
+            stage="analyzing",
+            quality_score=evidence.confidence,
+            failure_reason=(
+                ", ".join(evidence.reason_codes)
+                if evidence.fail_closed
+                else None
+            ),
+        )
+        return evidence
+
     def _representation_plan(
         self,
         job: JobRecord,
@@ -1214,6 +1257,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "material_separation")
                     or {}
                 ),
+                "texture_handling": (
+                    self.checkpoints.payload(job.job_id, "texture_handling")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1276,11 +1323,20 @@ class Engine:
                 fusion,
             )
             self._representation_plan(job, design_spec)
-            self._material_separation_evidence(
+            material_evidence = self._material_separation_evidence(
                 job,
                 source_paths[fusion.primary_index],
                 preflights[fusion.primary_index],
                 design_spec,
+                primary_index=fusion.primary_index,
+            )
+            self._texture_handling_evidence(
+                job,
+                source_paths[fusion.primary_index],
+                preflights[fusion.primary_index],
+                design_spec,
+                material_evidence,
+                region_map,
                 primary_index=fusion.primary_index,
             )
             job = self.jobs.get(job_id) or job

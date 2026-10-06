@@ -125,6 +125,14 @@ class PrecisionEvidence(StrictModel):
     material_separation_fail_closed: bool = False
     material_border_uniformity: float = Field(default=0, ge=0, le=1)
     material_edge_contact_ratio: float = Field(default=0, ge=0, le=1)
+    texture_handling: bool = False
+    texture_handling_disposition: str = ""
+    texture_handling_confidence: float = Field(default=0, ge=0, le=1)
+    texture_handling_fail_closed: bool = False
+    texture_edge_density: float = Field(default=0, ge=0, le=1)
+    texture_local_contrast: float = Field(default=0, ge=0, le=1)
+    texture_local_variation: float = Field(default=0, ge=0, le=1)
+    texture_native_long_edge: int = Field(default=0, ge=0)
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""

@@ -469,6 +469,26 @@ Implemented:
 
 The initial thresholds are conservative engineering defaults and must be calibrated on historical/Golden Holdout cases before material-separation evidence is allowed to control reconstruction.
 
+### Phase 2F — Difficult-Texture Evidence Planning
+
+Implemented:
+
+- the selected primary artwork now receives typed `TextureHandlingEvidence` after material-separation evidence is available;
+- texture disposition is one of `preserve_raster`, `local_detail_enhancement_candidate`, `semantic_required` or `manual_review`;
+- the planner measures lightweight edge density, local contrast, local pixel variation and native artwork long-edge resolution using Pillow only;
+- texture decisions also consume source quality, compression risk, normalized region confidence, material-separation disposition and DesignSpec texture/perspective/occlusion evidence;
+- painterly/smooth and adequately sourced fine-detail artwork default to raster preservation rather than speculative sharpening;
+- outlined artwork is only marked as a local-detail-enhancement candidate when source quality/resolution, compression, region confidence, edge density, contrast and variation all pass conservative readiness thresholds;
+- fine-detail artwork with weak source quality, strong compression, low native resolution or weak regional evidence fails closed to semantic reconstruction;
+- perspective, occlusion or an explicit semantic-reconstruction requirement also force semantic handling;
+- unresolved material separation or unavailable/very weak regional evidence force manual review before any texture operation;
+- Harness and ArtifactManifest now record disposition, confidence, fail-closed state, edge density, local contrast/variation and native artwork resolution;
+- API/diagnostics expose only the method version `texture_handling_evidence_v1`;
+- Phase 2F does **not** sharpen, upscale, run SR, alter provider routing or mutate candidate/final pixels; `local_detail_enhancement_candidate` is readiness metadata only;
+- the planner adds no model/cache footprint and therefore remains compatible with the 40 GB storage limit.
+
+These thresholds are deliberately conservative and must be calibrated against Golden Holdout texture/detail cohorts before any sharpening/SR/detail-recovery execution is enabled.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

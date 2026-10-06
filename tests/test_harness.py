@@ -353,6 +353,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.precision_coverage["region_rescue_plan"] == 1.0
     assert scorecard.precision_coverage["representation_plan"] == 1.0
     assert scorecard.precision_coverage["material_separation"] == 1.0
+    assert scorecard.precision_coverage["texture_handling"] == 1.0
     assert scorecard.precision_coverage["multi_reference_fusion"] == 0.0
     assert "local_text_repair" in scorecard.precision_coverage
     assert scorecard.provenance.execution_kind == "production_engine"
@@ -395,6 +396,18 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert 0 <= result.precision.material_separation_confidence <= 1
     assert 0 <= result.precision.material_border_uniformity <= 1
     assert 0 <= result.precision.material_edge_contact_ratio <= 1
+    assert result.precision.texture_handling is True
+    assert result.precision.texture_handling_disposition in {
+        "preserve_raster",
+        "local_detail_enhancement_candidate",
+        "semantic_required",
+        "manual_review",
+    }
+    assert 0 <= result.precision.texture_handling_confidence <= 1
+    assert 0 <= result.precision.texture_edge_density <= 1
+    assert 0 <= result.precision.texture_local_contrast <= 1
+    assert 0 <= result.precision.texture_local_variation <= 1
+    assert result.precision.texture_native_long_edge >= 0
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:
