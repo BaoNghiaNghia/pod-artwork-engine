@@ -799,6 +799,72 @@ class SRExperimentReport(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class RegistrationPolicyRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    AFFINE_FOR_DEWARP_BENCHMARK = "affine_for_dewarp_benchmark"
+    HOMOGRAPHY_FOR_DEWARP_BENCHMARK = "homography_for_dewarp_benchmark"
+    MIXED_FOR_DEWARP_BENCHMARK = "mixed_for_dewarp_benchmark"
+    MANUAL_REVIEW = "manual_review"
+
+
+class RegistrationThresholds(StrictModel):
+    min_match_count: int = Field(default=6, ge=3)
+    min_inlier_count: int = Field(default=5, ge=3)
+    min_inlier_ratio: float = Field(default=0.60, ge=0, le=1)
+    min_spatial_coverage: float = Field(default=0.18, ge=0, le=1)
+    max_mean_reprojection_error: float = Field(default=0.025, ge=0)
+    max_median_reprojection_error: float = Field(default=0.018, ge=0)
+    max_homography_error_ratio: float | None = Field(default=None, ge=0)
+
+
+class RegistrationLaneCalibration(StrictModel):
+    lane: str
+    case_count: int = Field(default=0, ge=0)
+    accepted_reference_count: int = Field(default=0, ge=0)
+    sample_count: int = Field(default=0, ge=0)
+    sufficient_evidence: bool = False
+    thresholds: RegistrationThresholds | None = None
+    inlier_ratio_p10: float | None = Field(default=None, ge=0, le=1)
+    spatial_coverage_p10: float | None = Field(default=None, ge=0, le=1)
+    mean_reprojection_error_p90: float | None = Field(default=None, ge=0)
+    median_reprojection_error_p90: float | None = Field(default=None, ge=0)
+    homography_error_ratio_p90: float | None = Field(default=None, ge=0)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class RegistrationPolicyProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(default_factory=lambda: "registration_policy_" + uuid4().hex)
+    method: str = "golden_registration_calibration_v1"
+    dataset_id: str
+    source_run_ids: list[str] = Field(min_length=1)
+    source_scorecard_ids: list[str] = Field(default_factory=list)
+    source_recipe_ids: list[str] = Field(default_factory=list)
+    source_recipe_versions: list[str] = Field(default_factory=list)
+    source_tiers: list[BenchmarkTier] = Field(default_factory=list)
+    dataset_manifest_sha256: str = ""
+    total_case_count: int = Field(default=0, ge=0)
+    successful_case_count: int = Field(default=0, ge=0)
+    measured_reference_count: int = Field(default=0, ge=0)
+    insufficient_feature_count: int = Field(default=0, ge=0)
+    manual_review_count: int = Field(default=0, ge=0)
+    semantic_required_count: int = Field(default=0, ge=0)
+    manual_review_rate: float = Field(default=0, ge=0, le=1)
+    max_manual_review_rate: float = Field(default=0.15, ge=0, le=1)
+    min_cases_per_lane: int = Field(default=3, ge=1)
+    affine: RegistrationLaneCalibration
+    homography: RegistrationLaneCalibration
+    recommendation: RegistrationPolicyRecommendation = (
+        RegistrationPolicyRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class RouterThresholdCalibrationMetric(StrictModel):
     metric: str
     sample_count: int = Field(ge=0)

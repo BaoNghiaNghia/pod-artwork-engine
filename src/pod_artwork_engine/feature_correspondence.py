@@ -671,6 +671,16 @@ def build_feature_correspondence_evidence(
             and homography_median <= MAX_HOMOGRAPHY_MEDIAN_ERROR
         )
 
+        homography_error_ratio = (
+            homography_median / affine_median
+            if (
+                homography_median is not None
+                and affine_median is not None
+                and affine_median > 1e-9
+            )
+            else None
+        )
+
         prefer_homography = (
             alignment_item.disposition
             is ReferenceAlignmentDisposition.HOMOGRAPHY_CANDIDATE
@@ -696,6 +706,17 @@ def build_feature_correspondence_evidence(
                     inlier_count=len(homography_inliers),
                     inlier_ratio=round(homography_ratio, 8),
                     spatial_coverage=round(coverage, 8),
+                    affine_inlier_ratio=round(affine_ratio, 8),
+                    affine_mean_reprojection_error=affine_mean,
+                    affine_median_reprojection_error=affine_median,
+                    homography_inlier_ratio=round(homography_ratio, 8),
+                    homography_mean_reprojection_error=homography_mean,
+                    homography_median_reprojection_error=homography_median,
+                    homography_error_ratio=(
+                        round(homography_error_ratio, 8)
+                        if homography_error_ratio is not None
+                        else None
+                    ),
                     mean_reprojection_error=homography_mean,
                     median_reprojection_error=homography_median,
                     transform_matrix=homography_matrix or [],
@@ -729,6 +750,17 @@ def build_feature_correspondence_evidence(
                     inlier_count=len(affine_inliers),
                     inlier_ratio=round(affine_ratio, 8),
                     spatial_coverage=round(coverage, 8),
+                    affine_inlier_ratio=round(affine_ratio, 8),
+                    affine_mean_reprojection_error=affine_mean,
+                    affine_median_reprojection_error=affine_median,
+                    homography_inlier_ratio=round(homography_ratio, 8),
+                    homography_mean_reprojection_error=homography_mean,
+                    homography_median_reprojection_error=homography_median,
+                    homography_error_ratio=(
+                        round(homography_error_ratio, 8)
+                        if homography_error_ratio is not None
+                        else None
+                    ),
                     mean_reprojection_error=affine_mean,
                     median_reprojection_error=affine_median,
                     transform_matrix=affine_matrix or [],
@@ -770,6 +802,17 @@ def build_feature_correspondence_evidence(
                 inlier_count=max(len(affine_inliers), len(homography_inliers)),
                 inlier_ratio=round(max(affine_ratio, homography_ratio), 8),
                 spatial_coverage=round(coverage, 8),
+                affine_inlier_ratio=round(affine_ratio, 8),
+                affine_mean_reprojection_error=affine_mean,
+                affine_median_reprojection_error=affine_median,
+                homography_inlier_ratio=round(homography_ratio, 8),
+                homography_mean_reprojection_error=homography_mean,
+                homography_median_reprojection_error=homography_median,
+                homography_error_ratio=(
+                    round(homography_error_ratio, 8)
+                    if homography_error_ratio is not None
+                    else None
+                ),
                 mean_reprojection_error=(
                     homography_mean
                     if homography_mean is not None

@@ -29,6 +29,7 @@ from .harness_models import (
 from .logging_config import LoggingRuntime
 from .qc_policy import load_qc_policy
 from .route_matrix import RouteMatrixRunner
+from .registration_calibration import RegistrationPolicyCalibrator
 from .router_calibration import RouterPolicyCalibrator
 from .router_policy import load_router_policy
 from .settings import Settings
@@ -257,6 +258,12 @@ def main() -> None:
     sr_experiment.add_argument("--min-comparable-cases", type=int, default=3)
     sr_experiment.add_argument("--min-decisive-wins", type=int, default=2)
     sr_experiment.add_argument("--max-incomplete-rate", type=float, default=0.0)
+
+    registration_calibrate = sub.add_parser("harness-registration-calibrate")
+    registration_calibrate.add_argument("run_ids", nargs="+")
+    registration_calibrate.add_argument("--min-cases-per-lane", type=int, default=3)
+    registration_calibrate.add_argument("--min-quality-score", type=float, default=0.80)
+    registration_calibrate.add_argument("--max-manual-review-rate", type=float, default=0.15)
 
     router_calibrate = sub.add_parser("harness-router-calibrate")
     router_calibrate.add_argument("matrix_ids", nargs="+")
@@ -596,6 +603,15 @@ def main() -> None:
             spec_base=Path.cwd(),
         )
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-registration-calibrate":
+        store = HarnessStore(settings.harness_dir)
+        proposal = RegistrationPolicyCalibrator(store).propose(
+            args.run_ids,
+            min_cases_per_lane=args.min_cases_per_lane,
+            min_quality_score=args.min_quality_score,
+            max_manual_review_rate=args.max_manual_review_rate,
+        )
+        print(json.dumps(proposal.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-router-calibrate":
         store = HarnessStore(settings.harness_dir)
         policy_path = (

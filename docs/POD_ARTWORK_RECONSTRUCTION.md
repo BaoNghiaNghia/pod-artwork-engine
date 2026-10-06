@@ -1790,9 +1790,26 @@ Phase 2M feature correspondence and measured homography benchmark foundation:
 - `execution_enabled=false` remains hard-coded: Phase 2M measures transforms but does not warp/dewarp pixels or modify the 4×4 region-confidence sampler;
 - no NumPy, OpenCV, GPU model or storage-heavy dependency is introduced.
 
+Phase 2N Golden registration calibration and dewarp promotion policy:
+
+- Harness engine results persist the raw `feature_correspondence` evidence in case metadata so Golden calibration can consume measured registration evidence without rerunning the production pipeline;
+- correspondence evidence now preserves both affine and homography alternative-fit inlier/error statistics plus `homography_error_ratio = homography_median_error / affine_median_error`;
+- `RegistrationPolicyCalibrator` only accepts Golden Holdout scorecards from one dataset/fingerprint and fails closed on incomplete or inconsistent provenance;
+- successful, non-manual, sufficiently high-quality Golden cases are grouped into measured affine and measured homography lanes;
+- conservative lower-tail p10 evidence calibrates minimum match count, inlier count, inlier ratio and spatial coverage;
+- conservative upper-tail p90 evidence calibrates maximum mean/median reprojection error and, for homography, the required improvement over affine;
+- calibrated values are never allowed to become weaker than the current Phase 2M safety floors/ceilings;
+- each lane requires a minimum number of independent Golden cases before it is considered sufficient;
+- poor Golden distributions, excessive blocker/manual-review rate, incomplete runs or missing raw evidence prevent promotion;
+- recommendations are limited to `affine_for_dewarp_benchmark`, `homography_for_dewarp_benchmark`, `mixed_for_dewarp_benchmark`, `insufficient_evidence` or `manual_review`;
+- proposals persist with dataset/run/recipe provenance and always require human approval;
+- `production_execution_enabled=false` and `automatically_applied=false` remain mandatory;
+- CLI `harness-registration-calibrate` and API/diagnostics method `golden_registration_calibration_v1` expose the workflow;
+- Phase 2N calibrates policy thresholds only; no transform is applied to pixels and region confidence/rescue continues to use the existing coordinate behavior.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness and Phase 2M adds measured correspondence/model evidence, but neither phase enables dewarp execution or region-level compositing;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, and Phase 2N calibrates Golden thresholds; none of these phases enables production dewarp or region-level compositing;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1835,13 +1852,14 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2M foundation is implemented:
+Phase 2A–2N foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
 - conflict/ambiguity provenance and semantic-disambiguation routing;
 - conservative normalized bbox-based affine alignment candidates plus fail-closed homography/semantic/manual readiness evidence;
 - deterministic feature correspondence with measured affine/homography RANSAC evidence, inlier ratios and reprojection-error gates, without warp execution;
+- Golden Holdout registration calibration with conservative threshold proposals and dewarp-benchmark-only promotion states;
 - coarse normalized 4×4 region confidence/evidence maps;
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
@@ -1857,7 +1875,7 @@ Phase 2A–2M foundation is implemented:
 
 Remaining Phase 2 work:
 
-- Golden Holdout calibration/promotion of correspondence thresholds, then measured dewarp execution and registration-aware region-level sampling/compositing;
+- run Phase 2N calibration on the real Golden Holdout, explicitly approve a measured registration policy, then benchmark dewarp execution and registration-aware region-level sampling/compositing;
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;

@@ -352,6 +352,13 @@ class ReferenceCorrespondenceEvidence(StrictModel):
     spatial_coverage: float = Field(default=0, ge=0, le=1)
     mean_reprojection_error: float | None = Field(default=None, ge=0)
     median_reprojection_error: float | None = Field(default=None, ge=0)
+    affine_inlier_ratio: float | None = Field(default=None, ge=0, le=1)
+    affine_mean_reprojection_error: float | None = Field(default=None, ge=0)
+    affine_median_reprojection_error: float | None = Field(default=None, ge=0)
+    homography_inlier_ratio: float | None = Field(default=None, ge=0, le=1)
+    homography_mean_reprojection_error: float | None = Field(default=None, ge=0)
+    homography_median_reprojection_error: float | None = Field(default=None, ge=0)
+    homography_error_ratio: float | None = Field(default=None, ge=0)
     transform_matrix: list[float] = Field(default_factory=list, max_length=9)
     matches: list[FeatureMatchEvidence] = Field(default_factory=list, max_length=32)
     fail_closed: bool = False

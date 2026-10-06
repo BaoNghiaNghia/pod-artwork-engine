@@ -663,6 +663,10 @@ class HarnessEngineRunner:
         result_path = job.result_path or str(
             self.settings.jobs_dir / job_id / "final" / "4500x5400.png"
         )
+        feature_correspondence = self.engine.checkpoints.payload(
+            job_id,
+            "feature_correspondence",
+        )
         return CandidateManifestEntry(
             result_path=result_path,
             recognized_text=recognized_text,
@@ -682,6 +686,11 @@ class HarnessEngineRunner:
                     job.failure_category.value if job.failure_category else None
                 ),
                 "failure_reason": job.failure_reason,
+                "feature_correspondence": (
+                    feature_correspondence
+                    if isinstance(feature_correspondence, dict)
+                    else {}
+                ),
             },
         )
 

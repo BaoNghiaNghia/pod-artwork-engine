@@ -655,6 +655,25 @@ Implemented:
 
 Recipes are now `local-precision-v18` / `remote-balanced-v18`, phase `phase2m`.
 
+### Phase 2N — Golden Registration Calibration & Dewarp Promotion Policy
+
+Implemented:
+
+- Golden-only registration calibrator over persisted Harness case results;
+- Harness engine case metadata now carries the raw `feature_correspondence` checkpoint so calibration reuses measured evidence without rerunning reconstruction;
+- Phase 2M evidence now records both affine and homography candidate inlier/error metrics plus the homography-vs-affine median-error ratio;
+- conservative p10/p90 calibration derives minimum match/inlier count, minimum inlier ratio, minimum artwork-relative spatial coverage, maximum mean/median reprojection error, and homography improvement ratio;
+- calibrator rejects non-Golden runs, dataset/fingerprint mismatches and incomplete runs;
+- minimum Golden case count is enforced per affine/homography lane;
+- poor inlier/reprojection distributions or excessive manual-review/insufficient/semantic blocker rate force `manual_review`;
+- successful lanes are only promoted to `*_for_dewarp_benchmark`, never to production execution;
+- proposals persist under Harness `registration-calibration/<proposal_id>/proposal.json` with run/recipe/dataset provenance;
+- CLI: `harness-registration-calibrate <run_id> [<run_id> ...]`;
+- API/diagnostics expose `golden_registration_calibration_v1`;
+- every proposal has `requires_human_approval=true`, `automatically_applied=false`, and `production_execution_enabled=false`.
+
+Recipes are now `local-precision-v19` / `remote-balanced-v19`, phase `phase2n`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

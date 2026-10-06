@@ -251,6 +251,9 @@ class HarnessStore:
     def router_calibration_dir(self, proposal_id: str) -> Path:
         return self.root / "router-calibration" / proposal_id
 
+    def registration_calibration_dir(self, proposal_id: str) -> Path:
+        return self.root / "registration-calibration" / proposal_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

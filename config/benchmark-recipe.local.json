@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v18",
-  "version": "18",
-  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, geometric reference-alignment readiness, measured feature-correspondence affine/homography benchmark evidence, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
+  "recipe_id": "local-precision-v19",
+  "version": "19",
+  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, geometric reference-alignment readiness, measured feature-correspondence affine/homography evidence, Golden Holdout registration threshold calibration and evidence-only dewarp promotion proposal, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-alignment-correspondence-region-rescue-representation-material-texture-sr-readiness-plus-local-analysis",
-      "version": "phase2m"
+      "implementation": "multi-reference-alignment-correspondence-registration-calibration-region-rescue-representation-material-texture-sr-readiness-plus-local-analysis",
+      "version": "phase2n"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase2m"
+      "version": "phase2n"
     },
     {
       "name": "qc",
-      "implementation": "two-gate-qc-plus-golden-sr-experiment-policy",
-      "version": "phase2m"
+      "implementation": "two-gate-qc-plus-golden-registration-and-sr-policy",
+      "version": "phase2n"
     }
   ],
   "router_version": "phase2a",
