@@ -1930,9 +1930,27 @@ Phase 2U prevents the system from starting a measured Golden chain when the real
 
 Phase 2U does not bump recipe versions because it validates execution prerequisites rather than changing reconstruction/scoring behavior.
 
+#### Phase 2V — Historical dataset onboarding gate
+
+Phase 2V closes the gap immediately before real historical import:
+
+- `HistoricalOnboardingBuilder` is read-only and never creates SQLite registry rows, datasets, Harness runs, proposals or policy artifacts;
+- folder mode validates all supported source/final images, previews deterministic filename/`id_regex` pairing, reports strict visual-fallback matches and refuses incomplete source/target coverage;
+- manifest mode validates explicit pair records and filesystem references before they reach `HistoricalImporter`;
+- corrupt/unreadable images, unmatched sides and non-equivalent targets sharing a pair key are blockers;
+- equivalent target duplicates and byte-identical source/target duplicates remain visible warnings instead of being silently discarded;
+- the preflight derives projected artwork identities from canonical target content and simulates the registry's deterministic train/validation/Golden split using the requested seed;
+- the projected Golden pair count must satisfy `minimum_golden_cases`, preventing a technically importable but experimentally unusable tiny corpus from being treated as ready for the Phase 2U/2P/2Q/2K chain;
+- aggregate state is `ready_to_import` only when no blocker remains;
+- CLI `historical-preflight` supports either source/final folders or an explicit manifest and remains separate from the mutating `historical-import` command;
+- API/diagnostics advertise `historical_dataset_onboarding_v1`;
+- every report keeps `mutates_registry=false` and `production_execution_enabled=false`.
+
+The intended real-data sequence is Phase 2V preflight → explicit historical import → Phase 2U Golden execution preflight → measured experiment/policy evidence. Phase 2V does not alter production execution or recipe versions.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, Phase 2Q executes material separation only inside benchmark artifacts, Phase 2R/2S only create review/decision artifacts, Phase 2T only assesses activation readiness, and Phase 2U only checks real Golden execution prerequisites; production dewarp/material separation/SR activation remains disabled;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, Phase 2Q executes material separation only inside benchmark artifacts, Phase 2R/2S only create review/decision artifacts, Phase 2T only assesses activation readiness, Phase 2U only checks real Golden execution prerequisites, and Phase 2V only validates corpus readiness before explicit historical import; production dewarp/material separation/SR activation remains disabled;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1975,7 +1993,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2U foundation is implemented:
+Phase 2A–2V foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1997,6 +2015,7 @@ Phase 2A–2U foundation is implemented:
 - immutable one-decision-per-packet human approval/rejection receipts with proposal + review-packet hash binding and no production activation;
 - fail-closed production activation readiness dry-runs that re-verify the approved receipt → review packet → proposal chain and still keep production disabled;
 - read-only Golden Holdout execution preflight covering dataset/manifest/assets/recipe prerequisites plus concrete SR backend availability without fabricating evidence;
+- read-only historical dataset onboarding that validates real source/final pairability, duplicate/conflict state, image integrity and projected deterministic Golden capacity before explicit import;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
 - native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
@@ -2007,8 +2026,9 @@ Phase 2A–2U foundation is implemented:
 
 Remaining Phase 2 work:
 
-- first pass Phase 2U on the real Golden Holdout, then run Phase 2P and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production registration activation implementation;
-- after Phase 2U passes the material lane, run Phase 2Q and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production material-separation activation implementation;
+- run Phase 2V against the user's real source/final corpus, resolve every onboarding blocker, explicitly import the dataset, then pass Phase 2U on the resulting Golden Holdout;
+- after Phase 2V → import → Phase 2U passes, run Phase 2P and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production registration activation implementation;
+- after the same Phase 2V/2U chain passes the material lane, run Phase 2Q and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production material-separation activation implementation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
 - configure approved concrete local/remote SR backends, pass the Phase 2U SR lane and run the Phase 2K Golden experiment on the real historical holdout;

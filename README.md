@@ -803,6 +803,31 @@ Implemented:
 
 Phase 2U is readiness-only and does not change `Engine.run_job`, production policy or recipe versions.
 
+### Phase 2V — Historical Dataset Onboarding Gate
+
+Implemented:
+
+- a read-only `HistoricalOnboardingBuilder` validates the real source/final corpus before `HistoricalImporter` is allowed into the operational workflow;
+- folder mode recursively discovers supported images, validates every image through preflight, previews filename/id-regex pairing and can preview the existing strict visual fallback without writing registry state;
+- manifest mode validates the explicit `pairs` records, source/target paths, pair keys and image readability before import;
+- non-equivalent targets sharing the same pair key are hard conflicts; equivalent target duplicates, exact source duplicates and exact target duplicates are reported explicitly;
+- unmatched sources and unmatched targets are fail-closed blockers, so incomplete corpora are not silently treated as Golden evidence;
+- the report projects train/validation/`golden_holdout` membership using the same deterministic seed/bucket rules used by the registry, including the small-corpus Golden/validation safeguards;
+- projected Golden case count must meet `--min-golden-cases` before the corpus is reported `ready_to_import`;
+- CLI: `historical-preflight --source-dir <refs> --target-dir <finals>` or `historical-preflight --manifest <pairs.json>`;
+- API/diagnostics expose `historical_dataset_onboarding_v1`;
+- preflight keeps `mutates_registry=false` and `production_execution_enabled=false`; the existing `historical-import` command remains the explicit write boundary.
+
+Recommended real-data flow:
+
+1. run `historical-preflight`;
+2. resolve every blocker until the report is `ready_to_import`;
+3. explicitly run `historical-import`;
+4. run `harness-golden-preflight`;
+5. only then start the measured Phase 2P/2Q/2K evidence chains.
+
+Phase 2V does not alter `Engine.run_job`, production policy or benchmark recipes.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

@@ -118,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "policy_decision_receipt_method": "human_policy_decision_receipt_v1",
             "policy_activation_readiness_method": "human_policy_activation_readiness_v1",
             "golden_holdout_preflight_method": "golden_holdout_preflight_v1",
+            "historical_onboarding_method": "historical_dataset_onboarding_v1",
             "texture_handling_method": "texture_handling_evidence_v1",
             "super_resolution_method": "super_resolution_readiness_v1",
             "sr_benchmark_method": "sr_benchmark_matrix_v1",

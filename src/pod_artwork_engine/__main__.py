@@ -18,6 +18,7 @@ from .dewarp_experiment import DewarpExperimentRunner
 from .golden_preflight import GoldenHoldoutPreflightBuilder
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
+from .historical_onboarding import HistoricalOnboardingBuilder
 from .material_separation_benchmark import (
     MaterialSeparationBenchmarkMatrixRunner,
     MaterialSeparationMaterializer,
@@ -85,6 +86,15 @@ def main() -> None:
     historical.add_argument("--id-regex")
     historical.add_argument("--seed", default="foundation-v1")
     historical.add_argument("--no-visual-fallback", action="store_true")
+
+    historical_preflight = sub.add_parser("historical-preflight")
+    historical_preflight.add_argument("--source-dir", type=Path)
+    historical_preflight.add_argument("--target-dir", type=Path)
+    historical_preflight.add_argument("--manifest", type=Path)
+    historical_preflight.add_argument("--id-regex")
+    historical_preflight.add_argument("--seed", default="foundation-v1")
+    historical_preflight.add_argument("--no-visual-fallback", action="store_true")
+    historical_preflight.add_argument("--min-golden-cases", type=int, default=3)
 
     dataset_show = sub.add_parser("dataset-show")
     dataset_show.add_argument("dataset_id")
@@ -578,6 +588,31 @@ def main() -> None:
                 allow_visual_fallback=not args.no_visual_fallback,
             )
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    elif args.command == "historical-preflight":
+        builder = HistoricalOnboardingBuilder()
+        if args.manifest:
+            if args.source_dir or args.target_dir:
+                parser.error("--manifest cannot be combined with --source-dir/--target-dir")
+            report = builder.build_manifest(
+                args.manifest,
+                seed=args.seed,
+                minimum_golden_cases=args.min_golden_cases,
+            )
+        else:
+            if not args.source_dir or not args.target_dir:
+                parser.error(
+                    "historical-preflight requires --manifest or both "
+                    "--source-dir and --target-dir"
+                )
+            report = builder.build_folders(
+                args.source_dir,
+                args.target_dir,
+                id_regex=args.id_regex,
+                seed=args.seed,
+                allow_visual_fallback=not args.no_visual_fallback,
+                minimum_golden_cases=args.min_golden_cases,
+            )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "dataset-list":
         registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
         print(
