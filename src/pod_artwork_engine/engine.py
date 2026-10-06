@@ -18,6 +18,7 @@ from .contracts import (
     FailureCategory,
     JobRecord,
     JobState,
+    MaterialSeparationEvidence,
     MultiReferenceFusionEvidence,
     PreflightResult,
     ProviderAction,
@@ -45,6 +46,7 @@ from .font_catalog import get_font_catalog
 from .font_matcher import match_typography_fonts, merge_verified_font_matches
 from .local_ocr import LocalOCRUnavailable, analyze_artwork_text, available as local_ocr_available
 from .logging_config import log_event
+from .material_separation import build_material_separation_evidence
 from .multi_reference import build_reference_fusion
 from .preflight import inspect_image, sha256_file
 from .providers import (
@@ -650,6 +652,43 @@ class Engine:
         )
         return local_spec, provider_result
 
+    def _material_separation_evidence(
+        self,
+        job: JobRecord,
+        source_path: Path,
+        preflight: PreflightResult,
+        design_spec: DesignSpec,
+        *,
+        primary_index: int,
+    ) -> MaterialSeparationEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "material_separation")
+        if isinstance(checkpoint, dict):
+            return MaterialSeparationEvidence.model_validate(checkpoint)
+
+        evidence = build_material_separation_evidence(
+            source_path,
+            preflight,
+            design_spec,
+            primary_index=primary_index,
+        )
+        self.checkpoints.write(
+            job.job_id,
+            "material_separation",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "material_separation_evidence_completed",
+            stage="analyzing",
+            quality_score=evidence.confidence,
+            failure_reason=(
+                ", ".join(evidence.reason_codes)
+                if evidence.fail_closed
+                else None
+            ),
+        )
+        return evidence
+
     def _representation_plan(
         self,
         job: JobRecord,
@@ -1171,6 +1210,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "representation_plan")
                     or {}
                 ),
+                "material_separation": (
+                    self.checkpoints.payload(job.job_id, "material_separation")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1233,6 +1276,13 @@ class Engine:
                 fusion,
             )
             self._representation_plan(job, design_spec)
+            self._material_separation_evidence(
+                job,
+                source_paths[fusion.primary_index],
+                preflights[fusion.primary_index],
+                design_spec,
+                primary_index=fusion.primary_index,
+            )
             job = self.jobs.get(job_id) or job
             route = self._route(job, design_spec)
 

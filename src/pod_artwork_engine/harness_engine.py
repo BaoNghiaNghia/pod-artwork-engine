@@ -155,6 +155,10 @@ class HarnessEngineRunner:
             job_id,
             "representation_plan",
         )
+        material_separation = self.engine.checkpoints.payload(
+            job_id,
+            "material_separation",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -293,6 +297,32 @@ class HarnessEngineRunner:
                 bool(representation_plan.get("fail_closed"))
                 if isinstance(representation_plan, dict)
                 else False
+            ),
+            material_separation=isinstance(material_separation, dict),
+            material_separation_disposition=(
+                str(material_separation.get("disposition") or "")
+                if isinstance(material_separation, dict)
+                else ""
+            ),
+            material_separation_confidence=(
+                float(material_separation.get("confidence") or 0)
+                if isinstance(material_separation, dict)
+                else 0
+            ),
+            material_separation_fail_closed=(
+                bool(material_separation.get("fail_closed"))
+                if isinstance(material_separation, dict)
+                else False
+            ),
+            material_border_uniformity=(
+                float(material_separation.get("border_uniformity") or 0)
+                if isinstance(material_separation, dict)
+                else 0
+            ),
+            material_edge_contact_ratio=(
+                float(material_separation.get("edge_contact_ratio") or 0)
+                if isinstance(material_separation, dict)
+                else 0
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
             ocr_backend=(

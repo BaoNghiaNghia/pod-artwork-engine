@@ -1616,6 +1616,25 @@ Phase 2D conservative vector/raster representation planning:
 - Phase 2D does not alter route selection, provider requests, deterministic rendering or final pixels;
 - no model, cache or persistent image derivative is added by the planner, so storage impact is negligible.
 
+Phase 2E material-separation evidence planning:
+
+- the selected primary reference receives typed `MaterialSeparationEvidence` after DesignSpec analysis;
+- material disposition is one of `existing_alpha`, `simple_border_background`, `semantic_required` or `manual_review`;
+- alpha-channel presence alone is not accepted as transparency evidence: the planner measures transparent and visible pixel fractions and distinguishes opaque RGBA from meaningful source alpha;
+- existing meaningful alpha is retained as the highest-confidence separation evidence and does not require border-background inference;
+- simple border-background extraction is only a candidate when source-edge RGB statistics are highly uniform (initial threshold `>= 0.90`), foreground/background contrast is measurable, artwork localization confidence is sufficient and the artwork bbox does not touch the source edge;
+- border uniformity is measured from downsampled edge strips, while foreground contrast compares the detected artwork-region mean against the border mean;
+- illustration/mixed artwork, fine-detail texture, material-like edge complexity, perspective, occlusion, heavy compression, nonuniform background or explicit semantic-reconstruction requirements fail closed to `semantic_required`;
+- missing/weak artwork localization, very weak source quality, extremely low foreground/background contrast or missing bbox fail closed to `manual_review`;
+- evidence records normalized bbox, alpha coverage, border uniformity, edge-contact ratio, foreground contrast, confidence, reason codes and missing capabilities;
+- the `material_separation` checkpoint is copied into ArtifactManifest precision evidence and Harness reports disposition, confidence, fail-closed state and core material metrics;
+- API/status diagnostics expose only `material_separation_evidence_v1` as the method version;
+- Phase 2E does not alter `_extract_alpha_from_background`, route selection, provider calls, reconstruction pixels or final output;
+- `simple_border_background` means “eligible for later benchmarked policy,” not “current border masking has been proven correct”;
+- the evidence pass uses Pillow statistics only and adds no model/cache footprint.
+
+The initial thresholds are conservative and must be calibrated against historical/Golden Holdout material-separation cases before they can control reconstruction behavior.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1659,7 +1678,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2D foundation is implemented:
+Phase 2A–2E foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1668,12 +1687,13 @@ Phase 2A–2D foundation is implemented:
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
 - conservative component-level vector/raster/hybrid representation planning;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions and representation plans.
+- material-separation evidence/readiness planning without alpha/output mutation;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans and material-separation evidence.
 
 Remaining Phase 2 work:
 
 - true geometric multi-reference alignment/dewarp and region-level registration;
-- material separation;
+- benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - difficult texture handling;
 - SR comparison;

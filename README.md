@@ -450,6 +450,25 @@ Implemented:
 
 This makes the future vector/raster split measurable before any renderer behavior is changed: Golden Holdout can compare planned representation against successful deterministic operations and QC outcomes.
 
+### Phase 2E — Material-Separation Evidence Planning
+
+Implemented:
+
+- the selected primary reference now receives a typed `MaterialSeparationEvidence` checkpoint after DesignSpec analysis;
+- source alpha is inspected directly rather than trusting the presence of an alpha channel: meaningful transparent/visible coverage is required before classifying `existing_alpha`;
+- opaque RGBA inputs are explicitly distinguished from real transparent artwork;
+- simple border-background separation is only marked as a candidate when the source border is highly uniform, artwork localization is sufficiently confident, foreground/background contrast is measurable and the artwork does not touch the source edge;
+- border uniformity is derived from lightweight source-edge RGB statistics and foreground contrast is measured against the detected artwork region;
+- nonuniform backgrounds, edge-touching artwork, illustration/mixed material, fine-detail texture, strong perspective/occlusion, heavy compression or an explicit semantic-reconstruction requirement classify as `semantic_required`;
+- weak localization, very weak source quality, missing bbox or insufficient foreground/background evidence classify as `manual_review`;
+- every record carries confidence, fail-closed state, normalized artwork bbox, alpha coverage, border uniformity, edge-contact ratio, foreground contrast, reason codes and missing capabilities;
+- ArtifactManifest precision evidence and Harness now expose the material-separation disposition and metrics so Golden Holdout can measure when simple extraction is actually safe;
+- API/diagnostics expose only the method version `material_separation_evidence_v1`;
+- Phase 2E does **not** alter `_extract_alpha_from_background`, provider routing, candidate pixels or final output; `simple_border_background` is evidence/readiness only;
+- the implementation uses Pillow statistics only and adds no model/cache footprint to the 40 GB budget.
+
+The initial thresholds are conservative engineering defaults and must be calibrated on historical/Golden Holdout cases before material-separation evidence is allowed to control reconstruction.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v9",
-  "version": "9",
-  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster representation planning, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
+  "recipe_id": "local-precision-v10",
+  "version": "10",
+  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-region-evidence-rescue-representation-plan-plus-local-analysis",
-      "version": "phase2d"
+      "implementation": "multi-reference-region-rescue-representation-material-evidence-plus-local-analysis",
+      "version": "phase2e"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase2d"
+      "version": "phase2e"
     },
     {
       "name": "qc",
       "implementation": "two-gate-qc",
-      "version": "phase2d"
+      "version": "phase2e"
     }
   ],
   "router_version": "phase2a",

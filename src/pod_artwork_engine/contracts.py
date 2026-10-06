@@ -106,6 +106,13 @@ class RepresentationComponentKind(StrEnum):
     UNKNOWN_CONTENT = "unknown_content"
 
 
+class MaterialSeparationDisposition(StrEnum):
+    EXISTING_ALPHA = "existing_alpha"
+    SIMPLE_BORDER_BACKGROUND = "simple_border_background"
+    SEMANTIC_REQUIRED = "semantic_required"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -320,6 +327,24 @@ class RepresentationPlanEvidence(StrictModel):
     components: list[RepresentationComponentPlan] = Field(default_factory=list)
     vector_components: int = Field(default=0, ge=0)
     raster_components: int = Field(default=0, ge=0)
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class MaterialSeparationEvidence(StrictModel):
+    method: str = "material_separation_evidence_v1"
+    disposition: MaterialSeparationDisposition
+    primary_index: int = Field(ge=0)
+    confidence: float = Field(ge=0, le=1)
+    fail_closed: bool = False
+    artwork_bbox: BoundingBox | None = None
+    source_has_alpha: bool = False
+    meaningful_alpha: bool = False
+    transparent_fraction: float = Field(default=0, ge=0, le=1)
+    visible_fraction: float = Field(default=0, ge=0, le=1)
+    border_uniformity: float = Field(default=0, ge=0, le=1)
+    edge_contact_ratio: float = Field(default=0, ge=0, le=1)
+    foreground_contrast: float = Field(default=0, ge=0, le=1)
     reason_codes: list[str] = Field(default_factory=list)
     missing_capabilities: list[str] = Field(default_factory=list)
 

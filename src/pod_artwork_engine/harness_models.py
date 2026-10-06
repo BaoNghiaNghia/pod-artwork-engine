@@ -119,6 +119,12 @@ class PrecisionEvidence(StrictModel):
     representation_vector_components: int = Field(default=0, ge=0)
     representation_raster_components: int = Field(default=0, ge=0)
     representation_fail_closed: bool = False
+    material_separation: bool = False
+    material_separation_disposition: str = ""
+    material_separation_confidence: float = Field(default=0, ge=0, le=1)
+    material_separation_fail_closed: bool = False
+    material_border_uniformity: float = Field(default=0, ge=0, le=1)
+    material_edge_contact_ratio: float = Field(default=0, ge=0, le=1)
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""
