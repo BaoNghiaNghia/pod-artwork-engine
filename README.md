@@ -732,6 +732,22 @@ Implemented:
 
 Recipes are now `local-precision-v22` / `remote-balanced-v22`, phase `phase2q`.
 
+### Phase 2R — Immutable Human Policy Review Packet Boundary
+
+Implemented:
+
+- one fail-closed review-packet builder accepts Phase 2P production-registration proposals or Phase 2Q material-separation proposals;
+- proposal files are parsed through their strict typed contracts and fingerprinted with SHA-256 before review admission;
+- only Golden Holdout proposals with a dataset fingerprint, sufficient evidence and `candidate_for_human_approval` recommendation can reach `pending_human_approval`;
+- proposals that already claim automatic application or production execution are explicitly ineligible;
+- review packets persist under `<harness>/policy-review/<packet_id>/review-packet.json` and record proposal id/path/hash, experiment/dataset provenance, source run ids and admission reasons;
+- packet ids are immutable once written, preventing silent replacement of the artifact a human is expected to review;
+- CLI: `harness-policy-review-packet --kind registration|material_separation --proposal <policy-proposal.json>`;
+- API/diagnostics expose `human_policy_review_packet_v1`;
+- Phase 2R intentionally contains no approve/activate command, never changes `Engine.run_job`, and always keeps `automatically_applied=false` plus `production_execution_enabled=false`.
+
+Phase 2R does not change benchmark recipes because it is a governance/promotion boundary, not a reconstruction or scoring change; recipes remain `local-precision-v22` / `remote-balanced-v22`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

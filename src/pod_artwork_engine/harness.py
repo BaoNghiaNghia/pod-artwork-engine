@@ -272,6 +272,9 @@ class HarnessStore:
     def material_separation_experiment_dir(self, experiment_id: str) -> Path:
         return self.root / "material-separation-experiments" / experiment_id
 
+    def policy_review_dir(self, packet_id: str) -> Path:
+        return self.root / "policy-review" / packet_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

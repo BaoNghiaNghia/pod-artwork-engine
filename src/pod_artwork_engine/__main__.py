@@ -22,6 +22,7 @@ from .material_separation_benchmark import (
     MaterialSeparationMaterializer,
 )
 from .material_separation_experiment import MaterialSeparationExperimentRunner
+from .policy_review import PolicyReviewKind, PolicyReviewPacketBuilder
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
 from .harness_models import (
@@ -471,6 +472,15 @@ def main() -> None:
         default=0.0,
     )
     material_separation_experiment.add_argument("--limit", type=int)
+
+    policy_review = sub.add_parser("harness-policy-review-packet")
+    policy_review.add_argument(
+        "--kind",
+        choices=[kind.value for kind in PolicyReviewKind],
+        required=True,
+    )
+    policy_review.add_argument("--proposal", type=Path, required=True)
+    policy_review.add_argument("--packet-id")
 
     registration_calibrate = sub.add_parser("harness-registration-calibrate")
     registration_calibrate.add_argument("run_ids", nargs="+")
@@ -946,6 +956,14 @@ def main() -> None:
             store,
         ).run(spec, spec_base=Path.cwd())
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-policy-review-packet":
+        store = HarnessStore(settings.harness_dir)
+        packet = PolicyReviewPacketBuilder(store).build(
+            PolicyReviewKind(args.kind),
+            args.proposal.resolve(),
+            packet_id=args.packet_id,
+        )
+        print(json.dumps(packet.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-registration-calibrate":
         store = HarnessStore(settings.harness_dir)
         proposal = RegistrationPolicyCalibrator(store).propose(
