@@ -32,6 +32,7 @@ from .contracts import (
     RepresentationPlanEvidence,
     RouteDecision,
     RouteKind,
+    SuperResolutionReadinessEvidence,
     TextureHandlingEvidence,
     TypographySpec,
 )
@@ -67,6 +68,7 @@ from .router import choose_route, forced_route_decision
 from .router_policy import load_router_policy
 from .settings import Settings
 from .storage import StorageLimitExceeded, StorageManager
+from .super_resolution import build_super_resolution_readiness
 from .texture_handling import build_texture_handling_evidence
 from .typography import (
     TypographyRenderUnavailable,
@@ -732,6 +734,53 @@ class Engine:
         )
         return evidence
 
+    def _super_resolution_readiness(
+        self,
+        job: JobRecord,
+        preflight: PreflightResult,
+        design_spec: DesignSpec,
+        material: MaterialSeparationEvidence,
+        texture: TextureHandlingEvidence,
+        region_map: RegionConfidenceMapEvidence,
+        profile: ExportProfile,
+        *,
+        primary_index: int,
+    ) -> SuperResolutionReadinessEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "super_resolution_readiness")
+        if isinstance(checkpoint, dict):
+            return SuperResolutionReadinessEvidence.model_validate(checkpoint)
+
+        evidence = build_super_resolution_readiness(
+            preflight,
+            design_spec,
+            material,
+            texture,
+            region_map,
+            profile=profile,
+            required_native_long_edge=(
+                self.qc_policy.for_mode(job.quality_mode).required_native_long_edge
+            ),
+            primary_index=primary_index,
+            provider_available=self.provider.available,
+        )
+        self.checkpoints.write(
+            job.job_id,
+            "super_resolution_readiness",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "super_resolution_readiness_completed",
+            stage="analyzing",
+            quality_score=evidence.confidence,
+            failure_reason=(
+                ", ".join(evidence.reason_codes)
+                if evidence.fail_closed
+                else None
+            ),
+        )
+        return evidence
+
     def _representation_plan(
         self,
         job: JobRecord,
@@ -1261,6 +1310,13 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "texture_handling")
                     or {}
                 ),
+                "super_resolution_readiness": (
+                    self.checkpoints.payload(
+                        job.job_id,
+                        "super_resolution_readiness",
+                    )
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1330,13 +1386,23 @@ class Engine:
                 design_spec,
                 primary_index=fusion.primary_index,
             )
-            self._texture_handling_evidence(
+            texture_evidence = self._texture_handling_evidence(
                 job,
                 source_paths[fusion.primary_index],
                 preflights[fusion.primary_index],
                 design_spec,
                 material_evidence,
                 region_map,
+                primary_index=fusion.primary_index,
+            )
+            self._super_resolution_readiness(
+                job,
+                preflights[fusion.primary_index],
+                design_spec,
+                material_evidence,
+                texture_evidence,
+                region_map,
+                profile,
                 primary_index=fusion.primary_index,
             )
             job = self.jobs.get(job_id) or job

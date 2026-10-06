@@ -470,6 +470,9 @@ def _precision_coverage(results: list[BenchmarkCaseResult]) -> dict[str, float]:
         "representation_plan": lambda result: result.precision.representation_plan,
         "material_separation": lambda result: result.precision.material_separation,
         "texture_handling": lambda result: result.precision.texture_handling,
+        "super_resolution_readiness": (
+            lambda result: result.precision.super_resolution_readiness
+        ),
         "local_ocr": lambda result: result.precision.local_ocr,
         "visual_font_match": lambda result: result.precision.visual_font_match,
         "typography_rebuilt": lambda result: result.precision.typography_rebuilt,

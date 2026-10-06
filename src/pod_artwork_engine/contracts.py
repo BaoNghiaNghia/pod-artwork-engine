@@ -120,6 +120,13 @@ class TextureHandlingDisposition(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class SuperResolutionDisposition(StrEnum):
+    NATIVE_SUFFICIENT = "native_sufficient"
+    LOCAL_SR_CANDIDATE = "local_sr_candidate"
+    REMOTE_SR_CANDIDATE = "remote_sr_candidate"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -370,6 +377,32 @@ class TextureHandlingEvidence(StrictModel):
     source_quality: float = Field(default=0, ge=0, le=1)
     compression_risk: float = Field(default=0, ge=0, le=1)
     region_mean_confidence: float = Field(default=0, ge=0, le=1)
+    material_disposition: MaterialSeparationDisposition
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class SuperResolutionReadinessEvidence(StrictModel):
+    method: str = "super_resolution_readiness_v1"
+    disposition: SuperResolutionDisposition
+    primary_index: int = Field(ge=0)
+    confidence: float = Field(ge=0, le=1)
+    fail_closed: bool = False
+    execution_enabled: bool = False
+    provider_available: bool = False
+    artwork_bbox: BoundingBox | None = None
+    native_artwork_width: int = Field(default=0, ge=0)
+    native_artwork_height: int = Field(default=0, ge=0)
+    native_long_edge: int = Field(default=0, ge=0)
+    target_artwork_width: int = Field(default=0, ge=0)
+    target_artwork_height: int = Field(default=0, ge=0)
+    target_long_edge: int = Field(default=0, ge=0)
+    required_native_long_edge: int = Field(default=0, ge=0)
+    estimated_scale_factor: float = Field(default=1, ge=0)
+    source_quality: float = Field(default=0, ge=0, le=1)
+    compression_risk: float = Field(default=0, ge=0, le=1)
+    region_mean_confidence: float = Field(default=0, ge=0, le=1)
+    texture_disposition: TextureHandlingDisposition
     material_disposition: MaterialSeparationDisposition
     reason_codes: list[str] = Field(default_factory=list)
     missing_capabilities: list[str] = Field(default_factory=list)

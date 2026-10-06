@@ -106,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "representation_planner_method": "representation_plan_v1",
             "material_separation_method": "material_separation_evidence_v1",
             "texture_handling_method": "texture_handling_evidence_v1",
+            "super_resolution_method": "super_resolution_readiness_v1",
             "geometry_path_capabilities": [
                 "cubic",
                 "multi_subpath",

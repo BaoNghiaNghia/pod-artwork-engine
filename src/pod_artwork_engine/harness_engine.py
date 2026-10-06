@@ -163,6 +163,10 @@ class HarnessEngineRunner:
             job_id,
             "texture_handling",
         )
+        super_resolution_readiness = self.engine.checkpoints.payload(
+            job_id,
+            "super_resolution_readiness",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -363,6 +367,48 @@ class HarnessEngineRunner:
                 int(texture_handling.get("native_long_edge") or 0)
                 if isinstance(texture_handling, dict)
                 else 0
+            ),
+            super_resolution_readiness=isinstance(
+                super_resolution_readiness,
+                dict,
+            ),
+            super_resolution_disposition=(
+                str(super_resolution_readiness.get("disposition") or "")
+                if isinstance(super_resolution_readiness, dict)
+                else ""
+            ),
+            super_resolution_confidence=(
+                float(super_resolution_readiness.get("confidence") or 0)
+                if isinstance(super_resolution_readiness, dict)
+                else 0
+            ),
+            super_resolution_fail_closed=(
+                bool(super_resolution_readiness.get("fail_closed"))
+                if isinstance(super_resolution_readiness, dict)
+                else False
+            ),
+            super_resolution_scale_factor=(
+                float(
+                    super_resolution_readiness.get("estimated_scale_factor")
+                    or 0
+                )
+                if isinstance(super_resolution_readiness, dict)
+                else 0
+            ),
+            super_resolution_native_long_edge=(
+                int(super_resolution_readiness.get("native_long_edge") or 0)
+                if isinstance(super_resolution_readiness, dict)
+                else 0
+            ),
+            super_resolution_target_long_edge=(
+                int(super_resolution_readiness.get("target_long_edge") or 0)
+                if isinstance(super_resolution_readiness, dict)
+                else 0
+            ),
+            super_resolution_provider_available=(
+                bool(super_resolution_readiness.get("provider_available"))
+                if isinstance(super_resolution_readiness, dict)
+                else False
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
             ocr_backend=(

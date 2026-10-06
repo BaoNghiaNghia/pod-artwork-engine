@@ -49,6 +49,7 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert status["representation_planner_method"] == "representation_plan_v1"
     assert status["material_separation_method"] == "material_separation_evidence_v1"
     assert status["texture_handling_method"] == "texture_handling_evidence_v1"
+    assert status["super_resolution_method"] == "super_resolution_readiness_v1"
     assert status["visual_font_match_min_score"] == 0.72
     assert status["visual_font_match_min_margin"] == 0.035
     assert status["geometry_path_capabilities"] == [

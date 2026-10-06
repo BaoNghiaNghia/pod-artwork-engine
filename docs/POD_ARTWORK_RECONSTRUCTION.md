@@ -1654,6 +1654,24 @@ Phase 2F difficult-texture evidence planning:
 
 Texture thresholds are implementation defaults, not learned production policy. Golden Holdout detail/texture cohorts must prove local enhancement or SR behavior before execution is enabled.
 
+Phase 2G super-resolution readiness foundation:
+
+- every analyzed primary artwork derives typed `SuperResolutionReadinessEvidence` after material and texture evidence;
+- disposition is `native_sufficient`, `local_sr_candidate`, `remote_sr_candidate` or `manual_review`;
+- the planner estimates native artwork width/height from the normalized artwork bbox and source dimensions, then applies the same `ExportProfile` max-artwork box used by final export to derive target artwork dimensions and the required scale factor;
+- native output is considered sufficient only when scale factor is initially `<=1.25×` and the current quality mode's `required_native_long_edge` QC floor is already satisfied;
+- local SR readiness is bounded to `<=2×`, source quality `>=0.75`, compression risk `<0.25`, region confidence `>=0.65`, and an upstream `local_detail_enhancement_candidate` texture disposition;
+- remote SR readiness is bounded to `<=4×`, source quality `>=0.60`, compression risk `<0.40` and region confidence `>=0.50`;
+- remote readiness records provider availability and fails closed when no remote provider is configured;
+- scale above `4×`, source quality below `0.45`, compression at least `0.55`, semantic/manual material or texture states, or unavailable/very weak regional evidence force manual review rather than treating SR as recovered ground truth;
+- evidence records native/target artwork dimensions, native/target long edge, required native QC floor, scale factor, confidence, provider availability, source/region metrics, reason codes and missing capabilities;
+- `execution_enabled=false` is fixed in this phase and Harness verifies SR never appears in candidate `precision_ops`;
+- the checkpoint is copied into ArtifactManifest precision evidence and Harness reports readiness coverage, disposition, confidence, scale factor, native/target long edge and provider availability;
+- API/status diagnostics expose only `super_resolution_readiness_v1`;
+- Phase 2G invokes no local SR model, remote SR provider or pixel transformation and adds no persistent model/cache footprint.
+
+These readiness thresholds are cohort selectors only. A later benchmark must compare native/Lanczos, local SR and remote SR candidates on Golden Holdout quality, detail survival, hallucination risk, latency, memory and cost before SR execution can be promoted.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1697,7 +1715,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2F foundation is implemented:
+Phase 2A–2G foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1708,7 +1726,8 @@ Phase 2A–2F foundation is implemented:
 - conservative component-level vector/raster/hybrid representation planning;
 - material-separation evidence/readiness planning without alpha/output mutation;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material-separation evidence and texture-handling evidence.
+- print-target-aware local/remote SR readiness planning without SR execution;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling and SR readiness.
 
 Remaining Phase 2 work:
 
@@ -1716,7 +1735,7 @@ Remaining Phase 2 work:
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
-- SR comparison;
+- native vs local-SR vs remote-SR benchmark execution and promotion policy;
 - Golden Holdout calibration before enabling targeted rescue execution.
 
 ### Phase 3 — Reliability

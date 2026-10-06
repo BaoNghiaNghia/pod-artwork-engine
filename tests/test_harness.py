@@ -354,6 +354,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.precision_coverage["representation_plan"] == 1.0
     assert scorecard.precision_coverage["material_separation"] == 1.0
     assert scorecard.precision_coverage["texture_handling"] == 1.0
+    assert scorecard.precision_coverage["super_resolution_readiness"] == 1.0
     assert scorecard.precision_coverage["multi_reference_fusion"] == 0.0
     assert "local_text_repair" in scorecard.precision_coverage
     assert scorecard.provenance.execution_kind == "production_engine"
@@ -408,6 +409,17 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert 0 <= result.precision.texture_local_contrast <= 1
     assert 0 <= result.precision.texture_local_variation <= 1
     assert result.precision.texture_native_long_edge >= 0
+    assert result.precision.super_resolution_readiness is True
+    assert result.precision.super_resolution_disposition in {
+        "native_sufficient",
+        "local_sr_candidate",
+        "remote_sr_candidate",
+        "manual_review",
+    }
+    assert 0 <= result.precision.super_resolution_confidence <= 1
+    assert result.precision.super_resolution_scale_factor >= 0
+    assert result.precision.super_resolution_native_long_edge >= 0
+    assert result.precision.super_resolution_target_long_edge >= 0
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:

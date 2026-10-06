@@ -133,6 +133,14 @@ class PrecisionEvidence(StrictModel):
     texture_local_contrast: float = Field(default=0, ge=0, le=1)
     texture_local_variation: float = Field(default=0, ge=0, le=1)
     texture_native_long_edge: int = Field(default=0, ge=0)
+    super_resolution_readiness: bool = False
+    super_resolution_disposition: str = ""
+    super_resolution_confidence: float = Field(default=0, ge=0, le=1)
+    super_resolution_fail_closed: bool = False
+    super_resolution_scale_factor: float = Field(default=0, ge=0)
+    super_resolution_native_long_edge: int = Field(default=0, ge=0)
+    super_resolution_target_long_edge: int = Field(default=0, ge=0)
+    super_resolution_provider_available: bool = False
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""

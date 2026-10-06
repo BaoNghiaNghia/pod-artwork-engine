@@ -489,6 +489,26 @@ Implemented:
 
 These thresholds are deliberately conservative and must be calibrated against Golden Holdout texture/detail cohorts before any sharpening/SR/detail-recovery execution is enabled.
 
+### Phase 2G — Super-Resolution Readiness Foundation
+
+Implemented:
+
+- every analyzed primary artwork now receives typed `SuperResolutionReadinessEvidence` after material and texture evidence are available;
+- disposition is one of `native_sufficient`, `local_sr_candidate`, `remote_sr_candidate` or `manual_review`;
+- readiness uses the detected native artwork dimensions and the same `ExportProfile` geometry used by final export to estimate the actual scale factor needed to fit the POD print target;
+- the evidence records native/target artwork width and height, native/target long edge, QC native-resolution floor, scale factor, source quality/compression, region confidence and upstream material/texture dispositions;
+- native artwork is accepted without SR only when print-target scaling is bounded (initially `<=1.25×`) and the quality-mode native-resolution floor is already satisfied;
+- local SR is only a benchmark candidate for bounded `<=2×` scaling when the texture planner already marked local detail enhancement safe and source quality/compression/region evidence are strong;
+- remote SR is only a benchmark candidate up to `4×` when source quality, compression and region evidence pass conservative thresholds;
+- remote-SR candidates record provider availability; unavailable provider capability fails closed instead of pretending execution is possible;
+- scale factors above `4×`, very weak/compressed sources, unresolved semantic/material/texture dependencies or insufficient region evidence require manual review/higher-resolution references;
+- `execution_enabled=false` is explicit in every Phase 2G evidence record: no SR model or provider is invoked;
+- ArtifactManifest and Harness now expose SR disposition, confidence, scale factor, native/target long edge and provider availability;
+- API/diagnostics expose only the method version `super_resolution_readiness_v1`;
+- Phase 2G adds metadata only, with no model/cache footprint and no change to candidate/final pixels.
+
+The readiness thresholds define benchmark cohorts, not production SR policy. Local and remote SR must beat native/Lanczos output on Golden Holdout quality, small-detail survival, latency and cost before any execution path is enabled.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
