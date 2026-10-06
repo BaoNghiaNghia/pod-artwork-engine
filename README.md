@@ -784,6 +784,25 @@ Implemented:
 
 The SHA-256 chain is an integrity/audit mechanism for local artifacts; it is not a cryptographic signature of reviewer identity. Phase 2T is governance-only, so benchmark recipes remain `local-precision-v22` / `remote-balanced-v22`.
 
+### Phase 2U — Golden Holdout Execution Preflight
+
+Implemented:
+
+- a read-only fail-closed preflight checks whether the real historical dataset is actually ready before any Golden benchmark/policy chain is started;
+- dataset selection is explicit when multiple datasets exist; zero datasets or an unknown dataset id is reported as blocked rather than creating synthetic evidence;
+- the registered dataset must be non-empty and expose enough `golden_holdout` members for the configured minimum;
+- the immutable dataset manifest must exist, parse successfully, match the registered dataset id and is SHA-256 fingerprinted for downstream provenance;
+- every Golden member is checked back to its historical pair plus target/source asset records; missing backing files or SHA-256 drift from the registered asset fingerprint block execution;
+- the benchmark recipe is parsed through the strict `BenchmarkRecipe` contract and fingerprinted; the repository local baseline remains `local-precision-v22`;
+- registration and material-separation readiness are reported independently from SR readiness;
+- SR readiness requires at least one real backend: either a typed local adapter whose executable resolves, or a typed remote adapter plus configured provider recipe with an enabled `super_resolution` action;
+- remote provider absence remains a warning for local registration/material benchmarking, but is a blocker for a remote SR lane;
+- CLI: `harness-golden-preflight [dataset_id] --recipe <recipe.json> --local-sr-adapter <adapter.json> --remote-sr-adapter <adapter.json>`;
+- API/diagnostics expose `golden_holdout_preflight_v1`;
+- the preflight writes no benchmark/policy artifacts, never fabricates Golden evidence and always reports `production_execution_enabled=false`.
+
+Phase 2U is readiness-only and does not change `Engine.run_job`, production policy or recipe versions.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

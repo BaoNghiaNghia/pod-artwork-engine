@@ -1912,9 +1912,27 @@ Phase 2T adds a final fail-closed evidence gate before any future activation imp
 
 The SHA-256 chain is a local artifact-integrity/audit mechanism, not a digital signature authenticating reviewer identity. Phase 2T is governance-only and does not bump benchmark recipe versions.
 
+#### Phase 2U — Golden Holdout execution preflight
+
+Phase 2U prevents the system from starting a measured Golden chain when the real prerequisites are absent:
+
+- `GoldenHoldoutPreflightBuilder` is read-only and never creates benchmark, proposal, review, decision or activation artifacts;
+- with zero registered datasets it returns `blocked`; with multiple datasets it requires an explicit dataset id instead of guessing which corpus is authoritative;
+- the selected dataset must be non-empty and contain at least the configured number of `golden_holdout` members;
+- the registered dataset manifest must exist, parse as JSON, identify the same dataset and is SHA-256 fingerprinted for later provenance;
+- every Golden member is resolved through its pair plus source/target asset records; missing backing files or SHA-256 drift from the registered asset fingerprint block all evidence lanes;
+- the benchmark recipe is validated through the strict `BenchmarkRecipe` contract and fingerprinted;
+- registration and material-separation readiness share the dataset/manifest/assets/recipe gates but do not require a remote provider merely to run local benchmark evidence;
+- SR has an additional real-backend gate: a local adapter must be typed and resolve an actual executable, or a remote adapter must be typed and the configured provider recipe must expose an enabled `super_resolution` action;
+- lane results are independent, producing `ready`, `partial` or `blocked` at the aggregate level;
+- CLI `harness-golden-preflight` exposes dataset, recipe, adapter and minimum-Golden-case inputs; API/diagnostics advertise `golden_holdout_preflight_v1`;
+- all reports keep `production_execution_enabled=false`, and `Engine.run_job` remains unchanged.
+
+Phase 2U does not bump recipe versions because it validates execution prerequisites rather than changing reconstruction/scoring behavior.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, Phase 2Q executes material separation only inside benchmark artifacts, Phase 2R/2S only create review/decision artifacts, and Phase 2T only assesses activation readiness; production dewarp/material separation/SR activation remains disabled;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, Phase 2Q executes material separation only inside benchmark artifacts, Phase 2R/2S only create review/decision artifacts, Phase 2T only assesses activation readiness, and Phase 2U only checks real Golden execution prerequisites; production dewarp/material separation/SR activation remains disabled;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1957,7 +1975,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2T foundation is implemented:
+Phase 2A–2U foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1978,6 +1996,7 @@ Phase 2A–2T foundation is implemented:
 - immutable SHA-256-bound human review packets for registration/material-separation/SR candidates;
 - immutable one-decision-per-packet human approval/rejection receipts with proposal + review-packet hash binding and no production activation;
 - fail-closed production activation readiness dry-runs that re-verify the approved receipt → review packet → proposal chain and still keep production disabled;
+- read-only Golden Holdout execution preflight covering dataset/manifest/assets/recipe prerequisites plus concrete SR backend availability without fabricating evidence;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
 - native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
@@ -1988,11 +2007,11 @@ Phase 2A–2T foundation is implemented:
 
 Remaining Phase 2 work:
 
-- run Phase 2P on the real Golden Holdout, generate Phase 2R/2S artifacts and a clean Phase 2T readiness assessment before any separate production registration activation implementation;
-- run Phase 2Q on the real Golden Holdout, generate Phase 2R/2S artifacts and a clean Phase 2T readiness assessment before any separate production material-separation activation implementation;
+- first pass Phase 2U on the real Golden Holdout, then run Phase 2P and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production registration activation implementation;
+- after Phase 2U passes the material lane, run Phase 2Q and generate Phase 2R/2S artifacts plus a clean Phase 2T readiness assessment before any separate production material-separation activation implementation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
-- configure approved concrete local/remote SR backends and run the Phase 2K Golden experiment on the real historical holdout;
+- configure approved concrete local/remote SR backends, pass the Phase 2U SR lane and run the Phase 2K Golden experiment on the real historical holdout;
 - run the measured Phase 2K SR proposal through Phase 2R/2S and produce a clean Phase 2T readiness assessment before any separate production SR activation implementation;
 - Golden Holdout calibration before enabling targeted rescue execution.
 

@@ -15,6 +15,7 @@ from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .dewarp_benchmark import DewarpBenchmarkMatrixRunner, DewarpMaterializer
 from .dewarp_experiment import DewarpExperimentRunner
+from .golden_preflight import GoldenHoldoutPreflightBuilder
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .material_separation_benchmark import (
@@ -95,6 +96,13 @@ def main() -> None:
         choices=[split.value for split in DatasetSplit],
     )
     dataset_members.add_argument("--retrieval-only", action="store_true")
+
+    golden_preflight = sub.add_parser("harness-golden-preflight")
+    golden_preflight.add_argument("dataset_id", nargs="?")
+    golden_preflight.add_argument("--recipe", type=Path)
+    golden_preflight.add_argument("--local-sr-adapter", type=Path)
+    golden_preflight.add_argument("--remote-sr-adapter", type=Path)
+    golden_preflight.add_argument("--min-golden-cases", type=int, default=3)
 
     harness_cases = sub.add_parser("harness-cases")
     harness_cases.add_argument("dataset_id")
@@ -603,6 +611,16 @@ def main() -> None:
                 indent=2,
             )
         )
+    elif args.command == "harness-golden-preflight":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        report = GoldenHoldoutPreflightBuilder(settings, registry).build(
+            dataset_id=args.dataset_id,
+            recipe_path=args.recipe,
+            local_sr_adapter_path=args.local_sr_adapter,
+            remote_sr_adapter_path=args.remote_sr_adapter,
+            minimum_golden_cases=args.min_golden_cases,
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-cases":
         registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
         cases = HarnessCaseFactory(registry).build(

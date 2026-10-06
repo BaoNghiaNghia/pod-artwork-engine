@@ -69,6 +69,10 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
         status["material_separation_policy_method"]
         == "material_separation_policy_proposal_v1"
     )
+    assert (
+        status["golden_holdout_preflight_method"]
+        == "golden_holdout_preflight_v1"
+    )
     assert status["texture_handling_method"] == "texture_handling_evidence_v1"
     assert status["super_resolution_method"] == "super_resolution_readiness_v1"
     assert status["sr_benchmark_method"] == "sr_benchmark_matrix_v1"
