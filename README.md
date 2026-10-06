@@ -509,6 +509,32 @@ Implemented:
 
 The readiness thresholds define benchmark cohorts, not production SR policy. Local and remote SR must beat native/Lanczos output on Golden Holdout quality, small-detail survival, latency and cost before any execution path is enabled.
 
+### Phase 2H — Native / Local-SR / Remote-SR Benchmark Matrix
+
+Implemented:
+
+- a typed `SRBenchmarkSpec` / `SRBenchmarkReport` matrix compares `native`, `local_sr` and `remote_sr` lanes on the exact same Dataset Registry cases;
+- the native lane can run the real production engine automatically, or consume an explicit CandidateManifest when an already-materialized baseline is preferred;
+- local-SR and remote-SR lanes are pluggable CandidateManifest adapters only: if no concrete backend/output manifest exists, the lane is reported as `unavailable` instead of generating fake SR output or fake scores;
+- every available lane is evaluated by the existing Harness against the same target images and must share the same dataset-manifest fingerprint;
+- per-lane evidence includes quality/technical means, small-detail survival, p50/p95 latency, peak RAM/VRAM, provider calls, cost and manual-review count;
+- per-case evidence preserves quality, semantic/technical scores, small-detail survival, effective resolution, latency, memory/VRAM, provider/cost evidence, manual-review and SR fail-closed state;
+- an SR challenger is promotable only when both quality and small-detail survival improve past configured floors, semantic score stays within the allowed regression bound, and manual-review/fail-closed state is absent;
+- optional latency-ratio and cost-per-case ceilings can independently reject an otherwise higher-quality SR challenger;
+- a conservative `hallucination_risk` signal is raised when exact text, object-fidelity evidence or aggregate semantic score regresses beyond the configured bound; this is a benchmark safety signal, **not** a claim that the Harness has a complete hallucination detector;
+- reports recommend only `keep_native` or a local/remote/mixed SR policy **for human review**; `auto_applied=false` and `production_execution_enabled=false` are fixed;
+- matrix artifacts are persisted under the Harness `sr-matrices/` directory for later Golden Holdout review/calibration;
+- API/diagnostics expose `sr_benchmark_matrix_v1` as the capability version;
+- the matrix adds no SR model dependency and therefore does not consume the 40 GB tool-storage budget beyond compact reports/diffs and whatever candidate images the operator explicitly benchmarks.
+
+Example:
+
+```powershell
+python -m pod_artwork_engine harness-sr-matrix historical-v1 --tier golden --recipe config/benchmark-recipe.local.json --local-sr-candidates local-sr-candidates.json --remote-sr-candidates remote-sr-candidates.json --min-quality-gain 0.01 --min-detail-gain 0.03
+```
+
+Omit `--native-candidates` to generate the native baseline with the current production engine. Omit either SR candidate manifest when that backend is not available; the missing lane remains explicitly unavailable and cannot win promotion.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

@@ -1672,6 +1672,28 @@ Phase 2G super-resolution readiness foundation:
 
 These readiness thresholds are cohort selectors only. A later benchmark must compare native/Lanczos, local SR and remote SR candidates on Golden Holdout quality, detail survival, hallucination risk, latency, memory and cost before SR execution can be promoted.
 
+Phase 2H native/local-SR/remote-SR benchmark matrix:
+
+- `SRBenchmarkSpec` and `SRBenchmarkReport` define an isolated Harness-only comparison across `native`, `local_sr` and `remote_sr` lanes;
+- the native lane can execute `HarnessEngineRunner` against the real production engine when no native CandidateManifest is supplied, or consume a pre-generated native manifest for exact replay;
+- local-SR and remote-SR are intentionally adapter lanes: they only consume explicit CandidateManifest outputs from a concrete external/local benchmark backend and never synthesize a fake challenger when the backend is absent;
+- absent/invalid challenger manifests are preserved as `unavailable` lane records with a reason, so missing capability cannot be mistaken for a losing model;
+- all available lanes execute the normal Harness evaluator on the same dataset/tier cases and must report the same non-empty dataset-manifest SHA-256 before comparisons are accepted;
+- lane summaries expose success/manual-review counts, quality/technical means, small-detail-survival mean, p50/p95 latency, peak RAM/VRAM, provider calls and total cost;
+- case-level evidence records quality, semantic/technical scores, small-detail survival, effective resolution, latency, RAM/VRAM, provider/cost evidence and upstream SR fail-closed/manual-review state;
+- a challenger passes the comparison gate only when quality gain is at least the configured `min_quality_gain`, small-detail gain is at least `min_detail_gain`, semantic regression stays above `-max_semantic_drop`, and neither manual-review nor SR fail-closed state is present;
+- optional `max_latency_ratio` and `max_cost_per_case_usd` ceilings are independent operational gates;
+- the Harness raises a conservative `hallucination_risk` signal when exact text gets worse, object-fidelity evidence drops beyond the semantic bound, or aggregate semantic score falls beyond that bound; this signal is a regression heuristic, not a general hallucination detector;
+- per-case preference can be `native`, `local_sr`, `remote_sr`, `tie` or `unusable`;
+- aggregate recommendation is limited to `keep_native`, local/remote/mixed policy for human review, or insufficient evidence;
+- `requires_human_approval=true`, `auto_applied=false` and `production_execution_enabled=false` are fixed in the report contract;
+- artifacts persist under `<harness>/sr-matrices/<matrix_id>/spec.json|report.json`;
+- CLI `harness-sr-matrix` exposes the comparison without adding a production SR call path;
+- API/status diagnostics expose `sr_benchmark_matrix_v1`;
+- Phase 2H bundles no SR weights/models; only explicitly supplied benchmark candidate files consume storage.
+
+The Phase 2H matrix produces promotion evidence, not production policy. A concrete local or remote SR backend still has to generate real CandidateManifest outputs, survive Smoke/Regression/Golden comparison and receive explicit human approval before any production integration.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1686,6 +1708,8 @@ Current truthfulness limits:
 - compound `nonzero` fills are preserved in SVG but are not rasterized locally; deterministic raster output requires explicit `evenodd` for multi-subpath fills;
 - the current geometry layer consumes validated vector evidence; fully automatic raster-to-vector tracing of arbitrary complex logos remains a separate benchmarked capability rather than an implicit conversion;
 - route-matrix evidence is not valid as remote evidence when the provider was unavailable and the engine fell back locally;
+- SR-matrix challenger evidence is valid only for explicit candidate manifests produced by a real benchmark backend; an unavailable local/remote SR lane is not treated as measured quality evidence;
+- SR `hallucination_risk` is a conservative semantic-regression signal and must not be interpreted as a complete hallucination detector;
 - router calibration currently changes confidence thresholds only; `quick_2d_remote_first` and `remote_complex_enabled` remain explicit human-controlled policy fields;
 - generated QC/router candidate policies are not production policy until explicitly configured and benchmarked again;
 - border-color alpha extraction remains a baseline for clean/flat inputs, not a substitute for material separation on difficult garment photos;
@@ -1715,7 +1739,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2G foundation is implemented:
+Phase 2A–2H foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1727,7 +1751,8 @@ Phase 2A–2G foundation is implemented:
 - material-separation evidence/readiness planning without alpha/output mutation;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling and SR readiness.
+- native/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness and SR challenger comparison.
 
 Remaining Phase 2 work:
 
@@ -1735,7 +1760,8 @@ Remaining Phase 2 work:
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
-- native vs local-SR vs remote-SR benchmark execution and promotion policy;
+- concrete local/remote SR backend adapters and Golden Holdout candidate generation;
+- explicit human promotion of a measured SR policy before production integration;
 - Golden Holdout calibration before enabling targeted rescue execution.
 
 ### Phase 3 — Reliability

@@ -218,6 +218,7 @@ class BenchmarkCaseResult(StrictModel):
     quality_score: float | None = Field(default=None, ge=0, le=1)
     diff_path: str | None = None
     cohorts: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class CohortScore(StrictModel):
@@ -447,6 +448,128 @@ class RouteMatrixReport(StrictModel):
     incomplete_count: int = Field(default=0, ge=0)
     requires_human_approval: bool = True
     auto_applied: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SRBenchmarkLane(StrEnum):
+    NATIVE = "native"
+    LOCAL_SR = "local_sr"
+    REMOTE_SR = "remote_sr"
+
+
+class SRCasePreference(StrEnum):
+    NATIVE = "native"
+    LOCAL_SR = "local_sr"
+    REMOTE_SR = "remote_sr"
+    TIE = "tie"
+    UNUSABLE = "unusable"
+
+
+class SRBenchmarkRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    KEEP_NATIVE = "keep_native"
+    LOCAL_SR_FOR_HUMAN_REVIEW = "local_sr_for_human_review"
+    REMOTE_SR_FOR_HUMAN_REVIEW = "remote_sr_for_human_review"
+    MIXED_POLICY_FOR_HUMAN_REVIEW = "mixed_policy_for_human_review"
+
+
+class SRBenchmarkSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str = Field(default_factory=lambda: "sr_matrix_" + uuid4().hex)
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_path: str
+    native_manifest_path: str | None = None
+    local_sr_manifest_path: str | None = None
+    remote_sr_manifest_path: str | None = None
+    quality_mode: QualityMode = QualityMode.PRINT_READY
+    limit: int | None = Field(default=None, ge=1)
+    min_quality_gain: float = Field(default=0.01, ge=0, le=1)
+    min_detail_gain: float = Field(default=0.03, ge=0, le=1)
+    max_semantic_drop: float = Field(default=0.02, ge=0, le=1)
+    max_latency_ratio: float | None = Field(default=None, ge=1)
+    max_cost_per_case_usd: float | None = Field(default=None, ge=0)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SRLaneRun(StrictModel):
+    lane: SRBenchmarkLane
+    available: bool
+    run_id: str | None = None
+    scorecard_id: str | None = None
+    status: HarnessRunStatus | None = None
+    unavailable_reason: str | None = None
+    case_count: int = Field(default=0, ge=0)
+    success_count: int = Field(default=0, ge=0)
+    quality_mean: float | None = Field(default=None, ge=0, le=1)
+    technical_mean: float | None = Field(default=None, ge=0, le=1)
+    small_detail_survival_mean: float | None = Field(default=None, ge=0, le=1)
+    latency_p50_ms: float = Field(default=0, ge=0)
+    latency_p95_ms: float = Field(default=0, ge=0)
+    peak_ram_mb: float = Field(default=0, ge=0)
+    peak_vram_mb: float = Field(default=0, ge=0)
+    provider_calls: int = Field(default=0, ge=0)
+    total_cost_usd: float = Field(default=0, ge=0)
+    manual_review_count: int = Field(default=0, ge=0)
+
+
+class SRLaneCaseEvidence(StrictModel):
+    lane: SRBenchmarkLane
+    success: bool = False
+    quality_score: float | None = Field(default=None, ge=0, le=1)
+    semantic_score: float | None = Field(default=None, ge=0, le=1)
+    technical_score: float | None = Field(default=None, ge=0, le=1)
+    small_detail_survival: float | None = Field(default=None, ge=0, le=1)
+    effective_resolution: float | None = Field(default=None, ge=0, le=1)
+    latency_ms: float = Field(default=0, ge=0)
+    peak_ram_mb: float = Field(default=0, ge=0)
+    peak_vram_mb: float = Field(default=0, ge=0)
+    provider_calls: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0, ge=0)
+    manual_review: bool = False
+    fail_closed: bool = False
+    hallucination_risk: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class SRCaseComparison(StrictModel):
+    pair_id: str
+    artwork_identity: str
+    lanes: list[SRLaneCaseEvidence] = Field(default_factory=list)
+    preferred_lane: SRCasePreference = SRCasePreference.UNUSABLE
+    quality_gain: float | None = Field(default=None, ge=-1, le=1)
+    detail_gain: float | None = Field(default=None, ge=-1, le=1)
+    semantic_delta: float | None = Field(default=None, ge=-1, le=1)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class SRBenchmarkReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_id: str
+    recipe_version: str
+    quality_mode: QualityMode
+    min_quality_gain: float = Field(ge=0, le=1)
+    min_detail_gain: float = Field(ge=0, le=1)
+    max_semantic_drop: float = Field(ge=0, le=1)
+    dataset_manifest_sha256: str = ""
+    runs: list[SRLaneRun] = Field(default_factory=list)
+    comparisons: list[SRCaseComparison] = Field(default_factory=list)
+    comparable_case_count: int = Field(default=0, ge=0)
+    native_preferred_count: int = Field(default=0, ge=0)
+    local_sr_preferred_count: int = Field(default=0, ge=0)
+    remote_sr_preferred_count: int = Field(default=0, ge=0)
+    tie_count: int = Field(default=0, ge=0)
+    incomplete_count: int = Field(default=0, ge=0)
+    recommendation: SRBenchmarkRecommendation = (
+        SRBenchmarkRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    requires_human_approval: bool = True
+    auto_applied: bool = False
+    production_execution_enabled: bool = False
     reasons: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
 

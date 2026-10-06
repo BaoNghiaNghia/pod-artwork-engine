@@ -236,6 +236,9 @@ class HarnessStore:
     def route_matrix_dir(self, matrix_id: str) -> Path:
         return self.root / "route-matrices" / matrix_id
 
+    def sr_matrix_dir(self, matrix_id: str) -> Path:
+        return self.root / "sr-matrices" / matrix_id
+
     def router_calibration_dir(self, proposal_id: str) -> Path:
         return self.root / "router-calibration" / proposal_id
 
@@ -336,6 +339,7 @@ class HarnessRunner:
                         route=entry.route,
                         runtime_qc=entry.runtime_qc,
                         cohorts=case.cohorts,
+                        metadata=dict(entry.metadata),
                     )
                 else:
                     try:
@@ -378,6 +382,7 @@ class HarnessRunner:
                             quality_score=quality_score,
                             diff_path=str(diff_path),
                             cohorts=case.cohorts,
+                            metadata=dict(entry.metadata),
                         )
                     except Exception as exc:
                         result = BenchmarkCaseResult(
@@ -392,6 +397,7 @@ class HarnessRunner:
                             route=entry.route,
                             runtime_qc=entry.runtime_qc,
                             cohorts=case.cohorts,
+                            metadata=dict(entry.metadata),
                         )
 
             result_file = results_dir / f"{case.case_id}.json"

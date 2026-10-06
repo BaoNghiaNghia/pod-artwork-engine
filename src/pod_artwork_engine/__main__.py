@@ -17,13 +17,20 @@ from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
-from .harness_models import BenchmarkSuiteSpec, BenchmarkTier, PromotionPolicy, RouteMatrixSpec
+from .harness_models import (
+    BenchmarkSuiteSpec,
+    BenchmarkTier,
+    PromotionPolicy,
+    RouteMatrixSpec,
+    SRBenchmarkSpec,
+)
 from .logging_config import LoggingRuntime
 from .qc_policy import load_qc_policy
 from .route_matrix import RouteMatrixRunner
 from .router_calibration import RouterPolicyCalibrator
 from .router_policy import load_router_policy
 from .settings import Settings
+from .sr_matrix import SRBenchmarkMatrixRunner
 from .storage import StorageManager
 from .updater import UpdateManager
 
@@ -151,6 +158,29 @@ def main() -> None:
     )
     route_matrix.add_argument("--limit", type=int)
     route_matrix.add_argument("--min-quality-gain", type=float, default=0.02)
+
+    sr_matrix = sub.add_parser("harness-sr-matrix")
+    sr_matrix.add_argument("dataset_id")
+    sr_matrix.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        required=True,
+    )
+    sr_matrix.add_argument("--recipe", type=Path, required=True)
+    sr_matrix.add_argument("--native-candidates", type=Path)
+    sr_matrix.add_argument("--local-sr-candidates", type=Path)
+    sr_matrix.add_argument("--remote-sr-candidates", type=Path)
+    sr_matrix.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    sr_matrix.add_argument("--limit", type=int)
+    sr_matrix.add_argument("--min-quality-gain", type=float, default=0.01)
+    sr_matrix.add_argument("--min-detail-gain", type=float, default=0.03)
+    sr_matrix.add_argument("--max-semantic-drop", type=float, default=0.02)
+    sr_matrix.add_argument("--max-latency-ratio", type=float)
+    sr_matrix.add_argument("--max-cost-per-case-usd", type=float)
 
     router_calibrate = sub.add_parser("harness-router-calibrate")
     router_calibrate.add_argument("matrix_ids", nargs="+")
@@ -374,6 +404,41 @@ def main() -> None:
             min_quality_gain=args.min_quality_gain,
         )
         report = RouteMatrixRunner(settings, registry, store).run(
+            spec,
+            spec_base=Path.cwd(),
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-sr-matrix":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = SRBenchmarkSpec(
+            dataset_id=args.dataset_id,
+            tier=BenchmarkTier(args.tier),
+            recipe_path=str(args.recipe),
+            native_manifest_path=(
+                str(args.native_candidates)
+                if args.native_candidates is not None
+                else None
+            ),
+            local_sr_manifest_path=(
+                str(args.local_sr_candidates)
+                if args.local_sr_candidates is not None
+                else None
+            ),
+            remote_sr_manifest_path=(
+                str(args.remote_sr_candidates)
+                if args.remote_sr_candidates is not None
+                else None
+            ),
+            quality_mode=QualityMode(args.quality_mode),
+            limit=args.limit,
+            min_quality_gain=args.min_quality_gain,
+            min_detail_gain=args.min_detail_gain,
+            max_semantic_drop=args.max_semantic_drop,
+            max_latency_ratio=args.max_latency_ratio,
+            max_cost_per_case_usd=args.max_cost_per_case_usd,
+        )
+        report = SRBenchmarkMatrixRunner(settings, registry, store).run(
             spec,
             spec_base=Path.cwd(),
         )
