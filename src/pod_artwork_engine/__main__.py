@@ -22,7 +22,12 @@ from .material_separation_benchmark import (
     MaterialSeparationMaterializer,
 )
 from .material_separation_experiment import MaterialSeparationExperimentRunner
-from .policy_review import PolicyReviewKind, PolicyReviewPacketBuilder
+from .policy_review import (
+    PolicyDecision,
+    PolicyDecisionReceiptBuilder,
+    PolicyReviewKind,
+    PolicyReviewPacketBuilder,
+)
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
 from .harness_models import (
@@ -481,6 +486,17 @@ def main() -> None:
     )
     policy_review.add_argument("--proposal", type=Path, required=True)
     policy_review.add_argument("--packet-id")
+
+    policy_decision = sub.add_parser("harness-policy-decision-receipt")
+    policy_decision.add_argument("--packet", type=Path, required=True)
+    policy_decision.add_argument(
+        "--decision",
+        choices=[decision.value for decision in PolicyDecision],
+        required=True,
+    )
+    policy_decision.add_argument("--reviewer", required=True)
+    policy_decision.add_argument("--note", default="")
+    policy_decision.add_argument("--receipt-id")
 
     registration_calibrate = sub.add_parser("harness-registration-calibrate")
     registration_calibrate.add_argument("run_ids", nargs="+")
@@ -964,6 +980,16 @@ def main() -> None:
             packet_id=args.packet_id,
         )
         print(json.dumps(packet.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-policy-decision-receipt":
+        store = HarnessStore(settings.harness_dir)
+        receipt = PolicyDecisionReceiptBuilder(store).build(
+            args.packet.resolve(),
+            PolicyDecision(args.decision),
+            reviewer=args.reviewer,
+            note=args.note,
+            receipt_id=args.receipt_id,
+        )
+        print(json.dumps(receipt.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-registration-calibrate":
         store = HarnessStore(settings.harness_dir)
         proposal = RegistrationPolicyCalibrator(store).propose(

@@ -748,6 +748,24 @@ Implemented:
 
 Phase 2R does not change benchmark recipes because it is a governance/promotion boundary, not a reconstruction or scoring change; recipes remain `local-precision-v22` / `remote-balanced-v22`.
 
+### Phase 2S — Human Decision Receipt Chain
+
+Implemented:
+
+- the immutable review boundary now also accepts Golden SR policy proposals, so registration, material separation and SR use one review mechanism;
+- SR proposals with sufficient Golden evidence and a non-`manual_review` recommendation can enter `pending_human_approval`; the packet records cohort/source artifact provenance;
+- explicit `approve` or `reject` decisions create a separate immutable receipt bound to the exact review packet SHA-256 and proposal SHA-256;
+- receipt creation re-checks that the review packet is pending/eligible and that the underlying proposal file still matches the hash that was reviewed;
+- exactly one decision receipt is allowed per review packet; changing a decision requires a new review packet rather than overwriting audit history;
+- reviewer identity is mandatory and an optional review note is preserved;
+- `approve` only records `human_approval_recorded=true`; it still sets `requires_separate_activation=true`, `automatically_applied=false` and `production_execution_enabled=false`;
+- receipts persist under `<harness>/policy-decisions/<packet_id>/decision-receipt.json`;
+- CLI: `harness-policy-decision-receipt --packet <review-packet.json> --decision approve|reject --reviewer <name>`;
+- API/diagnostics expose `human_policy_review_packet_v2` and `human_policy_decision_receipt_v1`;
+- there is still no production activation command and `Engine.run_job` remains unchanged.
+
+Phase 2S is governance-only, so benchmark recipes remain `local-precision-v22` / `remote-balanced-v22`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
+
+from pydantic import Field
 
 from .harness import HarnessStore
 from .harness_models import (
@@ -12,6 +15,8 @@ from .harness_models import (
     MaterialSeparationPolicyRecommendation,
     ProductionRegistrationPolicyProposal,
     ProductionRegistrationPolicyRecommendation,
+    SRPolicyProposal,
+    SRPolicyRecommendation,
     StrictModel,
 )
 
@@ -19,11 +24,17 @@ from .harness_models import (
 class PolicyReviewKind(StrEnum):
     REGISTRATION = "registration"
     MATERIAL_SEPARATION = "material_separation"
+    SUPER_RESOLUTION = "super_resolution"
 
 
 class PolicyReviewDisposition(StrEnum):
     PENDING_HUMAN_APPROVAL = "pending_human_approval"
     NOT_ELIGIBLE = "not_eligible"
+
+
+class PolicyDecision(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
 
 
 class PolicyReviewPacket(StrictModel):
@@ -41,13 +52,38 @@ class PolicyReviewPacket(StrictModel):
     sufficient_evidence: bool
     eligible_for_human_approval: bool
     source_run_ids: list[str]
+    source_artifact_ids: list[str] = Field(default_factory=list)
     requires_human_approval: bool = True
     automatically_applied: bool = False
     production_execution_enabled: bool = False
     reasons: list[str]
 
 
+class PolicyDecisionReceipt(StrictModel):
+    receipt_id: str
+    packet_id: str
+    packet_path: str
+    packet_sha256: str
+    policy_kind: PolicyReviewKind
+    proposal_id: str
+    proposal_path: str
+    proposal_sha256: str
+    decision: PolicyDecision
+    reviewer: str
+    note: str = ""
+    human_approval_recorded: bool = False
+    requires_separate_activation: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str]
+    created_at: datetime
+
+
 class PolicyReviewPacketError(RuntimeError):
+    pass
+
+
+class PolicyDecisionReceiptError(RuntimeError):
     pass
 
 
@@ -81,6 +117,8 @@ class PolicyReviewPacketBuilder:
         if not proposal_path.is_file():
             raise FileNotFoundError(f"policy proposal not found: {proposal_path}")
 
+        source_run_ids: list[str] = []
+        source_artifact_ids: list[str] = []
         if policy_kind is PolicyReviewKind.REGISTRATION:
             proposal = ProductionRegistrationPolicyProposal.model_validate_json(
                 proposal_path.read_text(encoding="utf-8")
@@ -90,6 +128,10 @@ class PolicyReviewPacketBuilder:
                 is ProductionRegistrationPolicyRecommendation.CANDIDATE_FOR_HUMAN_APPROVAL
             )
             source_run_ids = list(proposal.source_registration_run_ids)
+            if proposal.cohort_id:
+                source_artifact_ids.append(proposal.cohort_id)
+            if proposal.matrix_id:
+                source_artifact_ids.append(proposal.matrix_id)
         elif policy_kind is PolicyReviewKind.MATERIAL_SEPARATION:
             proposal = MaterialSeparationPolicyProposal.model_validate_json(
                 proposal_path.read_text(encoding="utf-8")
@@ -99,6 +141,18 @@ class PolicyReviewPacketBuilder:
                 is MaterialSeparationPolicyRecommendation.CANDIDATE_FOR_HUMAN_APPROVAL
             )
             source_run_ids = [proposal.source_run_id]
+            if proposal.cohort_id:
+                source_artifact_ids.append(proposal.cohort_id)
+            if proposal.matrix_id:
+                source_artifact_ids.append(proposal.matrix_id)
+        elif policy_kind is PolicyReviewKind.SUPER_RESOLUTION:
+            proposal = SRPolicyProposal.model_validate_json(
+                proposal_path.read_text(encoding="utf-8")
+            )
+            candidate = (
+                proposal.recommendation is not SRPolicyRecommendation.MANUAL_REVIEW
+            )
+            source_artifact_ids = [proposal.cohort_id]
         else:  # pragma: no cover - StrEnum keeps CLI/API callers inside known values.
             raise PolicyReviewPacketError(f"unsupported policy kind: {policy_kind}")
 
@@ -151,6 +205,7 @@ class PolicyReviewPacketBuilder:
             sufficient_evidence=proposal.sufficient_evidence,
             eligible_for_human_approval=eligible,
             source_run_ids=source_run_ids,
+            source_artifact_ids=source_artifact_ids,
             requires_human_approval=True,
             automatically_applied=False,
             production_execution_enabled=False,
@@ -166,5 +221,95 @@ class PolicyReviewPacketBuilder:
         return packet
 
 
+class PolicyDecisionReceiptBuilder:
+    """Record an explicit human decision without applying or activating policy."""
+
+    def __init__(self, store: HarnessStore) -> None:
+        self.store = store
+
+    def build(
+        self,
+        packet_path: Path,
+        decision: PolicyDecision,
+        *,
+        reviewer: str,
+        note: str = "",
+        receipt_id: str | None = None,
+    ) -> PolicyDecisionReceipt:
+        packet_path = packet_path.expanduser().resolve()
+        if not packet_path.is_file():
+            raise FileNotFoundError(f"policy review packet not found: {packet_path}")
+        reviewer = reviewer.strip()
+        if not reviewer:
+            raise PolicyDecisionReceiptError("reviewer is required")
+
+        packet = load_policy_review_packet(packet_path)
+        blockers: list[str] = []
+        if packet.disposition is not PolicyReviewDisposition.PENDING_HUMAN_APPROVAL:
+            blockers.append("policy_review_packet_is_not_pending_human_approval")
+        if not packet.eligible_for_human_approval:
+            blockers.append("policy_review_packet_is_not_eligible")
+        if not packet.requires_human_approval:
+            blockers.append("policy_review_packet_missing_human_approval_boundary")
+        if packet.automatically_applied:
+            blockers.append("policy_review_packet_was_automatically_applied")
+        if packet.production_execution_enabled:
+            blockers.append("policy_review_packet_already_enables_production_execution")
+
+        proposal_path = Path(packet.proposal_path).expanduser().resolve()
+        if not proposal_path.is_file():
+            blockers.append("policy_review_proposal_missing")
+        elif _sha256(proposal_path) != packet.proposal_sha256:
+            blockers.append("policy_review_proposal_fingerprint_mismatch")
+
+        if blockers:
+            raise PolicyDecisionReceiptError(", ".join(blockers))
+
+        decision_dir = self.store.policy_decision_dir(packet.packet_id)
+        receipt_path = decision_dir / "decision-receipt.json"
+        if receipt_path.exists():
+            raise PolicyDecisionReceiptError(
+                f"policy decision already recorded for packet: {packet.packet_id}"
+            )
+
+        human_approval_recorded = decision is PolicyDecision.APPROVE
+        reasons = [
+            "explicit human policy decision receipt",
+            "decision receipt is cryptographically bound to the immutable review packet",
+            "decision receipt does not activate production execution",
+            "separate explicit activation remains required",
+        ]
+        if human_approval_recorded:
+            reasons.append("human approved the reviewed policy proposal")
+        else:
+            reasons.append("human rejected the reviewed policy proposal")
+
+        receipt = PolicyDecisionReceipt(
+            receipt_id=receipt_id or "policy_decision_" + uuid4().hex,
+            packet_id=packet.packet_id,
+            packet_path=str(packet_path),
+            packet_sha256=_sha256(packet_path),
+            policy_kind=packet.policy_kind,
+            proposal_id=packet.proposal_id,
+            proposal_path=str(proposal_path),
+            proposal_sha256=packet.proposal_sha256,
+            decision=decision,
+            reviewer=reviewer,
+            note=note.strip(),
+            human_approval_recorded=human_approval_recorded,
+            requires_separate_activation=True,
+            automatically_applied=False,
+            production_execution_enabled=False,
+            reasons=reasons,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.store.save_model(receipt_path, receipt)
+        return receipt
+
+
 def load_policy_review_packet(path: Path) -> PolicyReviewPacket:
     return PolicyReviewPacket.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def load_policy_decision_receipt(path: Path) -> PolicyDecisionReceipt:
+    return PolicyDecisionReceipt.model_validate_json(path.read_text(encoding="utf-8"))
