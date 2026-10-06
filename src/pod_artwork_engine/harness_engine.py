@@ -147,6 +147,10 @@ class HarnessEngineRunner:
             job_id,
             "reference_alignment",
         )
+        feature_correspondence = self.engine.checkpoints.payload(
+            job_id,
+            "feature_correspondence",
+        )
         region_confidence = self.engine.checkpoints.payload(
             job_id,
             "region_confidence_map",
@@ -281,6 +285,51 @@ class HarnessEngineRunner:
             reference_alignment_fail_closed=(
                 bool(reference_alignment.get("fail_closed"))
                 if isinstance(reference_alignment, dict)
+                else False
+            ),
+            feature_correspondence=isinstance(feature_correspondence, dict),
+            feature_correspondence_measured_affine_count=(
+                int(feature_correspondence.get("measured_affine_count") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_measured_homography_count=(
+                int(feature_correspondence.get("measured_homography_count") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_insufficient_count=(
+                int(feature_correspondence.get("insufficient_feature_count") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_semantic_count=(
+                int(feature_correspondence.get("semantic_required_count") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_manual_count=(
+                int(feature_correspondence.get("manual_review_count") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_mean_inlier_ratio=(
+                float(feature_correspondence.get("mean_inlier_ratio") or 0)
+                if isinstance(feature_correspondence, dict)
+                else 0
+            ),
+            feature_correspondence_mean_reprojection_error=(
+                (
+                    float(feature_correspondence["mean_reprojection_error"])
+                    if feature_correspondence.get("mean_reprojection_error") is not None
+                    else None
+                )
+                if isinstance(feature_correspondence, dict)
+                else None
+            ),
+            feature_correspondence_fail_closed=(
+                bool(feature_correspondence.get("fail_closed"))
+                if isinstance(feature_correspondence, dict)
                 else False
             ),
             region_confidence_map=isinstance(region_confidence, dict),

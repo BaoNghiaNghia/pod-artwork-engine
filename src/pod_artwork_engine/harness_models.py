@@ -112,6 +112,18 @@ class PrecisionEvidence(StrictModel):
     reference_alignment_manual_count: int = Field(default=0, ge=0)
     reference_alignment_mean_confidence: float = Field(default=0, ge=0, le=1)
     reference_alignment_fail_closed: bool = False
+    feature_correspondence: bool = False
+    feature_correspondence_measured_affine_count: int = Field(default=0, ge=0)
+    feature_correspondence_measured_homography_count: int = Field(default=0, ge=0)
+    feature_correspondence_insufficient_count: int = Field(default=0, ge=0)
+    feature_correspondence_semantic_count: int = Field(default=0, ge=0)
+    feature_correspondence_manual_count: int = Field(default=0, ge=0)
+    feature_correspondence_mean_inlier_ratio: float = Field(default=0, ge=0, le=1)
+    feature_correspondence_mean_reprojection_error: float | None = Field(
+        default=None,
+        ge=0,
+    )
+    feature_correspondence_fail_closed: bool = False
     region_confidence_map: bool = False
     region_grid_cells: int = Field(default=0, ge=0)
     region_mean_confidence: float = Field(default=0, ge=0, le=1)

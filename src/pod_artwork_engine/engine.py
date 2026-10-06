@@ -20,6 +20,7 @@ from .contracts import (
     JobState,
     MaterialSeparationEvidence,
     MultiReferenceAlignmentEvidence,
+    MultiReferenceCorrespondenceEvidence,
     MultiReferenceFusionEvidence,
     PreflightResult,
     ProviderAction,
@@ -38,6 +39,7 @@ from .contracts import (
     TypographySpec,
 )
 from .exporter import export_master
+from .feature_correspondence import build_feature_correspondence_evidence
 from .geometry import (
     GeometryRenderUnavailable,
     geometry_to_svg,
@@ -310,6 +312,42 @@ class Engine:
         )
         return evidence
 
+    def _feature_correspondence(
+        self,
+        job: JobRecord,
+        source_paths: list[Path],
+        preflights: list[PreflightResult],
+        fusion: MultiReferenceFusionEvidence,
+        alignment: MultiReferenceAlignmentEvidence,
+    ) -> MultiReferenceCorrespondenceEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "feature_correspondence")
+        if isinstance(checkpoint, dict):
+            return MultiReferenceCorrespondenceEvidence.model_validate(checkpoint)
+
+        evidence = build_feature_correspondence_evidence(
+            source_paths,
+            preflights,
+            fusion,
+            alignment,
+        )
+        self.checkpoints.write(
+            job.job_id,
+            "feature_correspondence",
+            evidence.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "feature_correspondence_completed",
+            stage="preflight",
+            quality_score=evidence.mean_inlier_ratio,
+            failure_reason=(
+                ", ".join(evidence.reason_codes)
+                if evidence.fail_closed
+                else None
+            ),
+        )
+        return evidence
+
     def _region_confidence_map(
         self,
         job: JobRecord,
@@ -410,7 +448,14 @@ class Engine:
                 source_paths,
                 preflights,
             )
-            self._reference_alignment(job, preflights, fusion)
+            alignment = self._reference_alignment(job, preflights, fusion)
+            self._feature_correspondence(
+                job,
+                source_paths,
+                preflights,
+                fusion,
+                alignment,
+            )
             region_map = self._region_confidence_map(
                 job,
                 source_paths,
@@ -1326,6 +1371,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "reference_alignment")
                     or {}
                 ),
+                "feature_correspondence": (
+                    self.checkpoints.payload(job.job_id, "feature_correspondence")
+                    or {}
+                ),
                 "region_confidence_map": (
                     self.checkpoints.payload(job.job_id, "region_confidence_map")
                     or {}
@@ -1395,7 +1444,14 @@ class Engine:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
             fusion = self._reference_fusion(job, source_paths, preflights)
-            self._reference_alignment(job, preflights, fusion)
+            alignment = self._reference_alignment(job, preflights, fusion)
+            self._feature_correspondence(
+                job,
+                source_paths,
+                preflights,
+                fusion,
+                alignment,
+            )
             region_map = self._region_confidence_map(
                 job,
                 source_paths,

@@ -636,6 +636,25 @@ Implemented:
 
 This phase is an alignment **planning/readiness** foundation. Full feature matching, homography estimation, dewarp execution and region-level compositing still require Golden Holdout calibration.
 
+### Phase 2M — Feature Correspondence & Measured Homography Benchmark Foundation
+
+Implemented:
+
+- typed per-match and per-reference correspondence evidence with `identity`, `measured_affine`, `measured_homography`, `insufficient_features`, `semantic_required` and `manual_review` dispositions;
+- Pillow/Python-only grayscale patch matching on texture-rich deterministic grid anchors; no NumPy, OpenCV or model weights are added;
+- patch candidates are gated by local texture, normalized patch error and uniqueness margin before entering geometric fitting;
+- correspondences are stored as normalized source/target points with patch error and uniqueness evidence;
+- bounded deterministic RANSAC fits affine and projective models, then refits on inliers using a local Gaussian-elimination least-squares solver;
+- evidence records match/inlier counts, inlier ratio, artwork-relative spatial coverage, mean/median reprojection error and the measured 3×3 matrix;
+- measured homography is allowed only when Phase 2L already identified a homography candidate and the projective fit materially improves on affine evidence;
+- too few features, poor spatial coverage, low inlier ratio or high reprojection error fail closed instead of authorizing a warp;
+- conflicting/ambiguous/manual references are excluded before patch matching; semantic-required alignment stays semantic-required;
+- checkpoint `feature_correspondence`, artifact-manifest evidence and Harness precision/coverage fields are persisted;
+- API/diagnostics expose `feature_correspondence_benchmark_v1`;
+- `execution_enabled=false` for every result: measured transforms are benchmark evidence only and are not applied to region sampling, reconstruction or final pixels.
+
+Recipes are now `local-precision-v18` / `remote-balanced-v18`, phase `phase2m`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

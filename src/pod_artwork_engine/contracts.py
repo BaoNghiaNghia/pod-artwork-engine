@@ -95,6 +95,15 @@ class ReferenceAlignmentDisposition(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class FeatureCorrespondenceDisposition(StrEnum):
+    IDENTITY = "identity"
+    MEASURED_AFFINE = "measured_affine"
+    MEASURED_HOMOGRAPHY = "measured_homography"
+    INSUFFICIENT_FEATURES = "insufficient_features"
+    SEMANTIC_REQUIRED = "semantic_required"
+    MANUAL_REVIEW = "manual_review"
+
+
 class RegionRescueDisposition(StrEnum):
     NONE = "none"
     SEMANTIC_PROVIDER_CANDIDATE = "semantic_provider_candidate"
@@ -323,6 +332,50 @@ class MultiReferenceAlignmentEvidence(StrictModel):
     fail_closed: bool = False
     execution_enabled: bool = False
     references: list[ReferenceAlignmentEvidence] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class FeatureMatchEvidence(StrictModel):
+    source: NormalizedPoint
+    target: NormalizedPoint
+    patch_error: float = Field(ge=0, le=1)
+    uniqueness_margin: float = Field(default=0, ge=0, le=1)
+
+
+class ReferenceCorrespondenceEvidence(StrictModel):
+    index: int = Field(ge=0)
+    disposition: FeatureCorrespondenceDisposition
+    model: str = ""
+    match_count: int = Field(default=0, ge=0)
+    inlier_count: int = Field(default=0, ge=0)
+    inlier_ratio: float = Field(default=0, ge=0, le=1)
+    spatial_coverage: float = Field(default=0, ge=0, le=1)
+    mean_reprojection_error: float | None = Field(default=None, ge=0)
+    median_reprojection_error: float | None = Field(default=None, ge=0)
+    transform_matrix: list[float] = Field(default_factory=list, max_length=9)
+    matches: list[FeatureMatchEvidence] = Field(default_factory=list, max_length=32)
+    fail_closed: bool = False
+    execution_enabled: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class MultiReferenceCorrespondenceEvidence(StrictModel):
+    method: str = "feature_correspondence_benchmark_v1"
+    reference_count: int = Field(ge=1)
+    primary_index: int = Field(ge=0)
+    measured_indices: list[int] = Field(default_factory=list)
+    excluded_indices: list[int] = Field(default_factory=list)
+    measured_affine_count: int = Field(default=0, ge=0)
+    measured_homography_count: int = Field(default=0, ge=0)
+    insufficient_feature_count: int = Field(default=0, ge=0)
+    semantic_required_count: int = Field(default=0, ge=0)
+    manual_review_count: int = Field(default=0, ge=0)
+    mean_inlier_ratio: float = Field(default=0, ge=0, le=1)
+    mean_reprojection_error: float | None = Field(default=None, ge=0)
+    fail_closed: bool = False
+    execution_enabled: bool = False
+    references: list[ReferenceCorrespondenceEvidence] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
