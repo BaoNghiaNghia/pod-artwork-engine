@@ -45,6 +45,8 @@ class Settings:
     visual_font_match_min_score: float = 0.72
     visual_font_match_min_margin: float = 0.035
     visual_font_match_max_candidates: int = 96
+    local_text_repair_enabled: bool = True
+    local_text_repair_min_confidence: float = 0.82
     tesseract_path: Path | None = None
     tesseract_language: str = "eng"
 
@@ -118,6 +120,23 @@ class Settings:
                         os.environ.get(
                             "POD_VISUAL_FONT_MATCH_MAX_CANDIDATES",
                             "96",
+                        )
+                    ),
+                ),
+            ),
+            local_text_repair_enabled=os.environ.get(
+                "POD_LOCAL_TEXT_REPAIR_ENABLED",
+                "1",
+            ).strip().lower()
+            not in {"0", "false", "no", "off"},
+            local_text_repair_min_confidence=max(
+                0.0,
+                min(
+                    1.0,
+                    float(
+                        os.environ.get(
+                            "POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE",
+                            "0.82",
                         )
                     ),
                 ),

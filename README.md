@@ -326,12 +326,33 @@ Implemented:
 
 This keeps the precision route conservative: SVG can preserve richer provider/vector topology, while local raster output is produced only when the fill semantics are deterministic and tested.
 
+### Phase 1I — Guarded Illustration-Aware Text Repair
+
+Implemented:
+
+- mixed-art typography can explicitly request `repair_local` when text overlaps a gradient, illustration or other non-solid artwork where flat replacement would leave a visible patch;
+- local repair uses deterministic horizontal and vertical boundary interpolation inside the approved polygon mask, preserving simple gradients and nearby color transitions without a generative model;
+- `repair_local` requires an explicit polygon mask plus `replacement_confidence`; the default minimum confidence is `0.82`;
+- repair masks retain the existing guarded text-region boundary checks, so a provider cannot use text repair to rewrite unrelated parts of the illustration;
+- the repair path fails closed if it cannot reconstruct every masked pixel from valid surrounding boundary evidence;
+- the algorithm uses Pillow only, adds no new local model/OpenCV dependency, and therefore has negligible impact on the 40 GB tool-storage budget;
+- successful jobs record `local_text_repair` precision provenance with method, threshold, repaired lines, confidence and mask-point counts in checkpoints and the final ArtifactManifest;
+- Harness `PrecisionEvidence` reports whether guarded repair ran and how many text regions were repaired, while benchmark recipes can independently enable it and vary the confidence threshold.
+
+Configuration:
+
+```text
+POD_LOCAL_TEXT_REPAIR_ENABLED=1
+POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE=0.82
+```
+
+This is intentionally a conservative deterministic repair path, not unrestricted semantic inpainting. Highly textured, occluded or structurally complex regions should still escalate to provider reconstruction/region rescue or manual review.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
 - choose/bundle the production OCR backend for fully standalone installs, or prove a remote/local hybrid wins on Golden Holdout;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
-- illustration-aware/inpainting masks for text that overlaps non-solid artwork;
 - select concrete GPT/provider aliases and fallback mappings from measured quality/latency/cost rather than hard-coding them.
 
 See `docs/POD_ARTWORK_RECONSTRUCTION.md` for the canonical architecture.

@@ -81,9 +81,14 @@ class HarnessEngineRunner:
         if isinstance(visual_font_match, bool):
             overrides["visual_font_match_enabled"] = visual_font_match
 
+        local_text_repair = metadata.get("local_text_repair_enabled")
+        if isinstance(local_text_repair, bool):
+            overrides["local_text_repair_enabled"] = local_text_repair
+
         for key in (
             "visual_font_match_min_score",
             "visual_font_match_min_margin",
+            "local_text_repair_min_confidence",
         ):
             value = metadata.get(key)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -140,6 +145,10 @@ class HarnessEngineRunner:
             job_id,
             "geometry_topology",
         )
+        local_text_repair = self.engine.checkpoints.payload(
+            job_id,
+            "local_text_repair",
+        )
         candidate = self.engine.checkpoints.payload(job_id, "candidate")
         design_spec = self.engine.checkpoints.payload(job_id, "design_spec")
         precision_ops = (
@@ -156,7 +165,10 @@ class HarnessEngineRunner:
                     if (
                         isinstance(line, dict)
                         and line.get("replacement_mode")
-                        == RegionReplacementMode.REPLACE_MASK.value
+                        in {
+                            RegionReplacementMode.REPLACE_MASK.value,
+                            RegionReplacementMode.REPAIR_LOCAL.value,
+                        }
                     ):
                         masked_regions += 1
 
@@ -189,6 +201,12 @@ class HarnessEngineRunner:
             matched_font_lines=matched_font_lines,
             typography_rebuilt="deterministic_typography" in precision_ops,
             mixed_text_refined="mixed_typography" in precision_ops,
+            local_text_repair="local_text_repair" in precision_ops,
+            repaired_text_regions=(
+                len(local_text_repair.get("repaired_lines") or [])
+                if isinstance(local_text_repair, dict)
+                else 0
+            ),
             geometry_vector=(
                 "deterministic_geometry" in precision_ops
                 and (

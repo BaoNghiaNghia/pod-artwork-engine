@@ -8,6 +8,8 @@ from PIL import Image, ImageDraw, ImageFont
 from pod_artwork_engine.contracts import (
     BoundingBox,
     FontMatchEvidence,
+    NormalizedPoint,
+    RegionReplacementMode,
     TypographyLine,
     TypographySpec,
 )
@@ -20,6 +22,7 @@ from pod_artwork_engine.local_ocr import _parse_tsv
 from pod_artwork_engine.settings import Settings
 from pod_artwork_engine.typography import (
     TypographyRenderUnavailable,
+    apply_typography,
     render_typography_master,
 )
 
@@ -311,4 +314,84 @@ def test_deterministic_typography_rejects_changed_visual_font_fingerprint(
             settings,
             tmp_path / "should-not-render.png",
             canvas_size=(1000, 600),
+        )
+
+
+def _repair_fixture() -> tuple[Image.Image, TypographySpec]:
+    image = Image.new("RGBA", (120, 80), (0, 0, 0, 255))
+    pixels = image.load()
+    for y in range(image.height):
+        for x in range(image.width):
+            value = round(30 + (180 * x / (image.width - 1)))
+            pixels[x, y] = (value, 90, 160, 255)
+
+    ImageDraw.Draw(image).rectangle((45, 28, 75, 52), fill=(5, 5, 5, 255))
+    line = TypographyLine(
+        text="REPAIRED",
+        bbox=BoundingBox(x=0.35, y=0.30, width=0.30, height=0.40),
+        confidence=0.98,
+        replacement_mode=RegionReplacementMode.REPAIR_LOCAL,
+        replacement_mask=[
+            NormalizedPoint(x=0.375, y=0.35),
+            NormalizedPoint(x=0.625, y=0.35),
+            NormalizedPoint(x=0.625, y=0.65),
+            NormalizedPoint(x=0.375, y=0.65),
+        ],
+        replacement_confidence=0.96,
+    )
+    spec = TypographySpec(
+        lines=[line],
+        line_order_confidence=0.98,
+        font_match_confidence=0.95,
+    )
+    return image, spec
+
+
+def test_local_text_repair_restores_gradient_from_boundary_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    image, spec = _repair_fixture()
+    monkeypatch.setattr(
+        "pod_artwork_engine.typography._draw_line",
+        lambda canvas, line, settings: None,
+    )
+    settings = Settings(data_root=tmp_path / "repair-runtime")
+
+    repaired, processed = apply_typography(
+        image,
+        spec,
+        settings,
+        safe_replacements_only=True,
+    )
+
+    assert processed == ["REPAIRED"]
+    expected = round(30 + (180 * 60 / 119))
+    center = repaired.getpixel((60, 40))
+    assert abs(center[0] - expected) <= 2
+    assert center[1:] == (90, 160, 255)
+    assert repaired.getpixel((20, 20)) == image.getpixel((20, 20))
+
+
+def test_local_text_repair_fails_closed_below_confidence_threshold(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    image, spec = _repair_fixture()
+    spec.lines[0].replacement_confidence = 0.50
+    monkeypatch.setattr(
+        "pod_artwork_engine.typography._draw_line",
+        lambda canvas, line, settings: None,
+    )
+    settings = Settings(data_root=tmp_path / "repair-runtime")
+
+    with pytest.raises(
+        TypographyRenderUnavailable,
+        match="local repair confidence too low",
+    ):
+        apply_typography(
+            image,
+            spec,
+            settings,
+            safe_replacements_only=True,
         )

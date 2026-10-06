@@ -1503,6 +1503,26 @@ Phase 1H compound vector topology:
 - Harness precision evidence now tracks `compound_geometry`, total geometry subpaths and even-odd compound fills in addition to ordinary vector coverage;
 - engine status/diagnostics advertise only the geometry capabilities actually supported by the local deterministic renderer: cubic, multi-subpath and even-odd compound fill.
 
+Phase 1I guarded illustration-aware text repair:
+
+- `TypographyLine.replacement_mode=repair_local` is available for mixed artwork where text overlaps a non-solid background and a flat replacement color would visibly damage the design;
+- the path requires an explicit guarded polygon mask and a separate `replacement_confidence`; default acceptance is `>=0.82`;
+- local repair is deterministic and Pillow-only: each masked run is reconstructed from valid pixels on both sides horizontally and vertically, then the two directional estimates are combined;
+- simple gradients and nearby color transitions can therefore be restored without adding a generative model, OpenCV, or another large local dependency;
+- the existing text-region guard still bounds the polygon, preventing a repair mask from extending into unrelated illustration regions;
+- if any masked pixel lacks sufficient surrounding boundary evidence, the repair raises `TypographyRenderUnavailable` and the engine leaves the region to the existing provider/fallback/review path;
+- successful local repair records `local_text_repair` provenance in the job checkpoint and ArtifactManifest precision evidence, including method, threshold, repaired line confidence and mask size;
+- Harness `PrecisionEvidence` reports `local_text_repair` coverage plus repaired-region counts, so the new path can be evaluated against historical targets instead of trusted by construction;
+- benchmark recipes can independently enable/disable the feature and vary its confidence threshold;
+- the feature is independently disableable through `POD_LOCAL_TEXT_REPAIR_ENABLED`, and its minimum evidence threshold is configurable through `POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE`.
+
+Default configuration:
+
+```text
+POD_LOCAL_TEXT_REPAIR_ENABLED=1
+POD_LOCAL_TEXT_REPAIR_MIN_CONFIDENCE=0.82
+```
+
 Current truthfulness limits:
 
 - local Tesseract is optional and is not yet bundled in the installer, so zero-dependency standalone OCR packaging is not complete;
@@ -1510,7 +1530,7 @@ Current truthfulness limits:
 - `TypographyLine.bbox` used for local font verification is interpreted inside the detected artwork region; heavy perspective, curved text, occlusion or textured fills may reduce confidence and intentionally leave the font unresolved;
 - exact typography redraw still requires sufficiently confident layout plus an accepted installed/local font match or other sufficiently trusted explicit typography evidence;
 - font aliases canonicalize the same font family; they are not permission to swap to a visually similar different family;
-- polygon text masks are safe deterministic cleanup regions only when a replacement fill is known; non-solid illustration reconstruction still requires semantic repair;
+- polygon text masks may use flat fill or guarded local boundary interpolation; highly textured/structural illustration repair still requires semantic rescue or review rather than pretending interpolation recovered hidden ground truth;
 - compound `nonzero` fills are preserved in SVG but are not rasterized locally; deterministic raster output requires explicit `evenodd` for multi-subpath fills;
 - the current geometry layer consumes validated vector evidence; fully automatic raster-to-vector tracing of arbitrary complex logos remains a separate benchmarked capability rather than an implicit conversion;
 - route-matrix evidence is not valid as remote evidence when the provider was unavailable and the engine fell back locally;
@@ -1525,7 +1545,6 @@ Remaining Phase 1 work:
 - import and run the user's real historical source/final pairs through the suite and route matrix, then establish the first measured champion and RouterPolicy;
 - choose and bundle the production OCR backend for fully standalone installs, or demonstrate through Golden Holdout that remote/local OCR routing is better;
 - calibrate visual-font score/margin thresholds on real historical typography cases and build a curated user-font library where licensing permits;
-- add illustration-aware/inpainting masks for text overlapping non-solid art;
 - select concrete GPT/provider aliases and fallback mappings from measured quality, latency and cost rather than hand-coding them.
 
 Build:

@@ -381,6 +381,8 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
             "visual_font_match_min_score": 0.81,
             "visual_font_match_min_margin": 0.06,
             "visual_font_match_max_candidates": 48,
+            "local_text_repair_enabled": False,
+            "local_text_repair_min_confidence": 0.91,
             "tesseract_language": "vie+eng",
         },
     )
@@ -402,6 +404,8 @@ def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path
     assert effective.visual_font_match_min_score == 0.81
     assert effective.visual_font_match_min_margin == 0.06
     assert effective.visual_font_match_max_candidates == 48
+    assert effective.local_text_repair_enabled is False
+    assert effective.local_text_repair_min_confidence == 0.91
     assert effective.tesseract_language == "vie+eng"
     assert effective.remote_provider_token == settings.remote_provider_token
 

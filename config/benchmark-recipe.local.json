@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v3",
-  "version": "3",
-  "description": "CPU-first local precision baseline with guarded OCR/font matching and compound vector topology.",
+  "recipe_id": "local-precision-v4",
+  "version": "4",
+  "description": "CPU-first local precision baseline with guarded OCR/font matching, compound vector topology and guarded local text repair.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "local-preflight-ocr-fontmatch",
-      "version": "phase1h"
+      "version": "phase1i"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision",
-      "version": "phase1h"
+      "version": "phase1i"
     },
     {
       "name": "qc",
       "implementation": "two-gate-qc",
-      "version": "phase1h"
+      "version": "phase1i"
     }
   ],
   "router_version": "phase1f",
@@ -27,6 +27,8 @@
     "visual_font_match_min_score": 0.72,
     "visual_font_match_min_margin": 0.035,
     "visual_font_match_max_candidates": 96,
+    "local_text_repair_enabled": true,
+    "local_text_repair_min_confidence": 0.82,
     "tesseract_language": "eng"
   }
 }

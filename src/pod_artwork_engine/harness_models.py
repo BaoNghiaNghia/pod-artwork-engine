@@ -105,6 +105,8 @@ class PrecisionEvidence(StrictModel):
     matched_font_lines: int = Field(default=0, ge=0)
     typography_rebuilt: bool = False
     mixed_text_refined: bool = False
+    local_text_repair: bool = False
+    repaired_text_regions: int = Field(default=0, ge=0)
     geometry_vector: bool = False
     compound_geometry: bool = False
     geometry_subpaths: int = Field(default=0, ge=0)

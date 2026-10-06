@@ -212,6 +212,188 @@ def validate_typography_spec(spec: TypographySpec) -> None:
                 )
 
 
+def _replacement_mask_points(
+    line: TypographyLine,
+    canvas: Image.Image,
+) -> list[tuple[int, int]]:
+    if len(line.replacement_mask) < 3:
+        raise TypographyRenderUnavailable(
+            f"replacement mask requires at least 3 points: {line.text}"
+        )
+
+    pad_x = max(0.01, line.bbox.width * 0.08)
+    pad_y = max(0.015, line.bbox.height * 0.20)
+    min_x = max(0.0, line.bbox.x - pad_x)
+    min_y = max(0.0, line.bbox.y - pad_y)
+    max_x = min(1.0, line.bbox.x + line.bbox.width + pad_x)
+    max_y = min(1.0, line.bbox.y + line.bbox.height + pad_y)
+    if any(
+        point.x < min_x
+        or point.x > max_x
+        or point.y < min_y
+        or point.y > max_y
+        for point in line.replacement_mask
+    ):
+        raise TypographyRenderUnavailable(
+            f"replacement mask exceeds guarded text region: {line.text}"
+        )
+
+    return [
+        (
+            max(0, min(canvas.width - 1, round(point.x * canvas.width))),
+            max(0, min(canvas.height - 1, round(point.y * canvas.height))),
+        )
+        for point in line.replacement_mask
+    ]
+
+
+def _blend_rgba(
+    first: tuple[int, int, int, int],
+    second: tuple[int, int, int, int],
+    amount: float,
+) -> tuple[int, int, int, int]:
+    return tuple(
+        round(first[channel] * (1.0 - amount) + second[channel] * amount)
+        for channel in range(4)
+    )
+
+
+def _repair_local_region(
+    canvas: Image.Image,
+    line: TypographyLine,
+    settings: Settings,
+) -> None:
+    if not settings.local_text_repair_enabled:
+        raise TypographyRenderUnavailable("local text repair is disabled")
+    if line.replacement_confidence < settings.local_text_repair_min_confidence:
+        raise TypographyRenderUnavailable(
+            f"local repair confidence too low: {line.text}"
+        )
+
+    mask_points = _replacement_mask_points(line, canvas)
+    xs = [point[0] for point in mask_points]
+    ys = [point[1] for point in mask_points]
+    line_width = max(1, round(line.bbox.width * canvas.width))
+    line_height = max(1, round(line.bbox.height * canvas.height))
+    context = max(3, round(min(line_width, line_height) * 0.08))
+
+    left = max(0, min(xs) - context)
+    top = max(0, min(ys) - context)
+    right = min(canvas.width, max(xs) + context + 1)
+    bottom = min(canvas.height, max(ys) + context + 1)
+    if right - left < 3 or bottom - top < 3:
+        raise TypographyRenderUnavailable(
+            f"local repair region is too small: {line.text}"
+        )
+
+    source = canvas.crop((left, top, right, bottom)).convert("RGBA")
+    width, height = source.size
+    mask = Image.new("1", (width, height), 0)
+    ImageDraw.Draw(mask).polygon(
+        [(x - left, y - top) for x, y in mask_points],
+        fill=1,
+    )
+    mask_px = mask.load()
+    source_px = source.load()
+
+    horizontal = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    horizontal_valid = Image.new("1", (width, height), 0)
+    horizontal_px = horizontal.load()
+    horizontal_valid_px = horizontal_valid.load()
+
+    for y in range(height):
+        x = 0
+        while x < width:
+            if not mask_px[x, y]:
+                x += 1
+                continue
+            start = x
+            while x < width and mask_px[x, y]:
+                x += 1
+            end = x - 1
+            left_x = start - 1
+            right_x = end + 1
+            if (
+                left_x < 0
+                or right_x >= width
+                or mask_px[left_x, y]
+                or mask_px[right_x, y]
+            ):
+                continue
+            first = source_px[left_x, y]
+            second = source_px[right_x, y]
+            span = end - start + 2
+            for fill_x in range(start, end + 1):
+                amount = (fill_x - start + 1) / span
+                horizontal_px[fill_x, y] = _blend_rgba(first, second, amount)
+                horizontal_valid_px[fill_x, y] = 1
+
+    vertical = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    vertical_valid = Image.new("1", (width, height), 0)
+    vertical_px = vertical.load()
+    vertical_valid_px = vertical_valid.load()
+
+    for x in range(width):
+        y = 0
+        while y < height:
+            if not mask_px[x, y]:
+                y += 1
+                continue
+            start = y
+            while y < height and mask_px[x, y]:
+                y += 1
+            end = y - 1
+            top_y = start - 1
+            bottom_y = end + 1
+            if (
+                top_y < 0
+                or bottom_y >= height
+                or mask_px[x, top_y]
+                or mask_px[x, bottom_y]
+            ):
+                continue
+            first = source_px[x, top_y]
+            second = source_px[x, bottom_y]
+            span = end - start + 2
+            for fill_y in range(start, end + 1):
+                amount = (fill_y - start + 1) / span
+                vertical_px[x, fill_y] = _blend_rgba(first, second, amount)
+                vertical_valid_px[x, fill_y] = 1
+
+    repaired = source.copy()
+    repaired_px = repaired.load()
+    unresolved = 0
+    repaired_count = 0
+    for y in range(height):
+        for x in range(width):
+            if not mask_px[x, y]:
+                continue
+            has_horizontal = bool(horizontal_valid_px[x, y])
+            has_vertical = bool(vertical_valid_px[x, y])
+            if has_horizontal and has_vertical:
+                first = horizontal_px[x, y]
+                second = vertical_px[x, y]
+                repaired_px[x, y] = tuple(
+                    round((first[channel] + second[channel]) / 2)
+                    for channel in range(4)
+                )
+            elif has_horizontal:
+                repaired_px[x, y] = horizontal_px[x, y]
+            elif has_vertical:
+                repaired_px[x, y] = vertical_px[x, y]
+            else:
+                unresolved += 1
+                continue
+            repaired_count += 1
+
+    if repaired_count == 0 or unresolved:
+        raise TypographyRenderUnavailable(
+            f"local repair lacks complete boundary evidence: {line.text}"
+        )
+
+    canvas.paste(repaired, (left, top))
+
+
 def apply_typography(
     canvas: Image.Image,
     spec: TypographySpec,
@@ -228,6 +410,7 @@ def apply_typography(
         if safe_replacements_only and replacement_mode not in {
             RegionReplacementMode.REPLACE_SOLID,
             RegionReplacementMode.REPLACE_MASK,
+            RegionReplacementMode.REPAIR_LOCAL,
         }:
             continue
 
@@ -247,37 +430,12 @@ def apply_typography(
                     fill=_parse_color(line.replacement_fill),
                 )
             else:
-                if len(line.replacement_mask) < 3:
-                    raise TypographyRenderUnavailable(
-                        f"replacement mask requires at least 3 points: {line.text}"
-                    )
-                pad_x = max(0.01, line.bbox.width * 0.08)
-                pad_y = max(0.015, line.bbox.height * 0.20)
-                min_x = max(0.0, line.bbox.x - pad_x)
-                min_y = max(0.0, line.bbox.y - pad_y)
-                max_x = min(1.0, line.bbox.x + line.bbox.width + pad_x)
-                max_y = min(1.0, line.bbox.y + line.bbox.height + pad_y)
-                if any(
-                    point.x < min_x
-                    or point.x > max_x
-                    or point.y < min_y
-                    or point.y > max_y
-                    for point in line.replacement_mask
-                ):
-                    raise TypographyRenderUnavailable(
-                        f"replacement mask exceeds guarded text region: {line.text}"
-                    )
-                mask_points = [
-                    (
-                        max(0, min(result.width - 1, round(point.x * result.width))),
-                        max(0, min(result.height - 1, round(point.y * result.height))),
-                    )
-                    for point in line.replacement_mask
-                ]
                 draw.polygon(
-                    mask_points,
+                    _replacement_mask_points(line, result),
                     fill=_parse_color(line.replacement_fill),
                 )
+        elif replacement_mode is RegionReplacementMode.REPAIR_LOCAL:
+            _repair_local_region(result, line, settings)
 
         _draw_line(result, line, settings)
         processed.append(line.text)

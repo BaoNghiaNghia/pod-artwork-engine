@@ -24,6 +24,7 @@ from .contracts import (
     ProviderResult,
     QCResult,
     QualityMode,
+    RegionReplacementMode,
     RouteDecision,
     RouteKind,
     TypographySpec,
@@ -746,6 +747,31 @@ class Engine:
                         if text_value not in recognized_text:
                             recognized_text.append(text_value)
                 precision_ops.append("mixed_typography")
+                repaired_lines = [
+                    line
+                    for line in design_spec.typography.lines
+                    if line.replacement_mode is RegionReplacementMode.REPAIR_LOCAL
+                    and line.text in replaced_text
+                ]
+                if repaired_lines:
+                    precision_ops.append("local_text_repair")
+                    self.checkpoints.write(
+                        job.job_id,
+                        "local_text_repair",
+                        {
+                            "method": "directional_boundary_interpolation_v1",
+                            "deterministic": True,
+                            "min_confidence": self.settings.local_text_repair_min_confidence,
+                            "repaired_lines": [
+                                {
+                                    "text": line.text,
+                                    "confidence": line.replacement_confidence,
+                                    "mask_points": len(line.replacement_mask),
+                                }
+                                for line in repaired_lines
+                            ],
+                        },
+                    )
                 self._log_stage(
                     job,
                     "mixed_typography_refined",
@@ -927,6 +953,10 @@ class Engine:
                 ),
                 "geometry_topology": (
                     self.checkpoints.payload(job.job_id, "geometry_topology")
+                    or {}
+                ),
+                "local_text_repair": (
+                    self.checkpoints.payload(job.job_id, "local_text_repair")
                     or {}
                 ),
             },

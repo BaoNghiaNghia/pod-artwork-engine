@@ -1,17 +1,17 @@
 {
-  "recipe_id": "remote-balanced-v3",
-  "version": "3",
-  "description": "Provider-gateway challenger with local font verification, compound vector topology and capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v4",
+  "version": "4",
+  "description": "Provider-gateway challenger with local font verification, compound vector topology, guarded local text repair and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
       "implementation": "provider-gateway-plus-local-font-verification",
-      "version": "phase1h"
+      "version": "phase1i"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase1h"
+      "version": "phase1i"
     },
     {
       "name": "judge",
@@ -33,6 +33,8 @@
     "visual_font_match_min_score": 0.72,
     "visual_font_match_min_margin": 0.035,
     "visual_font_match_max_candidates": 96,
+    "local_text_repair_enabled": true,
+    "local_text_repair_min_confidence": 0.82,
     "tesseract_language": "eng"
   }
 }

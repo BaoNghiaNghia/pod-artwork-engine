@@ -96,6 +96,7 @@ class RegionReplacementMode(StrEnum):
     OVERLAY = "overlay"
     REPLACE_SOLID = "replace_solid"
     REPLACE_MASK = "replace_mask"
+    REPAIR_LOCAL = "repair_local"
 
 
 class GeometryKind(StrEnum):
@@ -155,6 +156,7 @@ class TypographyLine(StrictModel):
     replacement_mode: RegionReplacementMode = RegionReplacementMode.NONE
     replacement_fill: str | None = None
     replacement_mask: list[NormalizedPoint] = Field(default_factory=list)
+    replacement_confidence: float = Field(default=0, ge=0, le=1)
     font_match: FontMatchEvidence | None = None
 
 
