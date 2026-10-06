@@ -1091,6 +1091,228 @@ class DewarpExperimentReport(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class MaterialSeparationCaseEvidence(StrictModel):
+    pair_id: str
+    case_id: str
+    artwork_identity: str
+    success: bool = False
+    disposition: str = ""
+    source_path: str = ""
+    native_path: str | None = None
+    separated_path: str | None = None
+    evidence_confidence: float = Field(default=0, ge=0, le=1)
+    border_uniformity: float = Field(default=0, ge=0, le=1)
+    edge_contact_ratio: float = Field(default=0, ge=0, le=1)
+    foreground_contrast: float = Field(default=0, ge=0, le=1)
+    native_transparent_fraction: float = Field(default=0, ge=0, le=1)
+    separated_transparent_fraction: float = Field(default=0, ge=0, le=1)
+    fail_closed: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class MaterialSeparationMaterializationSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str = Field(
+        default_factory=lambda: "material_separation_cohort_" + uuid4().hex
+    )
+    dataset_id: str
+    source_run_id: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    min_evidence_confidence: float = Field(default=0.60, ge=0, le=1)
+    color_distance_threshold: float = Field(default=18.0, ge=1, le=100)
+    color_distance_softness: float = Field(default=24.0, ge=1, le=150)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationMaterializationReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    cohort_id: str
+    dataset_id: str
+    source_run_id: str
+    tier: BenchmarkTier
+    dataset_manifest_sha256: str = ""
+    native_manifest_path: str
+    separated_manifest_path: str
+    case_count: int = Field(default=0, ge=0)
+    success_count: int = Field(default=0, ge=0)
+    failure_count: int = Field(default=0, ge=0)
+    existing_alpha_count: int = Field(default=0, ge=0)
+    simple_border_count: int = Field(default=0, ge=0)
+    fail_closed_count: int = Field(default=0, ge=0)
+    cases: list[MaterialSeparationCaseEvidence] = Field(default_factory=list)
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationBenchmarkRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    KEEP_NATIVE = "keep_native"
+    MATERIAL_SEPARATION_FOR_HUMAN_REVIEW = (
+        "material_separation_for_human_review"
+    )
+    MANUAL_REVIEW = "manual_review"
+
+
+class MaterialSeparationBenchmarkSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str = Field(
+        default_factory=lambda: "material_separation_matrix_" + uuid4().hex
+    )
+    dataset_id: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    recipe_path: str
+    native_manifest_path: str
+    separated_manifest_path: str
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_alpha_gain: float = Field(default=0.02, ge=0, le=1)
+    min_technical_gain: float = Field(default=0.0, ge=0, le=1)
+    max_semantic_drop: float = Field(default=0.01, ge=0, le=1)
+    max_small_detail_drop: float = Field(default=0.0, ge=0, le=1)
+    max_halo_drop: float = Field(default=0.0, ge=0, le=1)
+    max_failure_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    max_manual_review_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationBenchmarkReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    matrix_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    recipe_id: str
+    recipe_version: str
+    dataset_manifest_sha256: str = ""
+    native_run_id: str
+    separated_run_id: str
+    native_scorecard_id: str
+    separated_scorecard_id: str
+    comparable_case_count: int = Field(default=0, ge=0)
+    quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    semantic_delta: float | None = Field(default=None, ge=-1, le=1)
+    technical_delta: float | None = Field(default=None, ge=-1, le=1)
+    alpha_delta: float | None = Field(default=None, ge=-1, le=1)
+    halo_delta: float | None = Field(default=None, ge=-1, le=1)
+    small_detail_delta: float | None = Field(default=None, ge=-1, le=1)
+    failure_rate_delta: float = Field(default=0, ge=-1, le=1)
+    manual_review_rate_delta: float = Field(default=0, ge=-1, le=1)
+    recommendation: MaterialSeparationBenchmarkRecommendation = (
+        MaterialSeparationBenchmarkRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    sufficient_evidence: bool = False
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationPolicyRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    KEEP_DISABLED = "keep_disabled"
+    CANDIDATE_FOR_HUMAN_APPROVAL = "candidate_for_human_approval"
+    MANUAL_REVIEW = "manual_review"
+
+
+class MaterialSeparationExperimentSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str = Field(
+        default_factory=lambda: "material_separation_experiment_" + uuid4().hex
+    )
+    dataset_id: str
+    source_run_id: str
+    recipe_path: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    min_evidence_confidence: float = Field(default=0.60, ge=0, le=1)
+    color_distance_threshold: float = Field(default=18.0, ge=1, le=100)
+    color_distance_softness: float = Field(default=24.0, ge=1, le=150)
+    min_simple_cases: int = Field(default=3, ge=1)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_alpha_gain: float = Field(default=0.02, ge=0, le=1)
+    min_technical_gain: float = Field(default=0.0, ge=0, le=1)
+    max_semantic_drop: float = Field(default=0.01, ge=0, le=1)
+    max_small_detail_drop: float = Field(default=0.0, ge=0, le=1)
+    max_halo_drop: float = Field(default=0.0, ge=0, le=1)
+    max_materialization_failure_rate: float = Field(default=0.10, ge=0, le=1)
+    max_failure_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    max_manual_review_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    limit: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationPolicyProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(
+        default_factory=lambda: "material_separation_policy_" + uuid4().hex
+    )
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    dataset_manifest_sha256: str = ""
+    source_run_id: str
+    cohort_id: str | None = None
+    matrix_id: str | None = None
+    materialization_case_count: int = Field(default=0, ge=0)
+    materialization_success_count: int = Field(default=0, ge=0)
+    materialization_failure_count: int = Field(default=0, ge=0)
+    materialization_failure_rate: float = Field(default=1.0, ge=0, le=1)
+    existing_alpha_count: int = Field(default=0, ge=0)
+    simple_border_count: int = Field(default=0, ge=0)
+    fail_closed_count: int = Field(default=0, ge=0)
+    comparable_case_count: int = Field(default=0, ge=0)
+    quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    semantic_delta: float | None = Field(default=None, ge=-1, le=1)
+    technical_delta: float | None = Field(default=None, ge=-1, le=1)
+    alpha_delta: float | None = Field(default=None, ge=-1, le=1)
+    halo_delta: float | None = Field(default=None, ge=-1, le=1)
+    small_detail_delta: float | None = Field(default=None, ge=-1, le=1)
+    failure_rate_delta: float = Field(default=0, ge=-1, le=1)
+    manual_review_rate_delta: float = Field(default=0, ge=-1, le=1)
+    min_simple_cases: int = Field(default=3, ge=1)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_alpha_gain: float = Field(default=0.02, ge=0, le=1)
+    max_semantic_drop: float = Field(default=0.01, ge=0, le=1)
+    max_materialization_failure_rate: float = Field(default=0.10, ge=0, le=1)
+    recommendation: MaterialSeparationPolicyRecommendation = (
+        MaterialSeparationPolicyRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class MaterialSeparationExperimentReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    source_run_id: str
+    cohort_id: str | None = None
+    cohort_report_path: str | None = None
+    matrix_id: str | None = None
+    matrix_report_path: str | None = None
+    policy_proposal_path: str
+    policy: MaterialSeparationPolicyProposal
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class RouterThresholdCalibrationMetric(StrictModel):
     metric: str
     sample_count: int = Field(ge=0)

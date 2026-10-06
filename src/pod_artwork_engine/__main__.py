@@ -17,6 +17,11 @@ from .dewarp_benchmark import DewarpBenchmarkMatrixRunner, DewarpMaterializer
 from .dewarp_experiment import DewarpExperimentRunner
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
+from .material_separation_benchmark import (
+    MaterialSeparationBenchmarkMatrixRunner,
+    MaterialSeparationMaterializer,
+)
+from .material_separation_experiment import MaterialSeparationExperimentRunner
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
 from .harness_engine import HarnessEngineRunner
 from .harness_models import (
@@ -25,6 +30,9 @@ from .harness_models import (
     DewarpBenchmarkSpec,
     DewarpExperimentSpec,
     DewarpMaterializationSpec,
+    MaterialSeparationBenchmarkSpec,
+    MaterialSeparationExperimentSpec,
+    MaterialSeparationMaterializationSpec,
     PromotionPolicy,
     RouteMatrixSpec,
     SRBenchmarkSpec,
@@ -301,6 +309,168 @@ def main() -> None:
     dewarp_experiment.add_argument("--max-materialization-failure-rate", type=float, default=0.10)
     dewarp_experiment.add_argument("--max-failure-rate-increase", type=float, default=0.0)
     dewarp_experiment.add_argument("--max-manual-review-rate-increase", type=float, default=0.0)
+
+    material_separation_materialize = sub.add_parser(
+        "harness-material-separation-materialize"
+    )
+    material_separation_materialize.add_argument("dataset_id")
+    material_separation_materialize.add_argument("--source-run-id", required=True)
+    material_separation_materialize.add_argument(
+        "--min-evidence-confidence",
+        type=float,
+        default=0.60,
+    )
+    material_separation_materialize.add_argument(
+        "--color-distance-threshold",
+        type=float,
+        default=18.0,
+    )
+    material_separation_materialize.add_argument(
+        "--color-distance-softness",
+        type=float,
+        default=24.0,
+    )
+    material_separation_materialize.add_argument("--limit", type=int)
+
+    material_separation_matrix = sub.add_parser(
+        "harness-material-separation-matrix"
+    )
+    material_separation_matrix.add_argument("dataset_id")
+    material_separation_matrix.add_argument("--recipe", type=Path, required=True)
+    material_separation_matrix.add_argument(
+        "--native-candidates",
+        type=Path,
+        required=True,
+    )
+    material_separation_matrix.add_argument(
+        "--separated-candidates",
+        type=Path,
+        required=True,
+    )
+    material_separation_matrix.add_argument(
+        "--min-comparable-cases",
+        type=int,
+        default=3,
+    )
+    material_separation_matrix.add_argument(
+        "--min-quality-gain",
+        type=float,
+        default=0.005,
+    )
+    material_separation_matrix.add_argument(
+        "--min-alpha-gain",
+        type=float,
+        default=0.02,
+    )
+    material_separation_matrix.add_argument(
+        "--min-technical-gain",
+        type=float,
+        default=0.0,
+    )
+    material_separation_matrix.add_argument(
+        "--max-semantic-drop",
+        type=float,
+        default=0.01,
+    )
+    material_separation_matrix.add_argument(
+        "--max-small-detail-drop",
+        type=float,
+        default=0.0,
+    )
+    material_separation_matrix.add_argument(
+        "--max-halo-drop",
+        type=float,
+        default=0.0,
+    )
+    material_separation_matrix.add_argument(
+        "--max-failure-rate-increase",
+        type=float,
+        default=0.0,
+    )
+    material_separation_matrix.add_argument(
+        "--max-manual-review-rate-increase",
+        type=float,
+        default=0.0,
+    )
+    material_separation_matrix.add_argument("--limit", type=int)
+
+    material_separation_experiment = sub.add_parser(
+        "harness-material-separation-experiment"
+    )
+    material_separation_experiment.add_argument("dataset_id")
+    material_separation_experiment.add_argument("--source-run-id", required=True)
+    material_separation_experiment.add_argument("--recipe", type=Path, required=True)
+    material_separation_experiment.add_argument(
+        "--min-evidence-confidence",
+        type=float,
+        default=0.60,
+    )
+    material_separation_experiment.add_argument(
+        "--color-distance-threshold",
+        type=float,
+        default=18.0,
+    )
+    material_separation_experiment.add_argument(
+        "--color-distance-softness",
+        type=float,
+        default=24.0,
+    )
+    material_separation_experiment.add_argument(
+        "--min-simple-cases",
+        type=int,
+        default=3,
+    )
+    material_separation_experiment.add_argument(
+        "--min-comparable-cases",
+        type=int,
+        default=3,
+    )
+    material_separation_experiment.add_argument(
+        "--min-quality-gain",
+        type=float,
+        default=0.005,
+    )
+    material_separation_experiment.add_argument(
+        "--min-alpha-gain",
+        type=float,
+        default=0.02,
+    )
+    material_separation_experiment.add_argument(
+        "--min-technical-gain",
+        type=float,
+        default=0.0,
+    )
+    material_separation_experiment.add_argument(
+        "--max-semantic-drop",
+        type=float,
+        default=0.01,
+    )
+    material_separation_experiment.add_argument(
+        "--max-small-detail-drop",
+        type=float,
+        default=0.0,
+    )
+    material_separation_experiment.add_argument(
+        "--max-halo-drop",
+        type=float,
+        default=0.0,
+    )
+    material_separation_experiment.add_argument(
+        "--max-materialization-failure-rate",
+        type=float,
+        default=0.10,
+    )
+    material_separation_experiment.add_argument(
+        "--max-failure-rate-increase",
+        type=float,
+        default=0.0,
+    )
+    material_separation_experiment.add_argument(
+        "--max-manual-review-rate-increase",
+        type=float,
+        default=0.0,
+    )
+    material_separation_experiment.add_argument("--limit", type=int)
 
     registration_calibrate = sub.add_parser("harness-registration-calibrate")
     registration_calibrate.add_argument("run_ids", nargs="+")
@@ -704,6 +874,77 @@ def main() -> None:
             spec,
             spec_base=Path.cwd(),
         )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-material-separation-materialize":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = MaterialSeparationMaterializationSpec(
+            dataset_id=args.dataset_id,
+            source_run_id=args.source_run_id,
+            min_evidence_confidence=args.min_evidence_confidence,
+            color_distance_threshold=args.color_distance_threshold,
+            color_distance_softness=args.color_distance_softness,
+            limit=args.limit,
+        )
+        report = MaterialSeparationMaterializer(
+            settings,
+            registry,
+            store,
+        ).materialize(spec)
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-material-separation-matrix":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = MaterialSeparationBenchmarkSpec(
+            dataset_id=args.dataset_id,
+            recipe_path=str(args.recipe.resolve()),
+            native_manifest_path=str(args.native_candidates.resolve()),
+            separated_manifest_path=str(args.separated_candidates.resolve()),
+            min_comparable_cases=args.min_comparable_cases,
+            min_quality_gain=args.min_quality_gain,
+            min_alpha_gain=args.min_alpha_gain,
+            min_technical_gain=args.min_technical_gain,
+            max_semantic_drop=args.max_semantic_drop,
+            max_small_detail_drop=args.max_small_detail_drop,
+            max_halo_drop=args.max_halo_drop,
+            max_failure_rate_increase=args.max_failure_rate_increase,
+            max_manual_review_rate_increase=args.max_manual_review_rate_increase,
+            limit=args.limit,
+        )
+        report = MaterialSeparationBenchmarkMatrixRunner(
+            settings,
+            registry,
+            store,
+        ).run(spec, spec_base=Path.cwd())
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-material-separation-experiment":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = MaterialSeparationExperimentSpec(
+            dataset_id=args.dataset_id,
+            source_run_id=args.source_run_id,
+            recipe_path=str(args.recipe.resolve()),
+            min_evidence_confidence=args.min_evidence_confidence,
+            color_distance_threshold=args.color_distance_threshold,
+            color_distance_softness=args.color_distance_softness,
+            min_simple_cases=args.min_simple_cases,
+            min_comparable_cases=args.min_comparable_cases,
+            min_quality_gain=args.min_quality_gain,
+            min_alpha_gain=args.min_alpha_gain,
+            min_technical_gain=args.min_technical_gain,
+            max_semantic_drop=args.max_semantic_drop,
+            max_small_detail_drop=args.max_small_detail_drop,
+            max_halo_drop=args.max_halo_drop,
+            max_materialization_failure_rate=args.max_materialization_failure_rate,
+            max_failure_rate_increase=args.max_failure_rate_increase,
+            max_manual_review_rate_increase=args.max_manual_review_rate_increase,
+            limit=args.limit,
+        )
+        report = MaterialSeparationExperimentRunner(
+            settings,
+            registry,
+            store,
+        ).run(spec, spec_base=Path.cwd())
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-registration-calibrate":
         store = HarnessStore(settings.harness_dir)

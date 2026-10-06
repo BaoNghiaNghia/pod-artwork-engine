@@ -408,6 +408,8 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert 0 <= result.precision.material_separation_confidence <= 1
     assert 0 <= result.precision.material_border_uniformity <= 1
     assert 0 <= result.precision.material_edge_contact_ratio <= 1
+    assert isinstance(result.metadata.get("material_separation"), dict)
+    assert result.metadata["material_separation"]["method"] == "material_separation_evidence_v1"
     assert result.precision.texture_handling is True
     assert result.precision.texture_handling_disposition in {
         "preserve_raster",

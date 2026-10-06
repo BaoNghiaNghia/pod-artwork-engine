@@ -57,6 +57,18 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert status["region_rescue_planner_method"] == "region_rescue_plan_v1"
     assert status["representation_planner_method"] == "representation_plan_v1"
     assert status["material_separation_method"] == "material_separation_evidence_v1"
+    assert (
+        status["material_separation_benchmark_method"]
+        == "material_separation_benchmark_v1"
+    )
+    assert (
+        status["material_separation_experiment_method"]
+        == "golden_material_separation_experiment_v1"
+    )
+    assert (
+        status["material_separation_policy_method"]
+        == "material_separation_policy_proposal_v1"
+    )
     assert status["texture_handling_method"] == "texture_handling_evidence_v1"
     assert status["super_resolution_method"] == "super_resolution_readiness_v1"
     assert status["sr_benchmark_method"] == "sr_benchmark_matrix_v1"

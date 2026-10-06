@@ -713,6 +713,25 @@ Implemented:
 
 Recipes are now `local-precision-v21` / `remote-balanced-v21`, phase `phase2p`.
 
+### Phase 2Q — Material Separation Benchmark Execution & Golden Policy Calibration
+
+Implemented:
+
+- benchmark-only paired `native_unseparated` and `separated` manifests driven by the production `material_separation_evidence_v1` checkpoint;
+- `existing_alpha` is preserved as a no-op benchmark challenger rather than re-segmented;
+- `simple_border_background` uses deterministic Pillow-only border-color distance with hard/soft alpha thresholds;
+- `semantic_required`, `manual_review`, weak-confidence and edge-touching cases fail closed while preserving a native control whenever the source is readable;
+- Harness engine source runs now persist raw material-separation evidence in result metadata for reproducible Golden materialization;
+- Golden matrix records quality, semantic, technical, alpha, halo, small-detail, failure-rate and manual-review deltas;
+- material-separation promotion requires sufficient comparable Golden cases and measured quality or alpha benefit with no semantic/technical/detail/halo/failure/manual-review regression;
+- Golden experiment persists `material-separation-experiments/<experiment_id>/spec.json`, `report.json` and `policy-proposal.json`;
+- policy recommendations are limited to `candidate_for_human_approval`, `keep_disabled`, `manual_review` or `insufficient_evidence`;
+- CLI: `harness-material-separation-materialize`, `harness-material-separation-matrix`, `harness-material-separation-experiment`;
+- API/diagnostics expose `material_separation_benchmark_v1`, `golden_material_separation_experiment_v1` and `material_separation_policy_proposal_v1`;
+- every benchmark/policy artifact remains `production_execution_enabled=false`; `Engine.run_job` still records evidence only and does not add a material-separation precision operation.
+
+Recipes are now `local-precision-v22` / `remote-balanced-v22`, phase `phase2q`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

@@ -667,6 +667,10 @@ class HarnessEngineRunner:
             job_id,
             "feature_correspondence",
         )
+        material_separation = self.engine.checkpoints.payload(
+            job_id,
+            "material_separation",
+        )
         return CandidateManifestEntry(
             result_path=result_path,
             recognized_text=recognized_text,
@@ -689,6 +693,11 @@ class HarnessEngineRunner:
                 "feature_correspondence": (
                     feature_correspondence
                     if isinstance(feature_correspondence, dict)
+                    else {}
+                ),
+                "material_separation": (
+                    material_separation
+                    if isinstance(material_separation, dict)
                     else {}
                 ),
             },

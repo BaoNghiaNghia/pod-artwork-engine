@@ -263,6 +263,15 @@ class HarnessStore:
     def dewarp_experiment_dir(self, experiment_id: str) -> Path:
         return self.root / "dewarp-experiments" / experiment_id
 
+    def material_separation_cohort_dir(self, cohort_id: str) -> Path:
+        return self.root / "material-separation-cohorts" / cohort_id
+
+    def material_separation_matrix_dir(self, matrix_id: str) -> Path:
+        return self.root / "material-separation-matrices" / matrix_id
+
+    def material_separation_experiment_dir(self, experiment_id: str) -> Path:
+        return self.root / "material-separation-experiments" / experiment_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

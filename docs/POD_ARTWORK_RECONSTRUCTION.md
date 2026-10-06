@@ -1842,9 +1842,27 @@ Phase 2P Golden dewarp experiment orchestration and production-registration poli
 - API/diagnostics methods are `golden_dewarp_experiment_v1` and `production_registration_policy_proposal_v1`;
 - the proposal is not a production config: `requires_human_approval=true`, `automatically_applied=false`, and `production_execution_enabled=false` remain hard gates.
 
+Phase 2Q material-separation benchmark execution and Golden policy calibration:
+
+- `HarnessEngineRunner` now carries the raw `material_separation_evidence_v1` checkpoint into benchmark result metadata so later experiments use the exact production evidence that selected the disposition;
+- `MaterialSeparationMaterializer` requires a complete Golden source run with a matching dataset fingerprint;
+- every case writes a native control when the primary source can be read;
+- `existing_alpha` preserves the original alpha exactly and does not attempt another segmentation pass;
+- `simple_border_background` is the only active deterministic removal lane: it estimates the already-qualified uniform border color, computes a Pillow-only per-pixel color-distance mask, then applies hard/soft alpha thresholds while preserving pre-existing transparency;
+- semantic/manual/weak-confidence/edge-touching cases never execute deterministic separation and remain fail-closed;
+- native and separated manifests carry the same cohort/source-run/primary-index/disposition signature so Harness comparisons cannot silently mix different sources;
+- `MaterialSeparationBenchmarkMatrixRunner` scores both lanes on Golden Holdout and records quality, semantic, technical, alpha, halo-aliasing, small-detail, failure and manual-review deltas;
+- a challenger can reach human review only when comparable-case coverage is sufficient, quality or alpha improves, and semantic/technical/detail/halo/failure/manual-review safety gates do not regress;
+- the Golden experiment chains source evidence → materialization → matrix → `MaterialSeparationPolicyProposal`;
+- policy states are restricted to `candidate_for_human_approval`, `keep_disabled`, `manual_review` and `insufficient_evidence`;
+- the policy additionally requires a minimum number of real `simple_border_background` Golden cases so already-transparent sources cannot falsely justify enabling background removal;
+- CLI commands are `harness-material-separation-materialize`, `harness-material-separation-matrix` and `harness-material-separation-experiment`;
+- API/diagnostics method ids are `material_separation_benchmark_v1`, `golden_material_separation_experiment_v1` and `material_separation_policy_proposal_v1`;
+- production remains evidence-only: no material-separation precision op, no alpha mutation in `Engine.run_job`, no automatic policy application.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, and Phase 2P only proposes a human-review production policy; production dewarp/region compositing remains disabled;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, Phase 2P only proposes a human-review registration policy, and Phase 2Q executes material separation only inside benchmark artifacts; production dewarp/material separation remains disabled;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1887,7 +1905,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2P foundation is implemented:
+Phase 2A–2Q foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1902,7 +1920,9 @@ Phase 2A–2P foundation is implemented:
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
 - conservative component-level vector/raster/hybrid representation planning;
-- material-separation evidence/readiness planning without alpha/output mutation;
+- material-separation evidence/readiness planning without production alpha/output mutation;
+- benchmark-only existing-alpha preservation and simple-border alpha extraction with paired native controls;
+- Golden material-separation matrix scoring plus evidence-only human-review policy proposals;
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
 - native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
@@ -1914,7 +1934,7 @@ Phase 2A–2P foundation is implemented:
 Remaining Phase 2 work:
 
 - run Phase 2P on the real Golden Holdout, review the generated production-registration proposal and explicitly approve a policy before any production registration integration;
-- benchmarked execution policy for material separation;
+- run Phase 2Q on the real Golden Holdout and explicitly approve a measured material-separation policy before any production integration;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
 - configure approved concrete local/remote SR backends and run the Phase 2K Golden experiment on the real historical holdout;
