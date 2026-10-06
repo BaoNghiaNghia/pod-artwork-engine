@@ -151,6 +151,10 @@ class HarnessEngineRunner:
             job_id,
             "region_rescue_plan",
         )
+        representation_plan = self.engine.checkpoints.payload(
+            job_id,
+            "representation_plan",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -267,6 +271,27 @@ class HarnessEngineRunner:
             region_rescue_fail_closed=(
                 bool(region_rescue_plan.get("fail_closed"))
                 if isinstance(region_rescue_plan, dict)
+                else False
+            ),
+            representation_plan=isinstance(representation_plan, dict),
+            representation_overall=(
+                str(representation_plan.get("overall") or "")
+                if isinstance(representation_plan, dict)
+                else ""
+            ),
+            representation_vector_components=(
+                int(representation_plan.get("vector_components") or 0)
+                if isinstance(representation_plan, dict)
+                else 0
+            ),
+            representation_raster_components=(
+                int(representation_plan.get("raster_components") or 0)
+                if isinstance(representation_plan, dict)
+                else 0
+            ),
+            representation_fail_closed=(
+                bool(representation_plan.get("fail_closed"))
+                if isinstance(representation_plan, dict)
                 else False
             ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),

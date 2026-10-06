@@ -351,6 +351,7 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
     assert scorecard.precision_coverage
     assert scorecard.precision_coverage["region_confidence_map"] == 1.0
     assert scorecard.precision_coverage["region_rescue_plan"] == 1.0
+    assert scorecard.precision_coverage["representation_plan"] == 1.0
     assert scorecard.precision_coverage["multi_reference_fusion"] == 0.0
     assert "local_text_repair" in scorecard.precision_coverage
     assert scorecard.provenance.execution_kind == "production_engine"
@@ -372,6 +373,17 @@ def test_harness_engine_runner_executes_real_pipeline(tmp_path: Path) -> None:
         "manual_review",
         "semantic_provider_candidate",
     }
+    assert result.precision.representation_plan is True
+    assert result.precision.representation_overall in {
+        "vector",
+        "raster",
+        "hybrid",
+    }
+    assert (
+        result.precision.representation_vector_components
+        + result.precision.representation_raster_components
+        >= 1
+    )
 
 
 def test_harness_recipe_metadata_controls_runtime_without_secrets(tmp_path: Path) -> None:

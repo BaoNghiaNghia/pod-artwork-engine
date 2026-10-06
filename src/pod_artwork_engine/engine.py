@@ -28,6 +28,7 @@ from .contracts import (
     RegionConfidenceMapEvidence,
     RegionRescuePlanEvidence,
     RegionReplacementMode,
+    RepresentationPlanEvidence,
     RouteDecision,
     RouteKind,
     TypographySpec,
@@ -57,6 +58,7 @@ from .qc_policy import load_qc_policy
 from .reconstruction import CandidateInfo, normalize_candidate, reconstruct_local_baseline
 from .region_evidence import build_region_confidence_map
 from .region_rescue import build_region_rescue_plan
+from .representation_plan import build_representation_plan
 from .resources import capture_resources
 from .router import choose_route, forced_route_decision
 from .router_policy import load_router_policy
@@ -648,6 +650,34 @@ class Engine:
         )
         return local_spec, provider_result
 
+    def _representation_plan(
+        self,
+        job: JobRecord,
+        design_spec: DesignSpec,
+    ) -> RepresentationPlanEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "representation_plan")
+        if isinstance(checkpoint, dict):
+            return RepresentationPlanEvidence.model_validate(checkpoint)
+
+        plan = build_representation_plan(design_spec)
+        self.checkpoints.write(
+            job.job_id,
+            "representation_plan",
+            plan.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "representation_plan_completed",
+            stage="analyzing",
+            quality_score=plan.confidence,
+            failure_reason=(
+                ", ".join(plan.missing_capabilities)
+                if plan.fail_closed
+                else None
+            ),
+        )
+        return plan
+
     def _route(self, job: JobRecord, design_spec: DesignSpec) -> RouteDecision:
         checkpoint = self.checkpoints.payload(job.job_id, "route")
         if isinstance(checkpoint, dict):
@@ -1137,6 +1167,10 @@ class Engine:
                     self.checkpoints.payload(job.job_id, "region_rescue_plan")
                     or {}
                 ),
+                "representation_plan": (
+                    self.checkpoints.payload(job.job_id, "representation_plan")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -1198,6 +1232,7 @@ class Engine:
                 preflights,
                 fusion,
             )
+            self._representation_plan(job, design_spec)
             job = self.jobs.get(job_id) or job
             route = self._route(job, design_spec)
 

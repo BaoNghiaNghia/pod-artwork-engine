@@ -114,6 +114,11 @@ class PrecisionEvidence(StrictModel):
     region_rescue_target_count: int = Field(default=0, ge=0)
     region_rescue_target_cell_count: int = Field(default=0, ge=0)
     region_rescue_fail_closed: bool = False
+    representation_plan: bool = False
+    representation_overall: str = ""
+    representation_vector_components: int = Field(default=0, ge=0)
+    representation_raster_components: int = Field(default=0, ge=0)
+    representation_fail_closed: bool = False
     local_ocr: bool = False
     ocr_backend: str = ""
     ocr_backend_source: str = ""

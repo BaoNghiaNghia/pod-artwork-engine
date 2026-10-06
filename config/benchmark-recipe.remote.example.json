@@ -1,17 +1,17 @@
 {
-  "recipe_id": "remote-balanced-v8",
-  "version": "8",
-  "description": "Provider-gateway challenger with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
+  "recipe_id": "remote-balanced-v9",
+  "version": "9",
+  "description": "Provider-gateway challenger with deterministic multi-reference fusion, coarse region confidence, fail-closed rescue planning, conservative vector/raster representation planning, local font verification, compound vector topology, guarded local text repair, standalone OCR runtime provenance and capability aliases; concrete models stay outside the engine.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-region-evidence-rescue-plan-plus-provider-analysis",
-      "version": "phase2c"
+      "implementation": "multi-reference-region-evidence-rescue-representation-plan-plus-provider-analysis",
+      "version": "phase2d"
     },
     {
       "name": "reconstruction",
       "implementation": "hybrid-provider-plus-deterministic",
-      "version": "phase2c"
+      "version": "phase2d"
     },
     {
       "name": "judge",

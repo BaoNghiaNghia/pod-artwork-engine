@@ -93,6 +93,19 @@ class RegionRescueDisposition(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class RepresentationKind(StrEnum):
+    VECTOR = "vector"
+    RASTER = "raster"
+    HYBRID = "hybrid"
+
+
+class RepresentationComponentKind(StrEnum):
+    TYPOGRAPHY = "typography"
+    GEOMETRY = "geometry"
+    ILLUSTRATION_TEXTURE = "illustration_texture"
+    UNKNOWN_CONTENT = "unknown_content"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -288,6 +301,27 @@ class RegionRescuePlanEvidence(StrictModel):
     targets: list[RegionRescueTarget] = Field(default_factory=list)
     required_capabilities: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
+
+
+class RepresentationComponentPlan(StrictModel):
+    component: RepresentationComponentKind
+    representation: RepresentationKind
+    confidence: float = Field(ge=0, le=1)
+    supported: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class RepresentationPlanEvidence(StrictModel):
+    method: str = "representation_plan_v1"
+    overall: RepresentationKind
+    confidence: float = Field(ge=0, le=1)
+    fail_closed: bool = False
+    components: list[RepresentationComponentPlan] = Field(default_factory=list)
+    vector_components: int = Field(default=0, ge=0)
+    raster_components: int = Field(default=0, ge=0)
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
 
 
 class SemanticJudgeResult(StrictModel):

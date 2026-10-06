@@ -1599,6 +1599,23 @@ Phase 2C fail-closed region rescue planning:
 - Phase 2C does not call the provider, enter `REGION_RESCUE`, retry work, or mutate candidate/final pixels;
 - the planner adds only compact JSON metadata and therefore does not materially change the 40 GB storage envelope.
 
+Phase 2D conservative vector/raster representation planning:
+
+- a typed `RepresentationPlanEvidence` is generated after DesignSpec analysis and before route/reconstruction;
+- logical components are classified independently as typography, geometry, illustration/texture or unknown content;
+- overall representation is derived as vector, raster or hybrid without changing the production renderer;
+- typography is considered vector-ready only when text/layout confidence is sufficient, every font family is resolved, aggregate font-match confidence is at least `0.70` and every line has an accepted font-match record;
+- exact-text mismatch, weak layout/line evidence or unresolved/unaccepted fonts cause raster fallback with explicit missing capabilities;
+- geometry/logo is considered vector-ready only when explicit primitives exist, GeometrySpec confidence is at least `0.80` and every primitive has confidence at least `0.70`;
+- absent/weak geometry falls back to raster with `need_vector_geometry` or `need_geometry_verification` provenance;
+- illustration, texture, semantic-reconstruction content, perspective and occlusion remain raster-preservation candidates rather than being implicitly vectorized;
+- mixed designs can produce hybrid plans, such as verified vector typography over raster illustration;
+- unknown content remains raster and sets `fail_closed=true` with `need_content_classification`;
+- the `representation_plan` checkpoint is copied into ArtifactManifest precision evidence and Harness reports plan coverage, overall representation, vector/raster component counts and fail-closed status;
+- API/status diagnostics expose `representation_plan_v1` as a capability version only;
+- Phase 2D does not alter route selection, provider requests, deterministic rendering or final pixels;
+- no model, cache or persistent image derivative is added by the planner, so storage impact is negligible.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1642,7 +1659,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2C foundation is implemented:
+Phase 2A–2D foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1650,13 +1667,14 @@ Phase 2A–2C foundation is implemented:
 - coarse normalized 4×4 region confidence/evidence maps;
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
-- Harness coverage for global multi-reference consensus, regional confidence and rescue-plan decisions.
+- conservative component-level vector/raster/hybrid representation planning;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions and representation plans.
 
 Remaining Phase 2 work:
 
 - true geometric multi-reference alignment/dewarp and region-level registration;
 - material separation;
-- vector/raster split;
+- execution of the planned vector/raster split after benchmark calibration;
 - difficult texture handling;
 - SR comparison;
 - Golden Holdout calibration before enabling targeted rescue execution.

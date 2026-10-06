@@ -430,6 +430,26 @@ Implemented:
 
 This establishes a measurable boundary between “a weak region exists” and “the system is authorized to alter that region.” Actual rescue execution remains disabled until Golden Holdout evidence establishes safe trigger thresholds and provider/local rescue behavior.
 
+### Phase 2D — Conservative Vector/Raster Representation Planning
+
+Implemented:
+
+- every completed analysis now produces a typed `RepresentationPlanEvidence` checkpoint before routing/reconstruction;
+- planning is component-level: `typography`, `geometry`, `illustration_texture` and fail-closed `unknown_content`;
+- overall representation is derived as `vector`, `raster` or `hybrid` from component evidence;
+- typography becomes vector-ready only when text/layout confidence is sufficient, font families are resolved, aggregate font-match confidence is high enough and every line has an accepted font-match record;
+- unverified/missing typography falls back to raster and records missing capabilities such as font identification/verification, exact-text verification or layout verification;
+- logo/geometry becomes vector-ready only with explicit geometry primitives plus sufficient geometry and primitive confidence; otherwise it remains raster with missing vector-geometry evidence recorded;
+- illustration, texture, occlusion, perspective and semantic reconstruction content stay raster by design in this phase;
+- mixed artwork can therefore plan a hybrid representation, for example verified text as vector plus painterly illustration as raster;
+- unknown/unclassified content is preserved as raster and marks the plan fail-closed rather than guessing a vector structure;
+- representation plans are copied into ArtifactManifest precision evidence and Harness reports overall mode, vector/raster component counts and fail-closed status;
+- API/diagnostics expose only the planner method/version, not private content;
+- Phase 2D does **not** change the existing renderer, route policy, provider calls or final pixels; it is evidence/planning only;
+- the planner is pure metadata logic and adds no model/cache footprint to the 40 GB budget.
+
+This makes the future vector/raster split measurable before any renderer behavior is changed: Golden Holdout can compare planned representation against successful deterministic operations and QC outcomes.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;
