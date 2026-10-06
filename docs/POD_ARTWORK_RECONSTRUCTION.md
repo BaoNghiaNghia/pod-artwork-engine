@@ -1736,6 +1736,25 @@ Phase 2J fair native/Lanczos pre-SR cohort foundation:
 
 The intended benchmark sequence is: materialize one Phase 2J pre-SR cohort, feed its source manifest to each Phase 2I SR adapter, then feed native/Lanczos/Local-SR/Remote-SR manifests into Phase 2H. This makes the comparison source-identical per case and blocks cross-input promotion.
 
+Phase 2K Golden SR experiment orchestration and policy proposal:
+
+- `SRExperimentSpec` defines the full benchmark-only experiment input: Dataset Registry id, pre-SR manifest, recipe, optional local/remote adapter specs, tier, quality mode, scale, limits and promotion evidence thresholds;
+- Golden Holdout is mandatory by default; pre-Golden Smoke/Regression experiments require an explicit override and cannot silently masquerade as production-quality promotion evidence;
+- `SRExperimentRunner` materializes one Phase 2J cohort, reuses that exact source manifest for every configured Phase 2I SR adapter, then runs the Phase 2H matrix with native/Lanczos and only the SR lanes whose backends were actually available;
+- adapter kind is validated against the requested lane and adapter scale must match the fair cohort scale within the configured tolerance;
+- an omitted/unavailable backend remains an unavailable matrix lane; backend absence is not converted into synthetic candidate output;
+- `build_sr_policy_proposal` verifies cohort/matrix dataset fingerprint and tier identity before interpreting results;
+- sufficient evidence requires a source-identical cohort with no cohort failures, the configured minimum comparable-case count, incomplete-case rate within its ceiling, at least one measured SR backend and a matrix recommendation backed by complete measured SR runs;
+- a backend marked available but producing a partial/incomplete run blocks sufficient evidence;
+- Local/Remote SR promotion additionally requires the configured decisive-win floor; Mixed requires evidence from both backends and at least one win from each;
+- evidence failures force `manual_review`; otherwise proposal values are `keep_native`, `keep_lanczos`, `local_sr`, `remote_sr` or `mixed`;
+- `SRPolicyProposal` always records `requires_human_approval=true`, `automatically_applied=false`, and `production_execution_enabled=false`;
+- experiment artifacts persist under `<harness>/sr-experiments/<experiment_id>/` while cohort, adapter and matrix artifacts remain in their own Harness directories;
+- CLI `harness-sr-experiment` exposes the full chain; API/status diagnostics expose `sr_golden_experiment_v1`;
+- Phase 2K does not modify `Engine.run_job`, RouterPolicy, production reconstruction routing or final production pixels.
+
+This phase turns the previous manual benchmark assembly into one reproducible experiment, but it still produces a proposal—not a deployed production SR policy.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1781,7 +1800,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2J foundation is implemented:
+Phase 2A–2K foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1796,7 +1815,8 @@ Phase 2A–2J foundation is implemented:
 - native/Lanczos/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
 - concrete benchmark-only local-command and remote-provider SR adapter materialization with fail-closed validation and provenance;
 - fair pre-SR cohort materialization with target-leakage rejection and per-case cohort/source-hash identity;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, fair SR cohort generation, SR candidate materialization and SR challenger comparison.
+- Golden Holdout SR experiment orchestration that chains cohort, configured adapters, matrix scoring and an evidence-only human-review policy proposal;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, fair SR cohort generation, SR candidate materialization, SR challenger comparison and SR policy evidence gates.
 
 Remaining Phase 2 work:
 
@@ -1804,8 +1824,8 @@ Remaining Phase 2 work:
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
-- configure approved concrete local/remote SR backends and generate Golden Holdout candidate manifests through the Phase 2I adapter layer;
-- explicit human promotion of a measured SR policy before production integration;
+- configure approved concrete local/remote SR backends and run the Phase 2K Golden experiment on the real historical holdout;
+- explicit human approval/promotion of a measured Phase 2K SR policy before any production integration;
 - Golden Holdout calibration before enabling targeted rescue execution.
 
 ### Phase 3 — Reliability

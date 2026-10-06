@@ -589,6 +589,33 @@ python -m pod_artwork_engine harness-sr-cohort historical-v1 --tier golden --inp
 
 Use the returned `source_manifest_path` as the input for both Phase 2I Local/Remote SR materializers, then pass the returned `native_manifest_path` and `lanczos_manifest_path` plus the SR manifests into `harness-sr-matrix`.
 
+### Phase 2K — Golden SR Experiment Orchestration & Policy Proposal
+
+Implemented:
+
+- typed `SRExperimentSpec`, `SRExperimentReport` and `SRPolicyProposal` contracts orchestrate the full benchmark-only SR decision flow;
+- one command chains Phase 2J fair cohort materialization, optional Phase 2I Local/Remote SR adapters, Phase 2H native/Lanczos/SR matrix scoring and the final evidence-only policy proposal;
+- Golden Holdout is required by default; non-Golden runs require explicit `--allow-pre-golden` and are intended only for diagnostics;
+- Local/Remote adapter specs must match their expected backend kind and the exact cohort scale factor, preventing unfair cross-scale comparisons;
+- omitted or unavailable adapters remain unavailable lanes; the orchestrator does not fabricate candidate quality;
+- policy evidence requires the same dataset fingerprint, a complete source-identical cohort, a configurable minimum comparable-case count, an incomplete-case ceiling and at least one measured SR backend;
+- a configured backend whose benchmark run is partial or has missing successful cases blocks policy sufficiency instead of being treated as valid evidence;
+- Local/Remote/Mixed SR proposals additionally require a configurable minimum decisive-win count;
+- proposal outcomes are `keep_native`, `keep_lanczos`, `local_sr`, `remote_sr`, `mixed` or `manual_review`;
+- when evidence gates fail, the proposal is forced to `manual_review` with `sufficient_evidence=false`;
+- all proposals keep `requires_human_approval=true`, `automatically_applied=false` and `production_execution_enabled=false`;
+- artifacts are persisted under `<harness>/sr-experiments/<experiment_id>/` with references to cohort, adapter and matrix reports;
+- CLI `harness-sr-experiment` runs the complete flow; API/diagnostics expose `sr_golden_experiment_v1`;
+- Phase 2K still does not modify `Engine.run_job`, RouterPolicy or production pixels.
+
+Example Golden Holdout run:
+
+```powershell
+python -m pod_artwork_engine harness-sr-experiment historical-v1 --pre-sr-candidates pre-sr-candidates.json --recipe config/benchmark-recipe.local.json --local-adapter config/sr-adapter.local.example.json --remote-adapter config/sr-adapter.remote.example.json --min-comparable-cases 3 --min-decisive-wins 2
+```
+
+If one SR backend is not configured, omit that adapter flag. The resulting proposal remains evidence-only and cannot activate SR in production.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

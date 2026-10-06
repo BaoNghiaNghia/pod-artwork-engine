@@ -688,6 +688,97 @@ class SRBenchmarkReport(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class SRPolicyRecommendation(StrEnum):
+    KEEP_NATIVE = "keep_native"
+    KEEP_LANCZOS = "keep_lanczos"
+    LOCAL_SR = "local_sr"
+    REMOTE_SR = "remote_sr"
+    MIXED = "mixed"
+    MANUAL_REVIEW = "manual_review"
+
+
+class SRExperimentSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str = Field(default_factory=lambda: "sr_experiment_" + uuid4().hex)
+    dataset_id: str
+    pre_sr_manifest_path: str
+    recipe_path: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    require_golden: bool = True
+    local_adapter_path: str | None = None
+    remote_adapter_path: str | None = None
+    quality_mode: QualityMode = QualityMode.PRINT_READY
+    scale_factor: float = Field(default=2.0, gt=1, le=4)
+    max_output_megapixels: float = Field(default=80, gt=0, le=200)
+    limit: int | None = Field(default=None, ge=1)
+    min_quality_gain: float = Field(default=0.01, ge=0, le=1)
+    min_detail_gain: float = Field(default=0.03, ge=0, le=1)
+    max_semantic_drop: float = Field(default=0.02, ge=0, le=1)
+    max_latency_ratio: float | None = Field(default=None, ge=1)
+    max_cost_per_case_usd: float | None = Field(default=None, ge=0)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_decisive_wins: int = Field(default=2, ge=1)
+    max_incomplete_rate: float = Field(default=0.0, ge=0, le=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SRPolicyProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(default_factory=lambda: "sr_policy_" + uuid4().hex)
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    dataset_manifest_sha256: str
+    cohort_id: str
+    cohort_case_count: int = Field(default=0, ge=0)
+    cohort_success_count: int = Field(default=0, ge=0)
+    comparable_case_count: int = Field(default=0, ge=0)
+    incomplete_count: int = Field(default=0, ge=0)
+    native_preferred_count: int = Field(default=0, ge=0)
+    lanczos_preferred_count: int = Field(default=0, ge=0)
+    local_sr_preferred_count: int = Field(default=0, ge=0)
+    remote_sr_preferred_count: int = Field(default=0, ge=0)
+    tie_count: int = Field(default=0, ge=0)
+    local_backend_available: bool = False
+    remote_backend_available: bool = False
+    min_quality_gain: float = Field(ge=0, le=1)
+    min_detail_gain: float = Field(ge=0, le=1)
+    max_semantic_drop: float = Field(ge=0, le=1)
+    max_latency_ratio: float | None = Field(default=None, ge=1)
+    max_cost_per_case_usd: float | None = Field(default=None, ge=0)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_decisive_wins: int = Field(default=2, ge=1)
+    max_incomplete_rate: float = Field(default=0.0, ge=0, le=1)
+    recommendation: SRPolicyRecommendation = SRPolicyRecommendation.MANUAL_REVIEW
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class SRExperimentReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    cohort_id: str
+    matrix_id: str
+    cohort_report_path: str
+    local_adapter_report_path: str | None = None
+    remote_adapter_report_path: str | None = None
+    matrix_report_path: str
+    policy_proposal_path: str
+    policy: SRPolicyProposal
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    auto_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class RouterThresholdCalibrationMetric(StrictModel):
     metric: str
     sample_count: int = Field(ge=0)

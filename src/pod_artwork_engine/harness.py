@@ -245,6 +245,9 @@ class HarnessStore:
     def sr_cohort_dir(self, cohort_id: str) -> Path:
         return self.root / "sr-cohorts" / cohort_id
 
+    def sr_experiment_dir(self, experiment_id: str) -> Path:
+        return self.root / "sr-experiments" / experiment_id
+
     def router_calibration_dir(self, proposal_id: str) -> Path:
         return self.root / "router-calibration" / proposal_id
 

@@ -79,6 +79,7 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "sr_benchmark_method": "sr_benchmark_matrix_v1",
             "sr_adapter_method": "sr_adapter_materializer_v1",
             "sr_cohort_method": "sr_fair_cohort_v1",
+            "sr_experiment_method": "sr_golden_experiment_v1",
             "geometry_path_capabilities": [
                 "cubic",
                 "multi_subpath",

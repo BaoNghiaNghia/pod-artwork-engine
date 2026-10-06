@@ -24,6 +24,7 @@ from .harness_models import (
     RouteMatrixSpec,
     SRBenchmarkSpec,
     SRCohortSpec,
+    SRExperimentSpec,
 )
 from .logging_config import LoggingRuntime
 from .qc_policy import load_qc_policy
@@ -33,6 +34,7 @@ from .router_policy import load_router_policy
 from .settings import Settings
 from .sr_adapters import SRAdapterMaterializer, load_sr_adapter_spec
 from .sr_cohort import SRCohortMaterializer
+from .sr_experiment import SRExperimentRunner
 from .sr_matrix import SRBenchmarkMatrixRunner
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -226,6 +228,35 @@ def main() -> None:
     sr_cohort.add_argument("--scale-factor", type=float, default=2.0)
     sr_cohort.add_argument("--max-output-megapixels", type=float, default=80.0)
     sr_cohort.add_argument("--limit", type=int)
+
+    sr_experiment = sub.add_parser("harness-sr-experiment")
+    sr_experiment.add_argument("dataset_id")
+    sr_experiment.add_argument("--pre-sr-candidates", type=Path, required=True)
+    sr_experiment.add_argument("--recipe", type=Path, required=True)
+    sr_experiment.add_argument("--local-adapter", type=Path)
+    sr_experiment.add_argument("--remote-adapter", type=Path)
+    sr_experiment.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        default=BenchmarkTier.GOLDEN.value,
+    )
+    sr_experiment.add_argument("--allow-pre-golden", action="store_true")
+    sr_experiment.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    sr_experiment.add_argument("--scale-factor", type=float, default=2.0)
+    sr_experiment.add_argument("--max-output-megapixels", type=float, default=80.0)
+    sr_experiment.add_argument("--limit", type=int)
+    sr_experiment.add_argument("--min-quality-gain", type=float, default=0.01)
+    sr_experiment.add_argument("--min-detail-gain", type=float, default=0.03)
+    sr_experiment.add_argument("--max-semantic-drop", type=float, default=0.02)
+    sr_experiment.add_argument("--max-latency-ratio", type=float)
+    sr_experiment.add_argument("--max-cost-per-case-usd", type=float)
+    sr_experiment.add_argument("--min-comparable-cases", type=int, default=3)
+    sr_experiment.add_argument("--min-decisive-wins", type=int, default=2)
+    sr_experiment.add_argument("--max-incomplete-rate", type=float, default=0.0)
 
     router_calibrate = sub.add_parser("harness-router-calibrate")
     router_calibrate.add_argument("matrix_ids", nargs="+")
@@ -531,6 +562,39 @@ def main() -> None:
             registry,
             store,
         ).materialize(spec)
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-sr-experiment":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = SRExperimentSpec(
+            dataset_id=args.dataset_id,
+            pre_sr_manifest_path=str(args.pre_sr_candidates),
+            recipe_path=str(args.recipe),
+            tier=BenchmarkTier(args.tier),
+            require_golden=not args.allow_pre_golden,
+            local_adapter_path=(
+                str(args.local_adapter) if args.local_adapter is not None else None
+            ),
+            remote_adapter_path=(
+                str(args.remote_adapter) if args.remote_adapter is not None else None
+            ),
+            quality_mode=QualityMode(args.quality_mode),
+            scale_factor=args.scale_factor,
+            max_output_megapixels=args.max_output_megapixels,
+            limit=args.limit,
+            min_quality_gain=args.min_quality_gain,
+            min_detail_gain=args.min_detail_gain,
+            max_semantic_drop=args.max_semantic_drop,
+            max_latency_ratio=args.max_latency_ratio,
+            max_cost_per_case_usd=args.max_cost_per_case_usd,
+            min_comparable_cases=args.min_comparable_cases,
+            min_decisive_wins=args.min_decisive_wins,
+            max_incomplete_rate=args.max_incomplete_rate,
+        )
+        report = SRExperimentRunner(settings, registry, store).run(
+            spec,
+            spec_base=Path.cwd(),
+        )
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-router-calibrate":
         store = HarnessStore(settings.harness_dir)
