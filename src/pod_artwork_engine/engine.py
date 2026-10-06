@@ -18,6 +18,7 @@ from .contracts import (
     FailureCategory,
     JobRecord,
     JobState,
+    MultiReferenceFusionEvidence,
     PreflightResult,
     ProviderAction,
     ProviderRequest,
@@ -41,6 +42,7 @@ from .font_catalog import get_font_catalog
 from .font_matcher import match_typography_fonts, merge_verified_font_matches
 from .local_ocr import LocalOCRUnavailable, analyze_artwork_text, available as local_ocr_available
 from .logging_config import log_event
+from .multi_reference import build_reference_fusion
 from .preflight import inspect_image, sha256_file
 from .providers import (
     ProviderProtocolError,
@@ -236,12 +238,46 @@ class Engine:
         )
         return results
 
+    def _reference_fusion(
+        self,
+        job: JobRecord,
+        source_paths: list[Path],
+        preflights: list[PreflightResult],
+    ) -> MultiReferenceFusionEvidence:
+        checkpoint = self.checkpoints.payload(job.job_id, "reference_fusion")
+        if isinstance(checkpoint, dict):
+            return MultiReferenceFusionEvidence.model_validate(checkpoint)
+
+        fusion = build_reference_fusion(source_paths, preflights)
+        self.checkpoints.write(
+            job.job_id,
+            "reference_fusion",
+            fusion.model_dump(mode="json"),
+        )
+        self._log_stage(
+            job,
+            "reference_fusion_completed",
+            stage="preflight",
+            quality_score=fusion.consensus_confidence,
+            failure_reason=(
+                "high-quality references conflict"
+                if fusion.conflict_detected
+                else None
+            ),
+        )
+        return fusion
+
     def run_preflight(self, job_id: str) -> JobRecord:
         job = self.jobs.get(job_id)
         if not job:
             raise KeyError(job_id)
         try:
-            self._perform_preflight(job)
+            preflights = self._perform_preflight(job)
+            self._reference_fusion(
+                job,
+                [Path(path) for path in job.source_paths],
+                preflights,
+            )
             return self.jobs.transition(
                 job_id,
                 JobState.WAITING_PROVIDER,
@@ -262,15 +298,42 @@ class Engine:
                 failure_reason=str(exc),
             )
 
+    @staticmethod
+    def _apply_reference_fusion_constraints(
+        design_spec: DesignSpec,
+        fusion: MultiReferenceFusionEvidence,
+    ) -> DesignSpec:
+        if not fusion.conflict_detected:
+            return design_spec
+
+        capabilities = list(design_spec.required_capabilities)
+        for capability in (
+            "need_reference_disambiguation",
+            "need_semantic_reconstruction",
+        ):
+            if capability not in capabilities:
+                capabilities.append(capability)
+        return design_spec.model_copy(
+            update={
+                "required_capabilities": sorted(capabilities),
+                "confidence": min(
+                    design_spec.confidence,
+                    fusion.consensus_confidence,
+                ),
+            }
+        )
+
     def _analyze(
         self,
         job: JobRecord,
         source_paths: list[Path],
         preflights: list[PreflightResult],
+        fusion: MultiReferenceFusionEvidence,
     ) -> tuple[DesignSpec, ProviderResult | None]:
         checkpoint = self.checkpoints.payload(job.job_id, "design_spec")
         if isinstance(checkpoint, dict):
-            return DesignSpec.model_validate(checkpoint), None
+            restored = DesignSpec.model_validate(checkpoint)
+            return self._apply_reference_fusion_constraints(restored, fusion), None
 
         self.jobs.transition(
             job.job_id,
@@ -279,16 +342,16 @@ class Engine:
             message="Analyzing artwork structure",
         )
         started = time.perf_counter()
-        local_spec = analyze_locally(source_paths, preflights)
+        primary_index = fusion.primary_index
+        local_spec = analyze_locally(
+            [source_paths[primary_index]],
+            [preflights[primary_index]],
+        )
         provider_result: ProviderResult | None = None
 
-        primary_index = max(
-            range(len(preflights)),
-            key=lambda index: (
-                preflights[index].artwork_confidence,
-                preflights[index].source_quality,
-                preflights[index].width * preflights[index].height,
-            ),
+        local_spec = self._apply_reference_fusion_constraints(
+            local_spec,
+            fusion,
         )
 
         should_run_local_ocr = (
@@ -373,6 +436,9 @@ class Engine:
 
         if needs_remote_analysis:
             try:
+                analysis_capabilities = ["need_design_spec"]
+                if "need_reference_disambiguation" in local_spec.required_capabilities:
+                    analysis_capabilities.append("need_reference_disambiguation")
                 provider_result = self.provider.execute(
                     ProviderRequest(
                         action=ProviderAction.ANALYZE,
@@ -380,7 +446,7 @@ class Engine:
                         quality_mode=job.quality_mode,
                         source_paths=[str(path) for path in source_paths],
                         design_spec=local_spec,
-                        requested_capabilities=["need_design_spec"],
+                        requested_capabilities=analysis_capabilities,
                     )
                 )
                 if provider_result.design_spec is not None:
@@ -463,6 +529,10 @@ class Engine:
                     failure_reason=str(exc),
                 )
 
+        local_spec = self._apply_reference_fusion_constraints(
+            local_spec,
+            fusion,
+        )
         self.checkpoints.write(
             job.job_id,
             "design_spec",
@@ -512,6 +582,7 @@ class Engine:
         preflights: list[PreflightResult],
         design_spec: DesignSpec,
         route: RouteDecision,
+        fusion: MultiReferenceFusionEvidence,
     ) -> tuple[CandidateInfo, ProviderResult | None, bool, list[str]]:
         candidate_checkpoint = self.checkpoints.payload(job.job_id, "candidate")
         if isinstance(candidate_checkpoint, dict):
@@ -561,6 +632,9 @@ class Engine:
             if evidence_text == design_spec.exact_text:
                 recognized_text = list(evidence_text)
         temp_dir = self._job_dir(job.job_id) / "temp"
+        primary_source = source_paths[fusion.primary_index]
+        if fusion.reference_count > 1:
+            precision_ops.append("multi_reference_fusion")
 
         harness_force_remote = self.route_override in {
             RouteKind.REMOTE_SEMANTIC,
@@ -616,7 +690,7 @@ class Engine:
                 candidate = normalize_candidate(
                     rendered_path,
                     temp_dir / "candidate.png",
-                    source_path=source_paths[0],
+                    source_path=primary_source,
                 )
                 deterministic_complete = True
                 precision_ops.append("deterministic_geometry")
@@ -646,7 +720,7 @@ class Engine:
                 candidate = normalize_candidate(
                     rendered_path,
                     temp_dir / "candidate.png",
-                    source_path=source_paths[0],
+                    source_path=primary_source,
                 )
                 recognized_text = [
                     line.text for line in design_spec.typography.lines
@@ -693,7 +767,7 @@ class Engine:
                     candidate = normalize_candidate(
                         provider_candidate,
                         temp_dir / "candidate.png",
-                        source_path=source_paths[0],
+                        source_path=primary_source,
                     )
                     used_remote = True
                     precision_ops.append("remote_reconstruction")
@@ -713,6 +787,7 @@ class Engine:
                     preflights,
                     design_spec,
                     temp_dir / "candidate.png",
+                    primary_index=fusion.primary_index,
                 )
                 precision_ops.append("local_baseline")
         elif not deterministic_complete:
@@ -721,6 +796,7 @@ class Engine:
                 preflights,
                 design_spec,
                 temp_dir / "candidate.png",
+                primary_index=fusion.primary_index,
             )
             precision_ops.append("local_baseline")
 
@@ -949,6 +1025,10 @@ class Engine:
             ),
             export_profile="default_pod",
             precision_evidence={
+                "reference_fusion": (
+                    self.checkpoints.payload(job.job_id, "reference_fusion")
+                    or {}
+                ),
                 "local_ocr": (
                     self.checkpoints.payload(job.job_id, "local_ocr")
                     or {}
@@ -990,6 +1070,7 @@ class Engine:
         try:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
+            fusion = self._reference_fusion(job, source_paths, preflights)
             job = self.jobs.get(job_id) or job
 
             profile = ExportProfile()
@@ -1000,6 +1081,7 @@ class Engine:
                 job,
                 source_paths,
                 preflights,
+                fusion,
             )
             job = self.jobs.get(job_id) or job
             route = self._route(job, design_spec)
@@ -1015,6 +1097,7 @@ class Engine:
                 preflights,
                 design_spec,
                 route,
+                fusion,
             )
             judge_provider = self._judge_semantics(
                 job,

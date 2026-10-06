@@ -82,7 +82,14 @@ def _trim(image: Image.Image) -> Image.Image:
 def _select_primary(
     source_paths: list[Path],
     preflights: list[PreflightResult],
+    *,
+    preferred_index: int | None = None,
 ) -> tuple[Path, PreflightResult]:
+    if preferred_index is not None:
+        if not 0 <= preferred_index < len(preflights):
+            raise ValueError("preferred reference index is out of range")
+        return source_paths[preferred_index], preflights[preferred_index]
+
     ranked = sorted(
         zip(source_paths, preflights, strict=True),
         key=lambda item: (
@@ -100,8 +107,14 @@ def reconstruct_local_baseline(
     preflights: list[PreflightResult],
     design_spec: DesignSpec,
     output_path: Path,
+    *,
+    primary_index: int | None = None,
 ) -> CandidateInfo:
-    source_path, preflight = _select_primary(source_paths, preflights)
+    source_path, preflight = _select_primary(
+        source_paths,
+        preflights,
+        preferred_index=primary_index,
+    )
     bbox = design_spec.artwork_bbox or preflight.artwork_bbox
     if bbox is None:
         raise ValueError("artwork bounding box is unavailable")

@@ -1549,8 +1549,30 @@ vendor/
       ...approved language packs...
 ```
 
+Phase 2A guarded multi-reference evidence fusion:
+
+- every multi-source job creates typed `ReferenceEvidence` and `MultiReferenceFusionEvidence` before analysis;
+- reference quality combines artwork-region confidence, source quality and useful source resolution, producing one deterministic primary reference;
+- local analyzer, OCR, deterministic reconstruction and candidate source provenance all use the same selected primary rather than independently re-ranking references at different stages;
+- each artwork crop gets a lightweight visual signature composed of difference-hash structure, mean RGB evidence and crop aspect ratio;
+- references are classified relative to the primary as `primary`, `consistent`, `ambiguous` or `conflicting`;
+- fusion is evidence-level only: images are not averaged, warped together or pixel-composited, avoiding ghosting or invented detail when references show different views;
+- high-quality conflicting evidence is converted into explicit `need_reference_disambiguation` plus `need_semantic_reconstruction` capabilities;
+- when remote semantic processing is available, reference conflict receives an explicit Hybrid route reason `reference_conflict_remote_disambiguation`;
+- provider requests still carry the full source set, so a capable semantic provider can inspect all references while deterministic local output remains anchored to the selected primary;
+- if semantic resolution is unavailable, Print Ready / Max Fidelity remains fail-closed through the existing semantic QC requirement rather than treating local primary selection as proof of correctness;
+- the `reference_fusion` checkpoint is included in ArtifactManifest precision evidence;
+- Harness reports whether multi-reference fusion ran, total reference count, consistent/conflicting reference counts and consensus confidence;
+- single-reference jobs produce a trivial typed fusion record and otherwise preserve the previous processing behavior;
+- the stage is deterministic, CPU/Pillow-only and stores compact metadata, adding effectively no permanent model footprint.
+
+The initial thresholds (`consistent >= 0.62`, high-quality conflict `< 0.42`, quality floor `>= 0.55`) are conservative engineering defaults. They are not domain-calibrated until historical Golden Holdout evidence demonstrates acceptable false-consistency and false-conflict rates.
+
 Current truthfulness limits:
 
+- Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
+- ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
+- the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
 - visual font matching identifies the best candidate only from fonts actually present on the machine/user font directory; it cannot recover an unavailable proprietary font;
 - `TypographyLine.bbox` used for local font verification is interpreted inside the detected artwork region; heavy perspective, curved text, occlusion or textured fills may reduce confidence and intentionally leave the font unresolved;
@@ -1589,9 +1611,16 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Build:
+Phase 2A foundation is implemented:
 
-- multi-reference fusion;
+- guarded multi-reference evidence fusion;
+- deterministic primary-reference selection;
+- conflict/ambiguity provenance and semantic-disambiguation routing;
+- Harness coverage for multi-reference consensus.
+
+Remaining Phase 2 work:
+
+- geometric/region-level multi-reference alignment and evidence maps;
 - material separation;
 - vector/raster split;
 - difficult texture handling;

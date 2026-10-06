@@ -43,6 +43,7 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert "path" not in status["local_ocr_backend"]
     assert "executable" not in status["local_ocr_backend"]
     assert status["visual_font_match_enabled"] is True
+    assert status["reference_fusion_method"] == "deterministic_reference_fusion_v1"
     assert status["visual_font_match_min_score"] == 0.72
     assert status["visual_font_match_min_margin"] == 0.035
     assert status["geometry_path_capabilities"] == [

@@ -45,6 +45,18 @@ def choose_route(
         )
 
     if remote_available:
+        if "need_reference_disambiguation" in capabilities:
+            reasons.append("reference_conflict_remote_disambiguation")
+            return RouteDecision(
+                route=RouteKind.HYBRID,
+                required_capabilities=sorted(
+                    capabilities | {"need_semantic_reconstruction"}
+                ),
+                reason_codes=reasons,
+                use_remote_provider=True,
+                deterministic_finish=True,
+            )
+
         if quality_mode is QualityMode.QUICK_2D and policy.quick_2d_remote_first:
             reasons.append("quick_2d_remote_first")
             return RouteDecision(

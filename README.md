@@ -376,6 +376,24 @@ vendor/
 
 The source tree intentionally does not embed third-party OCR binaries. Redistribution/licensing review and the exact language-pack set remain release inputs, while the runtime/search/update path is now production-ready.
 
+### Phase 2A — Guarded Multi-Reference Evidence Fusion
+
+Implemented:
+
+- jobs with multiple source references now build typed `MultiReferenceFusionEvidence` before semantic analysis;
+- every reference receives a deterministic quality score from artwork-region confidence, source quality and useful resolution;
+- the highest-quality reference becomes one stable primary source reused by local analysis, OCR, deterministic reconstruction and source provenance;
+- cropped artwork fingerprints combine a lightweight difference hash, mean RGB evidence and aspect ratio to classify each additional reference as `consistent`, `ambiguous` or `conflicting`;
+- the engine does **not** average/blend pixels between references, so different views cannot silently smear or invent artwork details;
+- high-quality visual conflicts add `need_reference_disambiguation` and `need_semantic_reconstruction`; when a provider is available the router explicitly selects a Hybrid semantic-disambiguation path;
+- provider analysis/reconstruction still receives the complete reference set, while deterministic local stages stay anchored to the selected primary reference;
+- if semantic disambiguation is required but unavailable, existing Print Ready / Max Fidelity semantic QC remains fail-closed instead of pretending the conflict was resolved;
+- fusion evidence is checkpointed, copied into ArtifactManifest precision evidence and reported through Harness as reference count, consistent/conflicting counts and consensus confidence;
+- single-reference jobs preserve their existing behavior;
+- the fusion stage is Pillow/CPU-only and stores only compact metadata, so it adds negligible disk footprint under the 40 GB cap.
+
+The initial visual-similarity thresholds are conservative implementation defaults, not learned production optima. They must be evaluated on the real historical/Golden Holdout set before being promoted as domain-calibrated policy.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

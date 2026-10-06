@@ -80,6 +80,13 @@ class RouteKind(StrEnum):
     HYBRID = "hybrid"
 
 
+class ReferenceEvidenceStatus(StrEnum):
+    PRIMARY = "primary"
+    CONSISTENT = "consistent"
+    AMBIGUOUS = "ambiguous"
+    CONFLICTING = "conflicting"
+
+
 class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
@@ -202,6 +209,27 @@ class GeometryTopologyEvidence(StrictModel):
     compound_path_count: int = Field(default=0, ge=0)
     evenodd_compound_fill_count: int = Field(default=0, ge=0)
     fill_rules: list[GeometryFillRule] = Field(default_factory=list)
+
+
+class ReferenceEvidence(StrictModel):
+    index: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quality_score: float = Field(ge=0, le=1)
+    similarity_to_primary: float = Field(ge=0, le=1)
+    status: ReferenceEvidenceStatus
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class MultiReferenceFusionEvidence(StrictModel):
+    method: str = "deterministic_reference_fusion_v1"
+    reference_count: int = Field(ge=1)
+    primary_index: int = Field(ge=0)
+    consensus_confidence: float = Field(ge=0, le=1)
+    conflict_detected: bool = False
+    consistent_indices: list[int] = Field(default_factory=list)
+    ambiguous_indices: list[int] = Field(default_factory=list)
+    conflicting_indices: list[int] = Field(default_factory=list)
+    references: list[ReferenceEvidence] = Field(default_factory=list)
 
 
 class SemanticJudgeResult(StrictModel):

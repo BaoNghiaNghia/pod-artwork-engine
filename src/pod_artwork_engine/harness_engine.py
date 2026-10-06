@@ -139,6 +139,10 @@ class HarnessEngineRunner:
         return count
 
     def _precision_evidence(self, job_id: str) -> PrecisionEvidence:
+        reference_fusion = self.engine.checkpoints.payload(
+            job_id,
+            "reference_fusion",
+        )
         local_ocr = self.engine.checkpoints.payload(job_id, "local_ocr")
         font_match = self.engine.checkpoints.payload(job_id, "font_match")
         geometry_topology = self.engine.checkpoints.payload(
@@ -191,6 +195,30 @@ class HarnessEngineRunner:
         )
 
         return PrecisionEvidence(
+            multi_reference_fusion=(
+                isinstance(reference_fusion, dict)
+                and int(reference_fusion.get("reference_count") or 0) > 1
+            ),
+            reference_count=(
+                int(reference_fusion.get("reference_count") or 0)
+                if isinstance(reference_fusion, dict)
+                else 0
+            ),
+            consistent_reference_count=(
+                len(reference_fusion.get("consistent_indices") or [])
+                if isinstance(reference_fusion, dict)
+                else 0
+            ),
+            conflicting_reference_count=(
+                len(reference_fusion.get("conflicting_indices") or [])
+                if isinstance(reference_fusion, dict)
+                else 0
+            ),
+            reference_consensus_confidence=(
+                float(reference_fusion.get("consensus_confidence") or 0)
+                if isinstance(reference_fusion, dict)
+                else 0
+            ),
             local_ocr=isinstance(local_ocr, dict) and bool(local_ocr.get("exact_text")),
             ocr_backend=(
                 str(local_ocr.get("backend") or "")
