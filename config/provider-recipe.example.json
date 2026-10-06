@@ -32,6 +32,16 @@
       "parameters": {
         "strict_text": true
       }
+    },
+    {
+      "action": "super_resolution",
+      "enabled": false,
+      "model_alias": "image_super_resolution",
+      "max_reference_long_edge": 4096,
+      "timeout_seconds": 300,
+      "parameters": {
+        "benchmark_only": true
+      }
     }
   ]
 }

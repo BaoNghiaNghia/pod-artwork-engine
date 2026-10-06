@@ -452,6 +452,64 @@ class RouteMatrixReport(StrictModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class SRAdapterKind(StrEnum):
+    LOCAL_COMMAND = "local_command"
+    REMOTE_PROVIDER = "remote_provider"
+
+
+class SRAdapterSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    adapter_id: str
+    version: str = "1"
+    kind: SRAdapterKind
+    model_alias: str = ""
+    scale_factor: float = Field(default=2.0, gt=1, le=4)
+    min_output_scale: float = Field(default=1.05, ge=1, le=4)
+    timeout_seconds: float = Field(default=300, gt=0, le=1800)
+    max_output_megapixels: float = Field(default=80, gt=0, le=200)
+    estimated_cost_usd: float = Field(default=0, ge=0)
+    command: list[str] = Field(default_factory=list)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_backend(self) -> "SRAdapterSpec":
+        if self.kind is SRAdapterKind.LOCAL_COMMAND:
+            if not self.command:
+                raise ValueError("local_command adapter requires command tokens")
+            command_text = "\n".join(self.command)
+            if "{input}" not in command_text or "{output}" not in command_text:
+                raise ValueError(
+                    "local_command adapter requires {input} and {output} placeholders"
+                )
+        elif self.command:
+            raise ValueError("remote_provider adapter must not define a local command")
+        if self.min_output_scale > self.scale_factor:
+            raise ValueError("min_output_scale cannot exceed scale_factor")
+        return self
+
+
+class SRAdapterRunReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    run_id: str = Field(default_factory=lambda: "sr_adapter_" + uuid4().hex)
+    dataset_id: str
+    tier: BenchmarkTier
+    quality_mode: QualityMode = QualityMode.PRINT_READY
+    adapter_id: str
+    adapter_version: str
+    adapter_kind: SRAdapterKind
+    model_alias: str = ""
+    source_manifest_path: str
+    output_manifest_path: str
+    case_count: int = Field(default=0, ge=0)
+    success_count: int = Field(default=0, ge=0)
+    failure_count: int = Field(default=0, ge=0)
+    backend_available: bool = True
+    benchmark_only: bool = True
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class SRBenchmarkLane(StrEnum):
     NATIVE = "native"
     LOCAL_SR = "local_sr"

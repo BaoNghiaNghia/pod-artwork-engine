@@ -535,6 +535,35 @@ python -m pod_artwork_engine harness-sr-matrix historical-v1 --tier golden --rec
 
 Omit `--native-candidates` to generate the native baseline with the current production engine. Omit either SR candidate manifest when that backend is not available; the missing lane remains explicitly unavailable and cannot win promotion.
 
+### Phase 2I — Concrete SR Adapter Foundation
+
+Implemented:
+
+- typed `SRAdapterSpec` and `SRAdapterRunReport` contracts for benchmark-only local and remote SR materialization;
+- `local_command` adapters execute an explicitly configured command as an argument list with `shell=false`; supported placeholders are `{input}`, `{output}`, `{scale}`, `{pair_id}` and `{case_id}`;
+- local adapters require both `{input}` and `{output}`, verify the executable is available before the run, measure elapsed time and peak process-tree RAM, and kill the whole process tree on timeout;
+- `remote_provider` adapters use the existing provider gateway with the new `super_resolution` action; the action must be explicitly present and enabled in the provider recipe, so existing providers cannot accidentally start running SR;
+- both adapters consume an existing CandidateManifest as their input cohort and emit a new CandidateManifest directly consumable by Phase 2H;
+- missing input candidates, unavailable backends, missing outputs, invalid images, insufficient upscale, aspect-ratio distortion or oversized outputs become explicit fail-closed/manual-review candidate entries instead of synthetic success;
+- output validation records requested/measured scale and input/output dimensions, and rejects requested outputs above the configured megapixel safety ceiling before expensive execution;
+- a conservative storage-headroom check blocks an SR candidate when its estimated uncompressed output would exceed the global 40 GB hard cap;
+- candidate metadata records adapter id/version/kind/model alias, backend availability, backend reason codes, measured scale, fresh remote OCR/Judge evidence when supplied, latency, RAM/VRAM, provider calls and cost;
+- `hallucination_risk` is propagated only when the concrete backend explicitly reports it; the adapter does not invent that signal;
+- adapter runs persist under `<harness>/sr-adapters/<run_id>/` with spec, report, candidate images and manifest;
+- CLI `harness-sr-materialize` materializes a real SR candidate manifest without adding any SR call to production `Engine.run_job`;
+- `config/sr-adapter.local.example.json` and `config/sr-adapter.remote.example.json` provide safe templates;
+- the provider recipe example exposes `super_resolution` disabled by default as an explicit opt-in benchmark action;
+- API/diagnostics expose `sr_adapter_materializer_v1`;
+- Phase 2I bundles no SR model weights or runtimes, so model storage remains zero until an operator explicitly installs/configures a backend.
+
+Example local materialization:
+
+```powershell
+python -m pod_artwork_engine harness-sr-materialize historical-v1 --tier golden --input-candidates native-resolution-candidates.json --adapter config/sr-adapter.local.example.json
+```
+
+Then pass the generated manifest to Phase 2H as `--local-sr-candidates` or `--remote-sr-candidates`. The input manifest should represent the image stage intended for SR benchmarking; blindly applying 2× SR to an already-final 4500×5400 print master is intentionally constrained by the megapixel guard and is not the recommended comparison design.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

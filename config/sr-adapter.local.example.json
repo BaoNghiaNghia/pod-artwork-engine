@@ -1,0 +1,23 @@
+{
+  "adapter_id": "local-sr-example",
+  "version": "1",
+  "kind": "local_command",
+  "model_alias": "replace-with-local-sr-backend",
+  "scale_factor": 2.0,
+  "min_output_scale": 1.5,
+  "timeout_seconds": 300,
+  "max_output_megapixels": 80,
+  "estimated_cost_usd": 0,
+  "command": [
+    "C:\\path\\to\\sr-tool.exe",
+    "--input",
+    "{input}",
+    "--output",
+    "{output}",
+    "--scale",
+    "{scale}"
+  ],
+  "parameters": {
+    "benchmark_only": true
+  }
+}

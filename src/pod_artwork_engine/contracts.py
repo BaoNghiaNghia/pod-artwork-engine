@@ -131,6 +131,7 @@ class ProviderAction(StrEnum):
     ANALYZE = "analyze"
     RECONSTRUCT = "reconstruct"
     JUDGE = "judge"
+    SUPER_RESOLUTION = "super_resolution"
 
 
 class QCGate(StrEnum):

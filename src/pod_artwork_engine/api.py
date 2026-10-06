@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "texture_handling_method": "texture_handling_evidence_v1",
             "super_resolution_method": "super_resolution_readiness_v1",
             "sr_benchmark_method": "sr_benchmark_matrix_v1",
+            "sr_adapter_method": "sr_adapter_materializer_v1",
             "geometry_path_capabilities": [
                 "cubic",
                 "multi_subpath",

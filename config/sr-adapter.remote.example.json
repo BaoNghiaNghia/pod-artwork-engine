@@ -1,0 +1,16 @@
+{
+  "adapter_id": "remote-sr-example",
+  "version": "1",
+  "kind": "remote_provider",
+  "model_alias": "image_super_resolution",
+  "scale_factor": 2.0,
+  "min_output_scale": 1.5,
+  "timeout_seconds": 300,
+  "max_output_megapixels": 80,
+  "estimated_cost_usd": 0,
+  "command": [],
+  "parameters": {
+    "benchmark_only": true,
+    "provider_action": "super_resolution"
+  }
+}

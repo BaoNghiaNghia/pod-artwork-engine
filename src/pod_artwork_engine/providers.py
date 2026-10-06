@@ -68,6 +68,10 @@ class RemoteProvider:
         recipe = self.recipe()
         action_recipe = recipe.for_action(request.action)
         if action_recipe is None:
+            if request.action.value == "super_resolution":
+                raise ProviderUnavailable(
+                    "provider super_resolution action is not explicitly configured"
+                )
             action_recipe = ProviderActionRecipe(action=request.action)
         if not action_recipe.enabled:
             raise ProviderUnavailable(

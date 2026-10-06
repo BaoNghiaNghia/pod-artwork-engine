@@ -30,6 +30,7 @@ from .route_matrix import RouteMatrixRunner
 from .router_calibration import RouterPolicyCalibrator
 from .router_policy import load_router_policy
 from .settings import Settings
+from .sr_adapters import SRAdapterMaterializer, load_sr_adapter_spec
 from .sr_matrix import SRBenchmarkMatrixRunner
 from .storage import StorageManager
 from .updater import UpdateManager
@@ -181,6 +182,31 @@ def main() -> None:
     sr_matrix.add_argument("--max-semantic-drop", type=float, default=0.02)
     sr_matrix.add_argument("--max-latency-ratio", type=float)
     sr_matrix.add_argument("--max-cost-per-case-usd", type=float)
+
+    sr_materialize = sub.add_parser("harness-sr-materialize")
+    sr_materialize.add_argument("dataset_id")
+    sr_materialize.add_argument(
+        "--tier",
+        choices=[tier.value for tier in BenchmarkTier],
+        required=True,
+    )
+    sr_materialize.add_argument(
+        "--input-candidates",
+        type=Path,
+        required=True,
+    )
+    sr_materialize.add_argument(
+        "--adapter",
+        type=Path,
+        required=True,
+    )
+    sr_materialize.add_argument("--output-manifest", type=Path)
+    sr_materialize.add_argument(
+        "--quality-mode",
+        choices=[mode.value for mode in QualityMode],
+        default=QualityMode.PRINT_READY.value,
+    )
+    sr_materialize.add_argument("--limit", type=int)
 
     router_calibrate = sub.add_parser("harness-router-calibrate")
     router_calibrate.add_argument("matrix_ids", nargs="+")
@@ -441,6 +467,28 @@ def main() -> None:
         report = SRBenchmarkMatrixRunner(settings, registry, store).run(
             spec,
             spec_base=Path.cwd(),
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-sr-materialize":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        adapter_spec = load_sr_adapter_spec(args.adapter.resolve())
+        report = SRAdapterMaterializer(
+            settings,
+            registry,
+            store,
+        ).materialize(
+            dataset_id=args.dataset_id,
+            tier=BenchmarkTier(args.tier),
+            source_manifest_path=args.input_candidates.resolve(),
+            adapter_spec=adapter_spec,
+            quality_mode=QualityMode(args.quality_mode),
+            limit=args.limit,
+            output_manifest_path=(
+                args.output_manifest.resolve()
+                if args.output_manifest is not None
+                else None
+            ),
         )
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     elif args.command == "harness-router-calibrate":

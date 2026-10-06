@@ -1694,6 +1694,30 @@ Phase 2H native/local-SR/remote-SR benchmark matrix:
 
 The Phase 2H matrix produces promotion evidence, not production policy. A concrete local or remote SR backend still has to generate real CandidateManifest outputs, survive Smoke/Regression/Golden comparison and receive explicit human approval before any production integration.
 
+Phase 2I concrete SR adapter foundation:
+
+- `SRAdapterSpec` defines `local_command` and `remote_provider` backends with adapter identity/version, model alias, requested scale, minimum accepted output scale, timeout, output megapixel ceiling, estimated cost and backend parameters;
+- local-command execution uses an argument list with `shell=false`; `{input}`, `{output}`, `{scale}`, `{pair_id}` and `{case_id}` are the only substitutions performed by the adapter layer;
+- local adapters require explicit input/output placeholders and verify the executable before materializing any cases;
+- peak local process-tree RSS is sampled during execution; timeout kills the parent and descendants so a failed benchmark backend does not remain running in the background;
+- remote adapters reuse the provider gateway via typed `ProviderAction.SUPER_RESOLUTION`, but this action has no fallback recipe: it must exist explicitly and be enabled in the provider recipe;
+- the repository provider-recipe example exposes `super_resolution` disabled by default, preventing accidental SR calls when older provider configuration is reused;
+- materialization consumes an existing CandidateManifest and preserves Dataset Registry case identity; the output is another CandidateManifest consumable directly by Phase 2H;
+- the adapter does not propagate stale recognized text from the input candidate; local outputs have no text claim, while remote outputs only expose fresh `recognized_text` / Judge evidence returned by that backend;
+- every produced image is opened/verified and checked for requested minimum scale, aspect-ratio preservation and a configurable megapixel ceiling;
+- expected requested output size is checked before execution; oversized candidates fail closed before wasting local/provider compute;
+- estimated uncompressed output bytes are compared against current global storage usage and the 40 GB hard cap before execution;
+- per-case metadata records adapter id/version/kind/model alias, requested/measured scale, input/output dimensions, backend availability, backend reason codes, explicit backend hallucination-risk signal when supplied, and source-candidate provenance;
+- operational evidence records latency, measured local RAM when available, provider-reported RAM/VRAM, provider-call count and cost;
+- unavailable executable/provider/action, missing input candidate/file, timeout, backend error, missing output, invalid image, under-scale output, distorted aspect ratio, oversize output or storage-cap pressure create fail-closed/manual-review manifest entries rather than fake successful candidates;
+- adapter artifacts live under `<harness>/sr-adapters/<run_id>/` and contain the typed adapter spec, report, candidate files and output manifest;
+- CLI `harness-sr-materialize` exposes materialization independently of production engine execution;
+- `config/sr-adapter.local.example.json` and `config/sr-adapter.remote.example.json` are templates only; no SR executable/model weight is bundled;
+- API/status diagnostics expose `sr_adapter_materializer_v1`;
+- Phase 2I does not modify `Engine.run_job`, RouterPolicy, reconstruction routing, precision ops or final production pixels.
+
+Benchmark-design constraint: the input CandidateManifest should represent the image stage at which SR is intended to operate. Applying 2× SR directly to an already-final 4500×5400 print master is not the intended experiment and is normally rejected by the default megapixel safety guard. Native/Lanczos and SR challengers should be generated from the same pre-SR cohort before Phase 2H comparison.
+
 Current truthfulness limits:
 
 - Phase 2A is reference evidence fusion and stable primary selection, not geometric multi-view registration, dewarping or region-level compositing;
@@ -1739,7 +1763,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2H foundation is implemented:
+Phase 2A–2I foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1752,7 +1776,8 @@ Phase 2A–2H foundation is implemented:
 - difficult-texture/detail readiness planning without sharpening/SR/output mutation;
 - print-target-aware local/remote SR readiness planning without SR execution;
 - native/local-SR/remote-SR benchmark matrix with unavailable-backend semantics and explicit human-review promotion evidence;
-- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness and SR challenger comparison.
+- concrete benchmark-only local-command and remote-provider SR adapter materialization with fail-closed validation and provenance;
+- Harness coverage for global multi-reference consensus, regional confidence, rescue-plan decisions, representation plans, material separation, texture handling, SR readiness, SR candidate materialization and SR challenger comparison.
 
 Remaining Phase 2 work:
 
@@ -1760,7 +1785,7 @@ Remaining Phase 2 work:
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;
-- concrete local/remote SR backend adapters and Golden Holdout candidate generation;
+- configure approved concrete local/remote SR backends and generate Golden Holdout candidate manifests through the Phase 2I adapter layer;
 - explicit human promotion of a measured SR policy before production integration;
 - Golden Holdout calibration before enabling targeted rescue execution.
 
