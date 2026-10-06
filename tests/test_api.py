@@ -96,6 +96,16 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert status["router_policy_id"] == "phase1-router-default"
     assert status["router_policy_version"] == "1"
     assert status["router_policy_configured"] is False
+    assert status["job_concurrency"] >= 1
+    assert status["remote_provider_configured"] is False
+    assert status["remote_provider_available"] is False
+    assert status["remote_provider_state"]["configured"] is False
+    assert isinstance(status["performance"], dict)
+
+    performance = client.get("/performance")
+    assert performance.status_code == 200
+    assert performance.json()["job_concurrency"] >= 1
+    assert "stages" in performance.json()
 
     response = client.post(
         "/jobs?quality_mode=print_ready",

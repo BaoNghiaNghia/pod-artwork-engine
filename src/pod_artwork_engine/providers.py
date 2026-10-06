@@ -4,6 +4,8 @@ import base64
 import binascii
 import io
 import json
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -44,10 +46,54 @@ def _encode_reference(path: Path, long_edge: int = 1600) -> dict[str, str]:
 class RemoteProvider:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._failure_count = 0
+        self._circuit_open_until = 0.0
+        self._state_lock = threading.Lock()
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.settings.remote_provider_url.strip())
 
     @property
     def available(self) -> bool:
-        return bool(self.settings.remote_provider_url.strip())
+        if not self.configured:
+            return False
+        with self._state_lock:
+            return time.monotonic() >= self._circuit_open_until
+
+    def status(self) -> dict[str, int | float | bool]:
+        with self._state_lock:
+            remaining = max(0.0, self._circuit_open_until - time.monotonic())
+            failures = self._failure_count
+        return {
+            "configured": self.configured,
+            "available": self.configured and remaining <= 0,
+            "failure_count": failures,
+            "cooldown_remaining_seconds": round(remaining, 3),
+        }
+
+    def _before_request(self) -> None:
+        if not self.configured:
+            raise ProviderUnavailable("remote provider URL is not configured")
+        with self._state_lock:
+            remaining = self._circuit_open_until - time.monotonic()
+        if remaining > 0:
+            raise ProviderUnavailable(
+                f"remote provider circuit open for {remaining:.1f}s"
+            )
+
+    def _record_success(self) -> None:
+        with self._state_lock:
+            self._failure_count = 0
+            self._circuit_open_until = 0.0
+
+    def _record_failure(self) -> None:
+        with self._state_lock:
+            self._failure_count += 1
+            if self._failure_count >= self.settings.remote_provider_failure_threshold:
+                self._circuit_open_until = (
+                    time.monotonic() + self.settings.remote_provider_cooldown_seconds
+                )
 
     def recipe(self) -> ProviderRecipe:
         path = self.settings.provider_recipe_path
@@ -80,8 +126,7 @@ class RemoteProvider:
         return recipe, action_recipe
 
     def execute(self, request: ProviderRequest) -> ProviderResult:
-        if not self.available:
-            raise ProviderUnavailable("remote provider URL is not configured")
+        self._before_request()
 
         recipe, action_recipe = self._action_recipe(request)
         payload = request.model_dump(mode="json")
@@ -135,13 +180,16 @@ class RemoteProvider:
             ) as response:
                 raw = response.read()
         except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+            self._record_failure()
             raise ProviderUnavailable(f"remote provider request failed: {exc}") from exc
 
         try:
             result = validate_typed_payload(ProviderResult, raw)
         except TypedBoundaryError as exc:
+            self._record_failure()
             raise ProviderProtocolError(str(exc)) from exc
 
+        self._record_success()
         if not result.provider:
             result.provider = self.settings.remote_provider_name
         return result

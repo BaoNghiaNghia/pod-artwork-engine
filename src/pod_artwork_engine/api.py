@@ -28,6 +28,7 @@ from .hardware import detect_hardware
 from .harness import HarnessStore
 from .harness_models import BenchmarkScorecard
 from .local_ocr import backend_status as local_ocr_backend_status
+from .scheduler import recommended_job_concurrency
 from .settings import Settings
 from .updater import UpdateManager
 
@@ -39,13 +40,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     datasets = DatasetRegistry(settings.database_path, settings.datasets_dir)
     harness = HarnessStore(settings.harness_dir)
     hardware = detect_hardware()
+    job_concurrency = recommended_job_concurrency(settings)
+    job_slots = asyncio.Semaphore(job_concurrency)
+
+    async def run_job_with_slot(job_id: str) -> None:
+        async with job_slots:
+            await asyncio.to_thread(engine.run_job, job_id)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         recovered = engine.recover_interrupted_jobs()
         for job in recovered:
             if job.state is JobState.RESUMING:
-                asyncio.create_task(asyncio.to_thread(engine.run_job, job.job_id))
+                asyncio.create_task(run_job_with_slot(job.job_id))
         yield
 
     app = FastAPI(title="POD Artwork Engine", version=__version__, lifespan=lifespan)
@@ -86,8 +93,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "historical_pair_count": len(historical_pairs),
             "dataset_count": len(dataset_records),
             "harness_run_count": len(harness.list_scorecards()),
-            "remote_provider_configured": engine.provider.available,
+            "remote_provider_configured": engine.provider.configured,
+            "remote_provider_available": engine.provider.available,
+            "remote_provider_state": engine.provider.status(),
             "remote_provider_name": settings.remote_provider_name,
+            "job_concurrency": job_concurrency,
+            "performance": engine.performance.summary(limit=500),
             "qc_policy_id": engine.qc_policy.policy_id,
             "qc_policy_version": engine.qc_policy.version,
             "qc_policy_configured": settings.qc_policy_path is not None,
@@ -218,10 +229,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 staged_paths.append(target)
 
             job = engine.create_job(staged_paths, quality_mode)
-            asyncio.create_task(asyncio.to_thread(engine.run_job, job.job_id))
+            asyncio.create_task(run_job_with_slot(job.job_id))
             return job
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+    @app.get("/performance")
+    def performance(limit: int = 1000) -> dict:
+        return {
+            "job_concurrency": job_concurrency,
+            "provider": engine.provider.status(),
+            "stages": engine.performance.summary(limit=limit),
+        }
 
     @app.post("/storage/cleanup")
     def cleanup_storage() -> dict[str, int]:

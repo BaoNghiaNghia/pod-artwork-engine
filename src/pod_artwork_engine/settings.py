@@ -30,6 +30,7 @@ class Settings:
     cpu_soft_threads: int = 40
     ram_soft_bytes: int = 32 * GIB
     ram_hard_bytes: int = 48 * GIB
+    max_concurrent_jobs: int = 0
     storage: StorageLimits = StorageLimits()
     release_channel: str = "stable"
     release_manifest_url: str = ""
@@ -37,6 +38,8 @@ class Settings:
     remote_provider_token: str = ""
     remote_provider_name: str = "remote"
     remote_provider_timeout_seconds: float = 120.0
+    remote_provider_failure_threshold: int = 3
+    remote_provider_cooldown_seconds: float = 30.0
     provider_recipe_path: Path | None = None
     qc_policy_path: Path | None = None
     router_policy_path: Path | None = None
@@ -68,6 +71,7 @@ class Settings:
             cpu_soft_threads=int(os.environ.get("POD_CPU_SOFT_THREADS", default_threads)),
             ram_soft_bytes=int(float(os.environ.get("POD_RAM_SOFT_GB", default_ram_soft / GIB)) * GIB),
             ram_hard_bytes=int(float(os.environ.get("POD_RAM_HARD_GB", default_ram_hard / GIB)) * GIB),
+            max_concurrent_jobs=max(0, int(os.environ.get("POD_MAX_CONCURRENT_JOBS", "0"))),
             release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
             release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
             remote_provider_url=os.environ.get("POD_REMOTE_PROVIDER_URL", ""),
@@ -75,6 +79,12 @@ class Settings:
             remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", "remote"),
             remote_provider_timeout_seconds=float(
                 os.environ.get("POD_REMOTE_PROVIDER_TIMEOUT_SECONDS", "120")
+            ),
+            remote_provider_failure_threshold=max(
+                1, int(os.environ.get("POD_REMOTE_PROVIDER_FAILURE_THRESHOLD", "3"))
+            ),
+            remote_provider_cooldown_seconds=max(
+                1.0, float(os.environ.get("POD_REMOTE_PROVIDER_COOLDOWN_SECONDS", "30"))
             ),
             provider_recipe_path=(
                 Path(os.environ["POD_PROVIDER_RECIPE_PATH"]).expanduser()

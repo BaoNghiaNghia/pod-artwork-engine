@@ -828,6 +828,22 @@ Recommended real-data flow:
 
 Phase 2V does not alter `Engine.run_job`, production policy or benchmark recipes.
 
+### Performance & Simplicity Foundation
+
+Implemented without changing production activation policy or router thresholds:
+
+- the Tauri desktop keeps one engine process alive for the whole app session, so Python/runtime initialization is reused instead of repeated per job;
+- deterministic preflight and local-analysis results now use a content-addressed cache under `<data>/cache/stages`, keyed by input SHA-256 plus stage/version;
+- remote ANALYZE responses can be reused only when input hashes, quality mode, provider URL/name, recipe id/version and requested capabilities match;
+- existing per-job checkpoints remain the crash/restart resume boundary; interrupted jobs are resumed from checkpoints on engine startup;
+- every timed stage is persisted to SQLite and summarized as count, p50, p95, max and cache-hit rate; `GET /performance` exposes the runtime summary;
+- automatic job concurrency is derived conservatively from CPU/RAM and capped at four by default; `POD_MAX_CONCURRENT_JOBS` can override it;
+- the remote provider now has a fail-fast circuit breaker: repeated transport/protocol failures open a cooldown window so jobs fall back locally instead of repeatedly waiting for a broken provider;
+- the desktop defaults to one **Auto Mode** using `print_ready`, hides the technical quality modes under **Advanced**, and shows a five-step timeline: Checking → Analyzing → Reconstructing → Quality Check → Done;
+- Advanced runtime details expose p50/p95/cache hit information instead of forcing users to interpret raw engine states.
+
+This foundation intentionally keeps `RouterPolicy` defaults and all Phase 2R–2T activation gates unchanged. Performance changes may skip repeated deterministic/provider analysis work only when the cache identity matches; they do not auto-promote benchmark proposals or enable production execution.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

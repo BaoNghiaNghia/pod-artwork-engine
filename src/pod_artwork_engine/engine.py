@@ -54,6 +54,7 @@ from .logging_config import log_event
 from .material_separation import build_material_separation_evidence
 from .multi_reference import build_reference_fusion
 from .preflight import inspect_image, sha256_file
+from .performance import PerformanceStore, StageCache
 from .providers import (
     ProviderProtocolError,
     ProviderUnavailable,
@@ -98,6 +99,8 @@ class Engine:
         self.storage = StorageManager(settings)
         self.jobs = JobStore(settings.database_path)
         self.checkpoints = CheckpointManager(settings.jobs_dir)
+        self.stage_cache = StageCache(settings.cache_dir / "stages")
+        self.performance = PerformanceStore(settings.database_path)
         self.provider = RemoteProvider(settings)
         self.qc_policy = load_qc_policy(settings.qc_policy_path)
         self.router_policy = load_router_policy(settings.router_policy_path)
@@ -168,6 +171,7 @@ class Engine:
         route: str | None = None,
         quality_score: float | None = None,
         failure_reason: str | None = None,
+        cache_hit: bool = False,
     ) -> None:
         resources = capture_resources(self.storage)
         fields = {
@@ -191,6 +195,16 @@ class Engine:
             fields["quality_score"] = round(quality_score, 4)
         if failure_reason:
             fields["failure_reason"] = failure_reason
+        if cache_hit:
+            fields["cache_hit"] = True
+        if duration_ms is not None:
+            self.performance.record(
+                job_id=job.job_id,
+                stage=stage,
+                event=event,
+                duration_ms=duration_ms,
+                cache_hit=cache_hit,
+            )
         log_event(logger, event, **fields)
 
     def create_job(self, source_paths: list[Path], quality_mode: QualityMode) -> JobRecord:
@@ -239,19 +253,52 @@ class Engine:
             message="Inspecting source quality and artwork region",
         )
         started = time.perf_counter()
-        results = [inspect_image(Path(path)) for path in job.source_paths]
+        results: list[PreflightResult] = []
+        cache_hits = 0
+        for source in map(Path, job.source_paths):
+            source_hash = sha256_file(source)
+            cached = self.stage_cache.get("preflight", "v1", [source_hash])
+            result: PreflightResult | None = None
+            if isinstance(cached, dict):
+                try:
+                    cached_result = PreflightResult.model_validate(cached)
+                except Exception:
+                    cached_result = None
+                if cached_result is not None and cached_result.sha256 == source_hash:
+                    result = cached_result
+                    cache_hits += 1
+            if result is None:
+                result = inspect_image(source)
+                self.stage_cache.put(
+                    "preflight",
+                    "v1",
+                    [result.sha256],
+                    result.model_dump(mode="json"),
+                )
+            results.append(result)
         self.checkpoints.write(
             job.job_id,
             "preflight",
             [result.model_dump(mode="json") for result in results],
         )
         refreshed = self.jobs.get(job.job_id) or job
+        duration_ms = round((time.perf_counter() - started) * 1000)
         self._log_stage(
             refreshed,
             "preflight_completed",
             stage="preflight",
-            duration_ms=round((time.perf_counter() - started) * 1000),
+            duration_ms=duration_ms,
+            cache_hit=bool(results) and cache_hits == len(results),
         )
+        if cache_hits:
+            self._log_stage(
+                refreshed,
+                "preflight_content_cache_reused",
+                stage="preflight_cache",
+                duration_ms=duration_ms,
+                cache_hit=True,
+                quality_score=cache_hits / max(1, len(results)),
+            )
         return results
 
     def _reference_fusion(
@@ -528,9 +575,39 @@ class Engine:
         )
         started = time.perf_counter()
         primary_index = fusion.primary_index
-        local_spec = analyze_locally(
-            [source_paths[primary_index]],
-            [preflights[primary_index]],
+        source_hash = preflights[primary_index].sha256
+        local_started = time.perf_counter()
+        cached_local = self.stage_cache.get(
+            "local_analysis",
+            "v1",
+            [source_hash],
+        )
+        local_cache_hit = False
+        local_spec: DesignSpec | None = None
+        if isinstance(cached_local, dict):
+            try:
+                local_spec = DesignSpec.model_validate(cached_local)
+                local_cache_hit = True
+            except Exception:
+                local_spec = None
+        if local_spec is None:
+            local_spec = analyze_locally(
+                [source_paths[primary_index]],
+                [preflights[primary_index]],
+            )
+            self.stage_cache.put(
+                "local_analysis",
+                "v1",
+                [source_hash],
+                local_spec.model_dump(mode="json"),
+            )
+        self._log_stage(
+            job,
+            "local_analysis_completed",
+            stage="local_analysis",
+            duration_ms=round((time.perf_counter() - local_started) * 1000),
+            cache_hit=local_cache_hit,
+            quality_score=local_spec.confidence,
         )
         provider_result: ProviderResult | None = None
 
@@ -624,15 +701,54 @@ class Engine:
                 analysis_capabilities = ["need_design_spec"]
                 if "need_reference_disambiguation" in local_spec.required_capabilities:
                     analysis_capabilities.append("need_reference_disambiguation")
-                provider_result = self.provider.execute(
-                    ProviderRequest(
-                        action=ProviderAction.ANALYZE,
-                        job_id=job.job_id,
-                        quality_mode=job.quality_mode,
-                        source_paths=[str(path) for path in source_paths],
-                        design_spec=local_spec,
-                        requested_capabilities=analysis_capabilities,
+                analysis_request = ProviderRequest(
+                    action=ProviderAction.ANALYZE,
+                    job_id=job.job_id,
+                    quality_mode=job.quality_mode,
+                    source_paths=[str(path) for path in source_paths],
+                    design_spec=local_spec,
+                    requested_capabilities=analysis_capabilities,
+                )
+                recipe = self.provider.recipe()
+                provider_cache_options = {
+                    "quality_mode": job.quality_mode.value,
+                    "provider_url": self.settings.remote_provider_url,
+                    "provider_name": self.settings.remote_provider_name,
+                    "recipe_id": recipe.recipe_id,
+                    "recipe_version": recipe.version,
+                    "requested_capabilities": sorted(analysis_capabilities),
+                }
+                provider_started = time.perf_counter()
+                cached_provider = self.stage_cache.get(
+                    "provider_analyze",
+                    "v1",
+                    [item.sha256 for item in preflights],
+                    provider_cache_options,
+                )
+                provider_cache_hit = False
+                if isinstance(cached_provider, dict):
+                    try:
+                        provider_result = ProviderResult.model_validate(cached_provider)
+                        provider_cache_hit = True
+                    except Exception:
+                        provider_result = None
+                if provider_result is None:
+                    provider_result = self.provider.execute(analysis_request)
+                    self.stage_cache.put(
+                        "provider_analyze",
+                        "v1",
+                        [item.sha256 for item in preflights],
+                        provider_result.model_dump(mode="json"),
+                        provider_cache_options,
                     )
+                self._log_stage(
+                    job,
+                    "provider_analysis_completed",
+                    stage="provider_analysis",
+                    duration_ms=round((time.perf_counter() - provider_started) * 1000),
+                    provider=provider_result.provider,
+                    model_version=provider_result.model_version,
+                    cache_hit=provider_cache_hit,
                 )
                 if provider_result.design_spec is not None:
                     local_spec = provider_result.design_spec
@@ -1440,6 +1556,7 @@ class Engine:
         }:
             return job
 
+        pipeline_started = time.perf_counter()
         try:
             source_paths = [Path(path) for path in job.source_paths]
             preflights = self._perform_preflight(job)
@@ -1636,7 +1753,12 @@ class Engine:
                     message="Artwork reconstruction complete",
                     result_path=str(final_path),
                 )
-                self._log_stage(final_job, "job_completed", stage="completed")
+                self._log_stage(
+                    final_job,
+                    "job_completed",
+                    stage="job_total",
+                    duration_ms=round((time.perf_counter() - pipeline_started) * 1000),
+                )
                 return final_job
 
             reasons = [*qc1.reasons, *qc2.reasons]
@@ -1652,7 +1774,8 @@ class Engine:
             self._log_stage(
                 final_job,
                 "job_review_required",
-                stage="review_required",
+                stage="job_total",
+                duration_ms=round((time.perf_counter() - pipeline_started) * 1000),
                 failure_reason=final_job.failure_reason,
             )
             return final_job
