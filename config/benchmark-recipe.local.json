@@ -1,22 +1,22 @@
 {
-  "recipe_id": "local-precision-v20",
-  "version": "20",
-  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, geometric reference-alignment readiness, measured feature-correspondence affine/homography evidence, Golden Holdout registration threshold calibration, benchmark-only affine/homography dewarp execution with registration-aware 4x4 region sampling and native control manifests, coarse production region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
+  "recipe_id": "local-precision-v21",
+  "version": "21",
+  "description": "CPU-first local precision baseline with deterministic multi-reference fusion, geometric reference-alignment readiness, measured feature-correspondence affine/homography evidence, Golden Holdout registration threshold calibration, benchmark-only affine/homography dewarp execution with registration-aware 4x4 region sampling and native controls, Golden dewarp experiment orchestration with evidence-only production registration policy proposals, coarse production region confidence, fail-closed rescue planning, conservative vector/raster planning, material-separation evidence, difficult-texture evidence, print-target SR readiness evidence, fair pre-SR native/Lanczos cohort materialization, concrete benchmark-only SR adapters, Golden Holdout SR experiment orchestration and evidence-only policy proposal, guarded OCR/font matching, compound vector topology, guarded local text repair and standalone OCR runtime provenance.",
   "stages": [
     {
       "name": "analysis",
-      "implementation": "multi-reference-alignment-correspondence-registration-calibration-dewarp-benchmark-region-rescue-representation-material-texture-sr-readiness-plus-local-analysis",
-      "version": "phase2o"
+      "implementation": "multi-reference-alignment-correspondence-registration-calibration-dewarp-experiment-region-rescue-representation-material-texture-sr-readiness-plus-local-analysis",
+      "version": "phase2p"
     },
     {
       "name": "reconstruction",
       "implementation": "deterministic-precision-production-plus-benchmark-only-dewarp-lane",
-      "version": "phase2o"
+      "version": "phase2p"
     },
     {
       "name": "qc",
-      "implementation": "two-gate-qc-plus-golden-registration-dewarp-and-sr-policy",
-      "version": "phase2o"
+      "implementation": "two-gate-qc-plus-golden-registration-dewarp-production-policy-and-sr-policy",
+      "version": "phase2p"
     }
   ],
   "router_version": "phase2a",

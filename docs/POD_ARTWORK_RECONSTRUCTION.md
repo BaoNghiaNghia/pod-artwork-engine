@@ -1825,9 +1825,26 @@ Phase 2O benchmark-only dewarp execution and registration-aware region sampling:
 - every materialization/matrix report remains `benchmark_only=true`, `requires_human_approval=true`, `automatically_applied=false` and `production_execution_enabled=false`;
 - regression coverage explicitly verifies that `Engine.run_job` produces no dewarp checkpoint or precision op.
 
+Phase 2P Golden dewarp experiment orchestration and production-registration policy proposal:
+
+- `DewarpExperimentRunner` chains Golden registration calibration, benchmark-only dewarp materialization, native/dewarp Harness scoring and a final evidence-only production policy proposal;
+- the experiment rejects non-Golden execution and requires the calibration source-run set to exactly match the experiment provenance;
+- incomplete/unsafe Phase 2N calibration does not attempt Phase 2O pixel materialization; it produces an `insufficient_evidence` policy instead;
+- a materialization source run can be specified explicitly or is deterministically selected from complete Golden calibration runs by coverage/success;
+- calibration, cohort and matrix dataset fingerprints must agree end-to-end;
+- production-readiness gates include minimum comparable Golden cases, minimum quality gain, no technical regression, no small-detail regression, no failure-rate increase, no manual-review-rate increase, bounded materialization failure rate and minimum registration-aware region improvement rate;
+- a fully measured but unhelpful dewarp policy resolves to `keep_disabled`, while safety regressions resolve to `manual_review`;
+- only evidence clearing every benefit/safety gate can become `candidate_for_human_approval`;
+- mixed affine/homography policy cannot be proposed unless both calibrated lanes independently have sufficient evidence;
+- the final `ProductionRegistrationPolicyProposal` embeds calibrated affine/homography thresholds, measured coverage, region-improvement rate and Harness deltas;
+- `dewarp-experiments/<experiment_id>/` persists `spec.json`, `report.json` and `production-policy-proposal.json`;
+- CLI `harness-dewarp-experiment` exposes the end-to-end workflow;
+- API/diagnostics methods are `golden_dewarp_experiment_v1` and `production_registration_policy_proposal_v1`;
+- the proposal is not a production config: `requires_human_approval=true`, `automatically_applied=false`, and `production_execution_enabled=false` remain hard gates.
+
 Current truthfulness limits:
 
-- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, and Phase 2O executes dewarp only inside Harness benchmark artifacts; production dewarp/region compositing remains disabled;
+- Phase 2A remains global reference fusion; Phase 2L adds bbox alignment readiness, Phase 2M adds measured correspondence/model evidence, Phase 2N calibrates Golden thresholds, Phase 2O executes dewarp only inside Harness benchmark artifacts, and Phase 2P only proposes a human-review production policy; production dewarp/region compositing remains disabled;
 - ambiguous side/perspective/occluded views may remain unresolved, and Phase 2A does not claim to recover detail hidden in every reference;
 - the initial reference-similarity thresholds require Golden Holdout calibration before being treated as domain-optimal;
 - the source repository now supports a zero-dependency bundled OCR runtime, but it intentionally does not ship third-party Tesseract binaries until redistribution/licensing and the desired language-pack set are approved;
@@ -1870,7 +1887,7 @@ Build:
 
 ### Phase 2 — Hybrid quality
 
-Phase 2A–2O foundation is implemented:
+Phase 2A–2P foundation is implemented:
 
 - guarded multi-reference evidence fusion;
 - deterministic primary-reference selection;
@@ -1880,6 +1897,7 @@ Phase 2A–2O foundation is implemented:
 - Golden Holdout registration calibration with conservative threshold proposals and dewarp-benchmark-only promotion states;
 - benchmark-only affine/homography dewarp materialization with paired native controls and registration-aware 4×4 region evidence;
 - Golden native-vs-dewarp Harness matrix scoring with human-review-only recommendation states;
+- Golden dewarp experiment orchestration with end-to-end fingerprint/provenance gates and evidence-only production-registration policy proposals;
 - coarse normalized 4×4 region confidence/evidence maps;
 - exclusion of ambiguous/conflicting/duplicate/aspect-incompatible references from regional support;
 - fail-closed bounded region-rescue planning without pixel mutation;
@@ -1895,7 +1913,7 @@ Phase 2A–2O foundation is implemented:
 
 Remaining Phase 2 work:
 
-- run Phase 2N/2O on the real Golden Holdout, review measured dewarp gains/regressions and explicitly approve a policy before any production registration integration;
+- run Phase 2P on the real Golden Holdout, review the generated production-registration proposal and explicitly approve a policy before any production registration integration;
 - benchmarked execution policy for material separation;
 - execution of the planned vector/raster split after benchmark calibration;
 - benchmarked execution policy for local detail enhancement/difficult textures;

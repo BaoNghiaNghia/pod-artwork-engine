@@ -961,6 +961,7 @@ class DewarpBenchmarkReport(StrictModel):
     tier: BenchmarkTier
     recipe_id: str
     recipe_version: str
+    dataset_manifest_sha256: str = ""
     native_run_id: str
     dewarp_run_id: str
     native_scorecard_id: str
@@ -975,6 +976,113 @@ class DewarpBenchmarkReport(StrictModel):
         DewarpBenchmarkRecommendation.INSUFFICIENT_EVIDENCE
     )
     sufficient_evidence: bool = False
+    benchmark_only: bool = True
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ProductionRegistrationPolicyRecommendation(StrEnum):
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    KEEP_DISABLED = "keep_disabled"
+    CANDIDATE_FOR_HUMAN_APPROVAL = "candidate_for_human_approval"
+    MANUAL_REVIEW = "manual_review"
+
+
+class DewarpExperimentSpec(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str = Field(
+        default_factory=lambda: "dewarp_experiment_" + uuid4().hex
+    )
+    dataset_id: str
+    registration_run_ids: list[str] = Field(min_length=1)
+    recipe_path: str
+    tier: BenchmarkTier = BenchmarkTier.GOLDEN
+    materialization_source_run_id: str | None = None
+    canonical_size: int = Field(default=512, ge=128, le=2048)
+    limit: int | None = Field(default=None, ge=1)
+    calibration_min_cases_per_lane: int = Field(default=3, ge=1)
+    calibration_min_quality_score: float = Field(default=0.80, ge=0, le=1)
+    calibration_max_manual_review_rate: float = Field(default=0.15, ge=0, le=1)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_technical_gain: float = Field(default=0.0, ge=0, le=1)
+    min_small_detail_delta: float = Field(default=0.0, ge=0, le=1)
+    min_region_improvement_rate: float = Field(default=0.60, ge=0, le=1)
+    max_materialization_failure_rate: float = Field(default=0.10, ge=0, le=1)
+    max_failure_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    max_manual_review_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ProductionRegistrationPolicyProposal(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    proposal_id: str = Field(
+        default_factory=lambda: "production_registration_policy_" + uuid4().hex
+    )
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    dataset_manifest_sha256: str = ""
+    calibration_proposal_id: str
+    calibration_recommendation: RegistrationPolicyRecommendation
+    source_registration_run_ids: list[str] = Field(min_length=1)
+    materialization_source_run_id: str | None = None
+    cohort_id: str | None = None
+    matrix_id: str | None = None
+    affine_thresholds: RegistrationThresholds | None = None
+    homography_thresholds: RegistrationThresholds | None = None
+    calibration_measured_reference_count: int = Field(default=0, ge=0)
+    materialization_case_count: int = Field(default=0, ge=0)
+    materialization_success_count: int = Field(default=0, ge=0)
+    materialization_failure_count: int = Field(default=0, ge=0)
+    materialization_failure_rate: float = Field(default=1.0, ge=0, le=1)
+    affine_count: int = Field(default=0, ge=0)
+    homography_count: int = Field(default=0, ge=0)
+    region_improved_case_count: int = Field(default=0, ge=0)
+    region_improvement_rate: float = Field(default=0, ge=0, le=1)
+    comparable_case_count: int = Field(default=0, ge=0)
+    quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    technical_delta: float | None = Field(default=None, ge=-1, le=1)
+    small_detail_delta: float | None = Field(default=None, ge=-1, le=1)
+    failure_rate_delta: float = Field(default=0, ge=-1, le=1)
+    manual_review_rate_delta: float = Field(default=0, ge=-1, le=1)
+    min_comparable_cases: int = Field(default=3, ge=1)
+    min_quality_gain: float = Field(default=0.005, ge=0, le=1)
+    min_technical_gain: float = Field(default=0.0, ge=0, le=1)
+    min_small_detail_delta: float = Field(default=0.0, ge=0, le=1)
+    min_region_improvement_rate: float = Field(default=0.60, ge=0, le=1)
+    max_materialization_failure_rate: float = Field(default=0.10, ge=0, le=1)
+    max_failure_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    max_manual_review_rate_increase: float = Field(default=0.0, ge=0, le=1)
+    recommendation: ProductionRegistrationPolicyRecommendation = (
+        ProductionRegistrationPolicyRecommendation.INSUFFICIENT_EVIDENCE
+    )
+    sufficient_evidence: bool = False
+    requires_human_approval: bool = True
+    automatically_applied: bool = False
+    production_execution_enabled: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DewarpExperimentReport(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    experiment_id: str
+    dataset_id: str
+    tier: BenchmarkTier
+    source_registration_run_ids: list[str] = Field(min_length=1)
+    materialization_source_run_id: str | None = None
+    calibration_proposal_id: str
+    calibration_proposal_path: str
+    cohort_id: str | None = None
+    cohort_report_path: str | None = None
+    matrix_id: str | None = None
+    matrix_report_path: str | None = None
+    policy_proposal_path: str
+    policy: ProductionRegistrationPolicyProposal
     benchmark_only: bool = True
     requires_human_approval: bool = True
     automatically_applied: bool = False

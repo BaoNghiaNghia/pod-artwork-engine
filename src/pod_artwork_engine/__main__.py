@@ -14,6 +14,7 @@ from .contracts import DatasetSplit, QualityMode, RouteKind
 from .dataset_registry import DatasetRegistry
 from .diagnostics import build_diagnostic_bundle
 from .dewarp_benchmark import DewarpBenchmarkMatrixRunner, DewarpMaterializer
+from .dewarp_experiment import DewarpExperimentRunner
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .harness import HarnessCaseFactory, HarnessRunner, HarnessStore, compare_scorecards, load_candidate_manifest, load_recipe
@@ -22,6 +23,7 @@ from .harness_models import (
     BenchmarkSuiteSpec,
     BenchmarkTier,
     DewarpBenchmarkSpec,
+    DewarpExperimentSpec,
     DewarpMaterializationSpec,
     PromotionPolicy,
     RouteMatrixSpec,
@@ -280,6 +282,25 @@ def main() -> None:
     dewarp_matrix.add_argument("--max-failure-rate-increase", type=float, default=0.0)
     dewarp_matrix.add_argument("--max-manual-review-rate-increase", type=float, default=0.0)
     dewarp_matrix.add_argument("--limit", type=int)
+
+    dewarp_experiment = sub.add_parser("harness-dewarp-experiment")
+    dewarp_experiment.add_argument("dataset_id")
+    dewarp_experiment.add_argument("registration_run_ids", nargs="+")
+    dewarp_experiment.add_argument("--recipe", type=Path, required=True)
+    dewarp_experiment.add_argument("--materialization-source-run-id")
+    dewarp_experiment.add_argument("--canonical-size", type=int, default=512)
+    dewarp_experiment.add_argument("--limit", type=int)
+    dewarp_experiment.add_argument("--calibration-min-cases-per-lane", type=int, default=3)
+    dewarp_experiment.add_argument("--calibration-min-quality-score", type=float, default=0.80)
+    dewarp_experiment.add_argument("--calibration-max-manual-review-rate", type=float, default=0.15)
+    dewarp_experiment.add_argument("--min-comparable-cases", type=int, default=3)
+    dewarp_experiment.add_argument("--min-quality-gain", type=float, default=0.005)
+    dewarp_experiment.add_argument("--min-technical-gain", type=float, default=0.0)
+    dewarp_experiment.add_argument("--min-small-detail-delta", type=float, default=0.0)
+    dewarp_experiment.add_argument("--min-region-improvement-rate", type=float, default=0.60)
+    dewarp_experiment.add_argument("--max-materialization-failure-rate", type=float, default=0.10)
+    dewarp_experiment.add_argument("--max-failure-rate-increase", type=float, default=0.0)
+    dewarp_experiment.add_argument("--max-manual-review-rate-increase", type=float, default=0.0)
 
     registration_calibrate = sub.add_parser("harness-registration-calibrate")
     registration_calibrate.add_argument("run_ids", nargs="+")
@@ -653,6 +674,33 @@ def main() -> None:
             limit=args.limit,
         )
         report = DewarpBenchmarkMatrixRunner(settings, registry, store).run(
+            spec,
+            spec_base=Path.cwd(),
+        )
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    elif args.command == "harness-dewarp-experiment":
+        registry = DatasetRegistry(settings.database_path, settings.datasets_dir)
+        store = HarnessStore(settings.harness_dir)
+        spec = DewarpExperimentSpec(
+            dataset_id=args.dataset_id,
+            registration_run_ids=list(args.registration_run_ids),
+            recipe_path=str(args.recipe.resolve()),
+            materialization_source_run_id=args.materialization_source_run_id,
+            canonical_size=args.canonical_size,
+            limit=args.limit,
+            calibration_min_cases_per_lane=args.calibration_min_cases_per_lane,
+            calibration_min_quality_score=args.calibration_min_quality_score,
+            calibration_max_manual_review_rate=args.calibration_max_manual_review_rate,
+            min_comparable_cases=args.min_comparable_cases,
+            min_quality_gain=args.min_quality_gain,
+            min_technical_gain=args.min_technical_gain,
+            min_small_detail_delta=args.min_small_detail_delta,
+            min_region_improvement_rate=args.min_region_improvement_rate,
+            max_materialization_failure_rate=args.max_materialization_failure_rate,
+            max_failure_rate_increase=args.max_failure_rate_increase,
+            max_manual_review_rate_increase=args.max_manual_review_rate_increase,
+        )
+        report = DewarpExperimentRunner(settings, registry, store).run(
             spec,
             spec_base=Path.cwd(),
         )

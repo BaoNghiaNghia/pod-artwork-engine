@@ -260,6 +260,9 @@ class HarnessStore:
     def dewarp_matrix_dir(self, matrix_id: str) -> Path:
         return self.root / "dewarp-matrices" / matrix_id
 
+    def dewarp_experiment_dir(self, experiment_id: str) -> Path:
+        return self.root / "dewarp-experiments" / experiment_id
+
 
 class HarnessRunner:
     def __init__(self, registry: DatasetRegistry, store: HarnessStore) -> None:

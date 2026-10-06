@@ -694,6 +694,25 @@ Implemented:
 
 Recipes are now `local-precision-v20` / `remote-balanced-v20`, phase `phase2o`.
 
+### Phase 2P — Golden Dewarp Experiment & Production Registration Policy Proposal
+
+Implemented:
+
+- one Golden-only orchestrator chaining Phase 2N calibration → Phase 2O materialization → native-vs-dewarp Harness matrix → production-registration policy proposal;
+- calibration provenance must match the requested dataset/run set and remain Golden-only;
+- when calibration is insufficient/manual-review, the experiment fails closed and persists an `insufficient_evidence` proposal without attempting dewarp execution;
+- the materialization source run is explicit or deterministically selected from complete Golden calibration runs;
+- dataset fingerprints are checked across calibration, dewarp cohort and matrix evidence;
+- production-readiness gates require minimum comparable cases, minimum quality gain, no technical or small-detail regression, no failure/manual-review regression, bounded materialization failures and sufficient registration-aware region improvement;
+- proposal recommendations are restricted to `candidate_for_human_approval`, `keep_disabled`, `manual_review` or `insufficient_evidence`;
+- successful proposals preserve calibrated affine/homography thresholds so human review sees the exact evidence gates being proposed;
+- experiment artifacts persist under `dewarp-experiments/<experiment_id>/` with spec, report and `production-policy-proposal.json`;
+- CLI: `harness-dewarp-experiment`;
+- API/diagnostics expose `golden_dewarp_experiment_v1` and `production_registration_policy_proposal_v1`;
+- every proposal keeps `requires_human_approval=true`, `automatically_applied=false`, and `production_execution_enabled=false`; no production pixel path is changed.
+
+Recipes are now `local-precision-v21` / `remote-balanced-v21`, phase `phase2p`.
+
 Still pending in Phase 1:
 
 - import/run the user's real historical source/final pairs through the benchmark suite and route matrix, then establish the first measured champion/router policy;

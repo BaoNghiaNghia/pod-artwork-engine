@@ -941,12 +941,23 @@ class DewarpBenchmarkMatrixRunner:
                 DewarpBenchmarkRecommendation.INSUFFICIENT_EVIDENCE
             )
 
+        if (
+            native_score.provenance.dataset_manifest_sha256
+            != dewarp_score.provenance.dataset_manifest_sha256
+        ):
+            raise DewarpBenchmarkError(
+                "native/dewarp Harness dataset fingerprint mismatch"
+            )
+
         report = DewarpBenchmarkReport(
             matrix_id=spec.matrix_id,
             dataset_id=spec.dataset_id,
             tier=BenchmarkTier.GOLDEN,
             recipe_id=recipe.recipe_id,
             recipe_version=recipe.version,
+            dataset_manifest_sha256=(
+                native_score.provenance.dataset_manifest_sha256
+            ),
             native_run_id=native_score.run_id,
             dewarp_run_id=dewarp_score.run_id,
             native_scorecard_id=native_score.scorecard_id,

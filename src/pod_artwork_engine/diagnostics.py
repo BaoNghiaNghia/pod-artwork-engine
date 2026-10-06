@@ -74,6 +74,8 @@ def build_diagnostic_bundle(settings: Settings, destination: Path | None = None)
             "feature_correspondence_method": "feature_correspondence_benchmark_v1",
             "registration_calibration_method": "golden_registration_calibration_v1",
             "dewarp_benchmark_method": "benchmark_dewarp_registration_v1",
+            "dewarp_experiment_method": "golden_dewarp_experiment_v1",
+            "production_registration_policy_method": "production_registration_policy_proposal_v1",
             "region_confidence_method": "normalized_region_evidence_v1",
             "region_rescue_planner_method": "region_rescue_plan_v1",
             "representation_planner_method": "representation_plan_v1",
