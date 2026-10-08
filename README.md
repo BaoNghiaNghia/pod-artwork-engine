@@ -872,6 +872,29 @@ The current local registry contains no historical dataset. Users must select and
 approve real source/final images in steps 1–3 before any real Golden measurements
 can begin.
 
+### Visual Source → Final Pair Inspector (v0.1.3)
+
+Historical Dataset preflight now returns an optional short-lived `preview_token` to
+view the real source/final images already verified in the pairing report. The new
+desktop grid shows paired artwork side by side with up to three source views,
+pair IDs, visual fallback warnings and equivalent target counts. It provides
+filename search, visual-only/unreviewed filters, pagination (12 pairs/page)
+and manual checkmarks for pairs already inspected. Clicking an image opens
+a side-by-side modal with 1200 px previews, allowing comparison of embroidery
+or lettering details across source views. The enlarged image is only loaded
+when requested. This is **visual review only**: marking a pair reviewed does
+not mutate or authorize import; explicit confirmation and the immutable
+preflight snapshot are still required.
+
+The local thumbnail endpoint is
+`GET /historical/onboarding/previews/{token}/{pair_index}/{role}`.
+It accepts no caller-supplied filesystem path. A random in-memory capability
+only exposes paths from the current preflight result, expires after 15 minutes
+and has bounded session count; previews are downscaled to max 384 px WebP
+with no registry writes. Stale/modified images, expired tokens, bad indices
+and unsupported roles return 404, leaving the import gate unchanged.
+Even a blocked preflight may expose otherwise valid paired images for diagnosis.
+
 ### Performance & Simplicity Foundation
 
 Implemented without changing production activation policy or router thresholds:

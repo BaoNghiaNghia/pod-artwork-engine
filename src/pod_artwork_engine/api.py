@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 import psutil
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
@@ -30,6 +30,7 @@ from .engine import Engine
 from .golden_preflight import GoldenHoldoutPreflight, GoldenHoldoutPreflightBuilder
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
+from .pair_previews import PairPreviewSessions
 from .onboarding_workflow import (
     OnboardingImportRequest,
     OnboardingPreviewResponse,
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     job_concurrency = recommended_job_concurrency(settings)
     job_slots = asyncio.Semaphore(job_concurrency)
     onboarding_import_lock = threading.Lock()
+    pair_preview_sessions = PairPreviewSessions()
 
     async def run_job_with_slot(job_id: str) -> None:
         async with job_slots:
@@ -195,9 +197,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/historical/onboarding/preflight", response_model=OnboardingPreviewResponse)
     def historical_onboarding_preflight(request: OnboardingRequest) -> OnboardingPreviewResponse:
         try:
-            return onboarding_preview(request)
+            result = onboarding_preview(request)
+            result.preview_token = pair_preview_sessions.register(result.report)
+            return result
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/historical/onboarding/previews/{token}/{pair_index}/{role}")
+    def historical_pair_thumbnail(
+        token: str,
+        pair_index: int,
+        role: str,
+        source_index: int = 0,
+        size: str = "thumb",
+    ) -> Response:
+        if size not in {"thumb", "large"}:
+            raise HTTPException(status_code=404, detail="Unknown preview size")
+        if role not in {"source", "target"}:
+            raise HTTPException(status_code=404, detail="Unknown preview role")
+        try:
+            image = pair_preview_sessions.image(
+                token,
+                pair_index,
+                role,
+                source_index=source_index,
+                size=size,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(
+            content=image,
+            media_type="image/webp",
+            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        )
 
     @app.post("/historical/onboarding/import")
     def historical_onboarding_import(request: OnboardingImportRequest) -> dict:

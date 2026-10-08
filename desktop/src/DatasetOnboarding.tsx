@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import GoldenReadiness from "./GoldenReadiness";
+import PairReview, { type PairedArtwork } from "./PairReview";
 
 const ENGINE_URL = "http://127.0.0.1:8765";
 
@@ -32,6 +33,7 @@ type OnboardingReport = {
   unmatched_targets: string[];
   conflicts: string[];
   invalid_images: string[];
+  pairs: PairedArtwork[];
   mutates_registry: boolean;
   production_execution_enabled: boolean;
 };
@@ -39,6 +41,7 @@ type OnboardingReport = {
 type PreviewResponse = {
   report: OnboardingReport;
   snapshot_id: string | null;
+  preview_token: string | null;
   production_execution_enabled: boolean;
 };
 
@@ -293,6 +296,13 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
                 <strong>Notes ({report.warnings.length})</strong>
                 {report.warnings.map((reason) => <div key={reason}>{reasonLabels[reason] ?? reason}</div>)}
               </div>
+            )}
+            {preview?.preview_token && report.pairs.length > 0 && (
+              <PairReview
+                key={preview.preview_token}
+                token={preview.preview_token}
+                pairs={report.pairs}
+              />
             )}
             {(report.conflicts.length > 0 || report.unmatched_sources.length > 0 || report.unmatched_targets.length > 0 || report.invalid_images.length > 0) && (
               <>

@@ -31,6 +31,7 @@ class OnboardingImportRequest(OnboardingRequest):
 class OnboardingPreviewResponse(BaseModel):
     report: HistoricalOnboardingReport
     snapshot_id: str | None
+    preview_token: str | None = None
     production_execution_enabled: bool = False
 
 

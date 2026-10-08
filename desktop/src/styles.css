@@ -420,3 +420,49 @@ h2, h3 { margin: 0; }
 .golden-lane p{margin:8px 0 0;font-size:11px;line-height:1.5;color:#7c879c;overflow-wrap:anywhere}
 .golden-report{margin-top:16px}
 @media(max-width:650px){.golden-lanes,.golden-inputs{grid-template-columns:1fr}}
+
+/* Pair preview: twelve cards max per page; only visible thumbnails are requested. */
+.pair-review{margin-top:18px;padding-top:16px;border-top:1px solid #e7ebf2}
+.pair-review-header,.pair-review-title,.pair-review-pagination,.pair-review-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pair-review-header strong{font-size:13px}
+.pair-review-header p{margin:4px 0 0;color:#8792a5;font-size:11px}
+.pair-review-toolbar{display:grid;grid-template-columns:minmax(0,1fr) 165px;gap:9px;margin:14px 0}
+.pair-review-toolbar input,.pair-review-toolbar select{width:100%;min-width:0;border:1px solid #dde3ed;border-radius:8px;background:white;padding:9px 10px;color:#3d4a61;font-size:12px}
+.pair-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.pair-review-card{min-width:0;border:1px solid #e3e8f1;border-radius:12px;padding:11px;background:#fafbfe}
+.pair-review-title{min-width:0}
+.pair-review-title strong{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px}
+.pair-method{flex-shrink:0;font-size:9px;font-weight:700;background:#fff2df;color:#966124;border-radius:7px;padding:4px 6px}
+.pair-review-images{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:5px;margin-top:10px}
+.pair-image-column{min-width:0}
+.pair-image-label{font-size:9px;color:#8691a5;font-weight:800;letter-spacing:.08em;margin-bottom:5px}
+.pair-arrow{color:#99a4b5;font-size:15px}
+.pair-source-image-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
+.pair-source-image-grid .pair-image-button:first-child:last-child{grid-column:span 2}
+.pair-review-images img{display:block;width:100%;aspect-ratio:1;object-fit:contain;border:1px solid #e4e9f0;border-radius:6px;background:#f1f3f7}
+.pair-review-images .pair-final-image{aspect-ratio:1}
+.pair-image-column small{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;color:#8993a7;font-size:9px;margin-top:5px}
+.pair-review-footer{margin-top:11px;color:#6c7890;font-size:10px}
+.pair-review-footer label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.pair-review-footer input{accent-color:#4265d9}
+.pair-review-pagination{margin-top:13px;color:#8390a3;font-size:11px;justify-content:flex-end}
+.pair-review-pagination span{margin-right:auto}
+.pair-review-pagination button{padding:6px 10px;border:1px solid #e0e5ef;border-radius:7px;background:white;cursor:pointer;font-size:11px}
+.pair-review-pagination button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:930px){.pair-review-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.pair-review-grid{grid-template-columns:1fr}.pair-review-toolbar{grid-template-columns:1fr}}
+.pair-image-button{display:block;padding:0;border:0;background:transparent;border-radius:6px;cursor:zoom-in;min-width:0}
+.pair-image-button:focus-visible{outline:2px solid #5477e6;outline-offset:2px}
+.pair-lightbox{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:28px;background:rgba(15,22,35,.78)}
+.pair-lightbox-panel{width:min(1040px,100%);max-height:90vh;overflow:auto;padding:19px;border-radius:16px;background:#fff;box-shadow:0 30px 80px #0509135c}
+.pair-lightbox-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:15px}
+.pair-lightbox-head strong{font-size:16px;overflow:hidden;text-overflow:ellipsis}
+.pair-lightbox-head button{border:0;background:#edf0f7;border-radius:50%;width:30px;height:30px;font-size:21px;cursor:pointer}
+.pair-lightbox-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.pair-lightbox-grid>div{min-width:0}
+.pair-lightbox-grid img{width:100%;height:min(58vh,520px);object-fit:contain;background:#f4f6fa;border-radius:10px;border:1px solid #e4e8f0}
+.pair-lightbox-grid small{display:block;margin-top:7px;color:#6d7890;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pair-lightbox-views{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.pair-lightbox-views button{padding:5px 9px;border:1px solid #dfe3ed;border-radius:7px;background:#fff;font-size:11px;cursor:pointer}
+.pair-lightbox-views button.selected{background:#edf2ff;color:#315bd2;border-color:#315bd2}
+@media(max-width:640px){.pair-lightbox{padding:12px}.pair-lightbox-grid{grid-template-columns:1fr}.pair-lightbox-grid img{height:min(32vh,280px)}}
