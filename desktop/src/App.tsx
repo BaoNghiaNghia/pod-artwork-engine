@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import DatasetOnboarding from "./DatasetOnboarding";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
 
@@ -59,6 +60,7 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<QualityMode>("print_ready");
   const [advanced, setAdvanced] = useState(false);
+  const [activeTab, setActiveTab] = useState<"artwork" | "dataset">("artwork");
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -180,6 +182,19 @@ export default function App() {
         </div>
       </header>
 
+      <nav className="primary-tabs" aria-label="Tool sections">
+        <button
+          className={activeTab === "artwork" ? "selected" : ""}
+          onClick={() => setActiveTab("artwork")}
+        >Artwork</button>
+        <button
+          className={activeTab === "dataset" ? "selected" : ""}
+          onClick={() => setActiveTab("dataset")}
+        >Historical Dataset</button>
+      </nav>
+
+      {activeTab === "artwork" ? (
+      <>
       <section className="workspace">
         <div className={`upload-card ${files.length ? "has-files" : ""}`}>
           {files.length === 0 ? (
@@ -343,6 +358,10 @@ export default function App() {
           </div>
         )}
       </section>
+      </>
+      ) : (
+        <DatasetOnboarding engineOnline={engineOnline} />
+      )}
     </main>
   );
 }

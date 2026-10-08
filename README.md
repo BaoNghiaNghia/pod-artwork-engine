@@ -828,6 +828,30 @@ Recommended real-data flow:
 
 Phase 2V does not alter `Engine.run_job`, production policy or benchmark recipes.
 
+### Historical Dataset Desktop Onboarding
+
+The desktop has a separate **Historical Dataset** tab alongside the normal artwork workflow.
+It offers native Windows directory/file selection or pasted absolute paths, two input
+modes (source/final folders and explicit JSON manifest), optional pairing regex/seed
+settings and a **Run Preflight** button. The preflight displays source/target/pair
+counts, Golden Holdout projection, blockers, warnings and affected paths.
+
+The HTTP API has two separate boundaries:
+
+- `POST /historical/onboarding/preflight` runs the existing read-only
+  `HistoricalOnboardingBuilder` and returns a `report` plus a `snapshot_id`
+  only when the corpus is ready. The snapshot binds pairing, options, manifest
+  and image contents by hash; no registry entries are created.
+- `POST /historical/onboarding/import` requires an explicit `confirmation:
+  "IMPORT"`, a matching preflight snapshot, a dataset name and a fresh
+  successful re-validation. Missing/changed assets or new conflicts block
+  import with HTTP 409. No implicit import happens after preflight.
+
+Real-data import still requires user action. These endpoints run only against
+the desktop's local engine; they do not enable production pixel-path policy or
+promote any harness candidates. After an approved import, run the existing
+Golden holdout preflight to determine which benchmark lanes are ready.
+
 ### Performance & Simplicity Foundation
 
 Implemented without changing production activation policy or router thresholds:

@@ -1,1 +1,1 @@
-{}
+{"main-capability":{"identifier":"main-capability","description":"Local POD desktop access to native folder/file selection","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open"]}}

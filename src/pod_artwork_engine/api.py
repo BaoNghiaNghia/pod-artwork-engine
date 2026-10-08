@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,6 +26,13 @@ from .contracts import (
 from .dataset_registry import DatasetRegistry
 from .engine import Engine
 from .hardware import detect_hardware
+from .historical_import import HistoricalImporter
+from .onboarding_workflow import (
+    OnboardingImportRequest,
+    OnboardingPreviewResponse,
+    OnboardingRequest,
+    preview as onboarding_preview,
+)
 from .harness import HarnessStore
 from .harness_models import BenchmarkScorecard
 from .local_ocr import backend_status as local_ocr_backend_status
@@ -42,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hardware = detect_hardware()
     job_concurrency = recommended_job_concurrency(settings)
     job_slots = asyncio.Semaphore(job_concurrency)
+    onboarding_import_lock = threading.Lock()
 
     async def run_job_with_slot(job_id: str) -> None:
         async with job_slots:
@@ -171,6 +180,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/historical/pairs", response_model=list[HistoricalPair])
     def list_historical_pairs() -> list[HistoricalPair]:
         return datasets.list_pairs()
+
+    @app.post("/historical/onboarding/preflight", response_model=OnboardingPreviewResponse)
+    def historical_onboarding_preflight(request: OnboardingRequest) -> OnboardingPreviewResponse:
+        try:
+            return onboarding_preview(request)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/historical/onboarding/import")
+    def historical_onboarding_import(request: OnboardingImportRequest) -> dict:
+        # Explicit mutation boundary. Always revalidate files and readiness.
+        with onboarding_import_lock:
+            try:
+                current = onboarding_preview(OnboardingRequest.model_validate(
+                    request.model_dump(exclude={"snapshot_id", "dataset_name", "confirmation"})
+                ))
+            except (ValueError, OSError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            if not current.report.ready_to_import:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"reason": "preflight_blocked", "blockers": current.report.blockers},
+                )
+            if current.snapshot_id != request.snapshot_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Dataset files or onboarding options changed; run preflight again",
+                )
+
+            importer = HistoricalImporter(datasets)
+            try:
+                if request.mode == "manifest":
+                    result = importer.import_manifest(
+                        Path(request.manifest_path or ""),
+                        dataset_name=request.dataset_name,
+                        seed=request.seed,
+                    )
+                else:
+                    result = importer.import_folders(
+                        Path(request.source_dir or ""),
+                        Path(request.target_dir or ""),
+                        dataset_name=request.dataset_name,
+                        id_regex=request.id_regex or None,
+                        seed=request.seed,
+                        allow_visual_fallback=request.allow_visual_fallback,
+                    )
+            except (ValueError, OSError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            return {
+                **result.to_dict(),
+                "production_execution_enabled": False,
+            }
 
     @app.get("/harness/runs", response_model=list[BenchmarkScorecard])
     def list_harness_runs() -> list[BenchmarkScorecard]:

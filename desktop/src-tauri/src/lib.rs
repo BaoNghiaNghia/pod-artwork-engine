@@ -51,6 +51,7 @@ fn spawn_engine() -> std::io::Result<Child> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(EngineProcess(Mutex::new(None)))
         .setup(|app| {
             match spawn_engine() {
