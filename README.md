@@ -852,6 +852,26 @@ the desktop's local engine; they do not enable production pixel-path policy or
 promote any harness candidates. After an approved import, run the existing
 Golden holdout preflight to determine which benchmark lanes are ready.
 
+### Golden Readiness in desktop (v0.1.2)
+
+The Historical Dataset page adds a **Golden Holdout readiness** section:
+choose an already registered dataset, optionally select a custom benchmark recipe
+and local/remote SR adapter JSON, then press **Check Golden readiness**.
+A read-only `POST /harness/golden-preflight` endpoint runs the same
+`GoldenHoldoutPreflightBuilder` as the CLI and reports independent states for
+Registration, Material Separation and Super-resolution, including missing assets,
+recipe errors, Golden count and SR backend blockers.
+
+After import the new dataset is selected automatically. The Windows release now
+ships `config/benchmark-recipe.local.json` and the frozen engine locates this
+recipe next to its executable, even when launched from a different working directory.
+No synthetic Golden evidence, automatic benchmark runs, policy promotion or production
+activation are created by this UI.
+
+The current local registry contains no historical dataset. Users must select and
+approve real source/final images in steps 1–3 before any real Golden measurements
+can begin.
+
 ### Performance & Simplicity Foundation
 
 Implemented without changing production activation policy or router thresholds:

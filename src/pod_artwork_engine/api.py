@@ -8,6 +8,8 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from pydantic import BaseModel, Field
+
 import psutil
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -25,6 +27,7 @@ from .contracts import (
 )
 from .dataset_registry import DatasetRegistry
 from .engine import Engine
+from .golden_preflight import GoldenHoldoutPreflight, GoldenHoldoutPreflightBuilder
 from .hardware import detect_hardware
 from .historical_import import HistoricalImporter
 from .onboarding_workflow import (
@@ -39,6 +42,14 @@ from .local_ocr import backend_status as local_ocr_backend_status
 from .scheduler import recommended_job_concurrency
 from .settings import Settings
 from .updater import UpdateManager
+
+
+class GoldenPreflightRequest(BaseModel):
+    dataset_id: str | None = None
+    recipe_path: str | None = None
+    local_sr_adapter_path: str | None = None
+    remote_sr_adapter_path: str | None = None
+    minimum_golden_cases: int = Field(default=3, ge=1, le=10000)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -234,6 +245,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 **result.to_dict(),
                 "production_execution_enabled": False,
             }
+
+    @app.post("/harness/golden-preflight", response_model=GoldenHoldoutPreflight)
+    def golden_preflight(request: GoldenPreflightRequest) -> GoldenHoldoutPreflight:
+        # Read-only evidence preflight: no benchmark execution or policy activation.
+        return GoldenHoldoutPreflightBuilder(settings, datasets).build(
+            dataset_id=request.dataset_id,
+            recipe_path=Path(request.recipe_path) if request.recipe_path else None,
+            local_sr_adapter_path=(
+                Path(request.local_sr_adapter_path) if request.local_sr_adapter_path else None
+            ),
+            remote_sr_adapter_path=(
+                Path(request.remote_sr_adapter_path) if request.remote_sr_adapter_path else None
+            ),
+            minimum_golden_cases=request.minimum_golden_cases,
+        )
 
     @app.get("/harness/runs", response_model=list[BenchmarkScorecard])
     def list_harness_runs() -> list[BenchmarkScorecard]:

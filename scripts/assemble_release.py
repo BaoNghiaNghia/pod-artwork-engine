@@ -47,6 +47,15 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
     for name, source in sources.items():
         shutil.copy2(source, release_dir / name)
 
+    # Ship an immutable benchmark recipe with the standalone app. The preflight
+    # does not use this as Golden evidence; it only validates benchmark config.
+    recipe_source = repo_root / "config" / "benchmark-recipe.local.json"
+    if not recipe_source.is_file():
+        raise FileNotFoundError(f"Missing benchmark recipe for release: {recipe_source}")
+    recipe_target = release_dir / "config" / recipe_source.name
+    recipe_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(recipe_source, recipe_target)
+
     ocr_runtime_source = repo_root / "vendor" / "tesseract"
     ocr_runtime_included = ocr_runtime_source.is_dir()
     if ocr_runtime_included:
@@ -64,6 +73,7 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         archive.write(release_dir / DESKTOP_EXECUTABLE, DESKTOP_EXECUTABLE)
         archive.write(release_dir / ENGINE_EXECUTABLE, ENGINE_EXECUTABLE)
+        archive.write(recipe_target, recipe_target.relative_to(release_dir).as_posix())
         runtime_dir = release_dir / "runtime"
         if runtime_dir.is_dir():
             for runtime_file in sorted(runtime_dir.rglob("*")):

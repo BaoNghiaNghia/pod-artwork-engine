@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import GoldenReadiness from "./GoldenReadiness";
 
 const ENGINE_URL = "http://127.0.0.1:8765";
 
@@ -331,6 +332,7 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
           </>
         )}
       </div>
+      <GoldenReadiness engineOnline={engineOnline} importedDatasetId={imported?.dataset?.dataset_id} />
       {error && <p className="dataset-error" role="alert">{error}</p>}
     </section>
   );

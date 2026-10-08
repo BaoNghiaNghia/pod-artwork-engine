@@ -22,6 +22,7 @@ def test_release_assembly_includes_optional_bundled_ocr_runtime(
         b"desktop",
     )
     _write(tmp_path / "build" / "engine" / ENGINE_EXECUTABLE, b"engine")
+    _write(tmp_path / "config" / "benchmark-recipe.local.json", b'{"recipe_id":"test","version":"1"}')
     _write(tmp_path / "vendor" / "tesseract" / "tesseract.exe", b"tesseract")
     _write(
         tmp_path / "vendor" / "tesseract" / "tessdata" / "eng.traineddata",
@@ -41,6 +42,7 @@ def test_release_assembly_includes_optional_bundled_ocr_runtime(
         names = set(archive.namelist())
     assert DESKTOP_EXECUTABLE in names
     assert ENGINE_EXECUTABLE in names
+    assert "config/benchmark-recipe.local.json" in names
     assert "runtime/tesseract/tesseract.exe" in names
     assert "runtime/tesseract/tessdata/eng.traineddata" in names
 
@@ -54,6 +56,7 @@ def test_release_assembly_remains_valid_without_optional_ocr_runtime(
         b"desktop",
     )
     _write(tmp_path / "build" / "engine" / ENGINE_EXECUTABLE, b"engine")
+    _write(tmp_path / "config" / "benchmark-recipe.local.json", b'{"recipe_id":"test","version":"1"}')
 
     result = assemble(tmp_path)
 

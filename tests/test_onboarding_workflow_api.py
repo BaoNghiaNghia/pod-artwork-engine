@@ -128,3 +128,60 @@ def test_manifest_preflight_is_read_only(tmp_path: Path) -> None:
     assert preflight.json()["report"]["pair_count"] == 4
     assert preflight.json()["snapshot_id"]
     assert client.get("/historical/pairs").json() == []
+
+def test_golden_readiness_api_blocks_without_real_dataset(tmp_path: Path) -> None:
+    client = TestClient(create_app(Settings(data_root=tmp_path / "app")))
+    response = client.post("/harness/golden-preflight", json={})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["registration"]["ready"] is False
+    assert body["material_separation"]["ready"] is False
+    assert body["super_resolution"]["ready"] is False
+    assert "golden_preflight_no_datasets_registered" in body["blockers"]
+    assert body["production_execution_enabled"] is False
+    assert client.get("/datasets").json() == []
+
+
+def test_golden_readiness_api_after_verified_import_is_read_only(tmp_path: Path) -> None:
+    from pod_artwork_engine.harness_models import BenchmarkRecipe
+
+    sources, targets = _corpus(tmp_path)
+    client = TestClient(create_app(Settings(data_root=tmp_path / "app")))
+    request = {
+        "mode": "folders",
+        "source_dir": str(sources),
+        "target_dir": str(targets),
+        "minimum_golden_cases": 1,
+        "seed": "golden-ui",
+    }
+    preflight = client.post("/historical/onboarding/preflight", json=request).json()
+    assert preflight["snapshot_id"]
+    imported = client.post(
+        "/historical/onboarding/import",
+        json={**request, "snapshot_id": preflight["snapshot_id"],
+              "dataset_name": "golden-ui", "confirmation": "IMPORT"},
+    )
+    assert imported.status_code == 200
+    dataset_id = imported.json()["dataset"]["dataset_id"]
+    recipe_path = tmp_path / "benchmark-recipe.json"
+    recipe_path.write_text(
+        BenchmarkRecipe(recipe_id="ui-golden-recipe", version="1").model_dump_json(),
+        encoding="utf-8",
+    )
+    response = client.post(
+        "/harness/golden-preflight",
+        json={"dataset_id": dataset_id, "recipe_path": str(recipe_path),
+              "minimum_golden_cases": 1},
+    )
+    assert response.status_code == 200
+    report = response.json()
+    assert report["status"] == "partial"
+    assert report["registration"]["ready"] is True
+    assert report["material_separation"]["ready"] is True
+    assert report["super_resolution"]["ready"] is False
+    assert "golden_preflight_sr_backend_unavailable" in report["super_resolution"]["blockers"]
+    assert report["recipe_id"] == "ui-golden-recipe"
+    assert report["golden_case_count"] >= 1
+    assert report["production_execution_enabled"] is False
+    assert len(client.get("/datasets").json()) == 1

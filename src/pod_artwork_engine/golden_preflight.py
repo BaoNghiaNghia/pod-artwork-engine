@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -184,9 +185,24 @@ class GoldenHoldoutPreflightBuilder:
 
         resolved_recipe = _resolve_optional(recipe_path)
         if resolved_recipe is None:
-            default_recipe = (Path.cwd() / "config" / "benchmark-recipe.local.json").resolve()
-            if default_recipe.is_file():
-                resolved_recipe = default_recipe
+            recipe_candidates = []
+            if getattr(sys, "frozen", False):
+                # Windows release: the engine and packaged config are siblings.
+                recipe_candidates.append(
+                    Path(sys.executable).resolve().parent
+                    / "config"
+                    / "benchmark-recipe.local.json"
+                )
+            recipe_candidates.extend([
+                Path.cwd() / "config" / "benchmark-recipe.local.json",
+                Path(__file__).resolve().parents[2]
+                / "config"
+                / "benchmark-recipe.local.json",
+            ])
+            resolved_recipe = next(
+                (candidate.resolve() for candidate in recipe_candidates if candidate.is_file()),
+                None,
+            )
 
         recipe_sha256: str | None = None
         recipe_id: str | None = None
