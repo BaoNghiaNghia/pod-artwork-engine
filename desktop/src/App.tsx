@@ -1,6 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
 import ProviderSettings from "./ProviderSettings";
+import AIChat from "./AIChat";
 import { getVersion } from "@tauri-apps/api/app";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
@@ -65,7 +66,7 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<QualityMode>("print_ready");
   const [advanced, setAdvanced] = useState(false);
-  const [activeTab, setActiveTab] = useState<"artwork" | "dataset" | "provider">("artwork");
+  const [activeTab, setActiveTab] = useState<"artwork" | "chat" | "dataset" | "provider">("artwork");
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [providerRefresh, setProviderRefresh] = useState(0);
@@ -240,6 +241,8 @@ export default function App() {
           className={activeTab === "artwork" ? "selected" : ""}
           onClick={() => setActiveTab("artwork")}
         >Artwork</button>
+        <button className={activeTab === "chat" ? "selected" : ""}
+          onClick={() => setActiveTab("chat")}>AI Image Chat</button>
         <button
           className={activeTab === "dataset" ? "selected" : ""}
           onClick={() => setActiveTab("dataset")}
@@ -473,17 +476,18 @@ export default function App() {
               src={`${ENGINE_URL}/jobs/${job.job_id}/output`}
               alt="Reconstructed artwork"
             />
-            <a
-              className="primary-button"
-              href={`${ENGINE_URL}/jobs/${job.job_id}/output`}
-              download={`pod-artwork-${job.job_id.slice(0, 12)}.png`}
-            >
-              Export PNG
-            </a>
+            <div className="output-actions">
+              <a className="primary-button" href={`${ENGINE_URL}/jobs/${job.job_id}/output`}
+                download={`pod-artwork-${job.job_id.slice(0, 12)}.png`}>Export PNG</a>
+              <button className="secondary-button" onClick={() => setActiveTab("chat")}>Chỉnh bằng AI Chat</button>
+            </div>
           </div>
         )}
       </section>
       </>
+      ) : activeTab === "chat" ? (
+        <AIChat engineOnline={engineOnline} inputFiles={files} artworkJob={job}
+          onPrintCheck={(checked) => { setJob(checked as Job); setActiveTab("artwork"); }} />
       ) : activeTab === "dataset" ? (
         <DatasetOnboarding engineOnline={engineOnline} />
       ) : (

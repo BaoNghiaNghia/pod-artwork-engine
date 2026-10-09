@@ -12,6 +12,16 @@ Standalone Windows tool for reconstructing clean 2D POD artwork from product/moc
 - CPU-first local precision processing
 - 40 GB absolute tool-storage cap
 
+## AI Image Chat (v0.1.9)
+
+Desktop **AI Image Chat** lets you edit artwork directly with natural-language instructions, including Vietnamese. The workflow keeps the source and every AI edit as immutable, job-scoped versions; select any completed version to continue editing or branch from an earlier version. The first edit of a new chat session uses the primary image and up to nine additional visual references. An existing artwork job can also be edited.
+
+**Simple setup:** open *AI Image Chat*, enter an OpenAI API key and image model ID (default `gpt-image-1`), then select an artwork job or upload image references and create a session. Enter a prompt, click **Gửi yêu cầu chỉnh sửa**, and wait for the version to complete. Click a previous version to edit that version. Supported public API: OpenAI `POST /v1/images/edits` (the engine handles the multipart request). An internet connection and separate API billing are required. No additional large local image-model download is necessary.
+
+The API key stays in Engine memory only and **is never saved in app config, job metadata, or logs**. Optional persistent setup: set `POD_IMAGE_API_KEY` and `POD_IMAGE_MODEL` as environment variables before starting the engine. The Images API request is sent directly over HTTPS, independently of the POD-specific provider gateway in **AI Settings**. Existing typed reconstruction-provider configuration remains unchanged.
+
+Chat-generated PNGs are labeled **AI drafts, not print ready**. You can download drafts for review, or click **Kiểm tra chuẩn in** to create a new child job that runs the production pipeline and its semantic/technical quality gates. Only outputs from **completed** QC-approved jobs can be exported as print-ready artwork. Source, previous chat versions and earlier outputs are not overwritten. Image transfers are normalized to a maximum 1536-pixel long edge; the generated raster is not misrepresented as a native 4500×5400 print master. All files stay under the existing 40 GB storage budget.
+
 ## Current implementation stage
 
 ### Phase 0A — Standalone Foundation

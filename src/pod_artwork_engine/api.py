@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .local_draft import local_draft_for_job, preview_kind_for_job, marked_preview_for_job
+from .image_chat import ImageChatService, ImageChatConfig, ImageChatRequest, ImageChatError
 from .provider_control import ProviderConfigUpdate, apply_provider_config, sanitized_config, test_provider_contract
 from .providers import ProviderUnavailable, ProviderProtocolError
 from .contracts import (
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     job_slots = asyncio.Semaphore(job_concurrency)
     onboarding_import_lock = threading.Lock()
     pair_preview_sessions = PairPreviewSessions()
+    image_chat = ImageChatService(settings)
 
     async def run_job_with_slot(job_id: str) -> None:
         async with job_slots:
@@ -458,6 +460,111 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
             "X-POD-Output-Type": "draft-not-print-ready",
+        })
+
+    @app.post("/image-chat/sessions", response_model=JobRecord)
+    async def create_image_chat_session(files: list[UploadFile] = File(...)) -> JobRecord:
+        if not 1 <= len(files) <= 10:
+            raise HTTPException(status_code=400, detail="Choose 1 to 10 reference images")
+        staging = Path(tempfile.mkdtemp(prefix="pod-chat-", dir=settings.data_root))
+        staged_paths: list[Path] = []
+        try:
+            for index, upload in enumerate(files):
+                safe_name = Path(upload.filename or f"reference-{index}.png").name
+                target = staging / f"{index:02d}-{safe_name}"
+                total = 0
+                with target.open("wb") as handle:
+                    while chunk := await upload.read(1024 * 1024):
+                        total += len(chunk)
+                        if total > 15 * 1024 * 1024:
+                            raise HTTPException(status_code=413, detail="Each image must be under 15 MB")
+                        handle.write(chunk)
+                from PIL import Image
+                try:
+                    with Image.open(target) as image:
+                        image.verify()
+                except (OSError, ValueError) as exc:
+                    raise HTTPException(status_code=400, detail="Invalid reference image") from exc
+                staged_paths.append(target)
+            return engine.create_job(staged_paths, QualityMode.QUICK_2D)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+
+    @app.post("/jobs/{job_id}/image-chat/{version_id}/print-check", response_model=JobRecord)
+    async def image_chat_print_check(job_id: str, version_id: str) -> JobRecord:
+        previous = engine.jobs.get(job_id)
+        if previous is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        image = image_chat.image_path(job_id, version_id)
+        if image is None:
+            raise HTTPException(status_code=409, detail="AI version is not ready")
+        checked = engine.create_job(
+            [image], QualityMode.PRINT_READY, parent_job_id=job_id,
+        )
+        asyncio.create_task(run_job_with_slot(checked.job_id))
+        return checked
+
+    @app.get("/image-chat/config")
+    def image_chat_config() -> dict:
+        return image_chat.status()
+
+    @app.post("/image-chat/config")
+    def set_image_chat_config(request: ImageChatConfig) -> dict:
+        try:
+            return image_chat.configure(request)
+        except ImageChatError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/jobs/{job_id}/image-chat/source")
+    def image_chat_source(job_id: str):
+        job = engine.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        source = image_chat.source_for_job(job)
+        if source is None:
+            raise HTTPException(status_code=404, detail="Source image not found")
+        from PIL import Image, ImageOps
+        from io import BytesIO
+        with Image.open(source) as original:
+            picture = ImageOps.exif_transpose(original).convert("RGBA")
+            picture.thumbnail((900, 900), Image.Resampling.LANCZOS)
+            content = BytesIO()
+            picture.save(content, format="PNG")
+        return Response(
+            content=content.getvalue(), media_type="image/png",
+            headers={"Cache-Control": "private, no-store",
+                     "X-POD-Output-Type": "source-preview"},
+        )
+
+    @app.get("/jobs/{job_id}/image-chat")
+    def image_chat_versions(job_id: str) -> list[dict]:
+        if not engine.jobs.get(job_id):
+            raise HTTPException(status_code=404, detail="Job not found")
+        return image_chat.list_versions(job_id)
+
+    @app.post("/jobs/{job_id}/image-chat", status_code=202)
+    async def edit_image_with_chat(job_id: str, request: ImageChatRequest) -> dict:
+        job = engine.jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        try:
+            version = image_chat.start(job, request)
+        except ImageChatError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        asyncio.create_task(asyncio.to_thread(image_chat.generate, job, version["version_id"]))
+        return version
+
+    @app.get("/jobs/{job_id}/image-chat/{version_id}/image")
+    def image_chat_result(job_id: str, version_id: str):
+        if not engine.jobs.get(job_id):
+            raise HTTPException(status_code=404, detail="Job not found")
+        path = image_chat.image_path(job_id, version_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Image version not ready")
+        return FileResponse(path, media_type="image/png", headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-POD-Output-Type": "ai-edit-preview-not-print-ready",
         })
 
     @app.get("/performance")
