@@ -53,6 +53,7 @@ from .local_ocr import LocalOCRUnavailable, analyze_artwork_text, available as l
 from .logging_config import log_event
 from .material_separation import build_material_separation_evidence
 from .multi_reference import build_reference_fusion
+from .output_readiness import artwork_output_blockers
 from .preflight import inspect_image, sha256_file
 from .performance import PerformanceStore, StageCache
 from .providers import (
@@ -207,12 +208,17 @@ class Engine:
             )
         log_event(logger, event, **fields)
 
-    def create_job(self, source_paths: list[Path], quality_mode: QualityMode) -> JobRecord:
+    def create_job(
+        self, source_paths: list[Path], quality_mode: QualityMode,
+        *, force_remote: bool = False, parent_job_id: str | None = None,
+    ) -> JobRecord:
         required = sum(path.stat().st_size for path in source_paths if path.exists())
         self.storage.assert_capacity(required)
         job = JobRecord(
             quality_mode=quality_mode,
             source_paths=[str(path) for path in source_paths],
+            force_remote=force_remote,
+            parent_job_id=parent_job_id,
         )
         job_dir = self._job_dir(job.job_id)
         (job_dir / "source").mkdir(parents=True, exist_ok=True)
@@ -1007,7 +1013,17 @@ class Engine:
         if isinstance(checkpoint, dict):
             return RouteDecision.model_validate(checkpoint)
 
-        if self.route_override is not None:
+        if job.force_remote:
+            if not self.provider.available:
+                raise ProviderUnavailable("AI retry requires an available provider")
+            decision = RouteDecision(
+                route=RouteKind.REMOTE_SEMANTIC,
+                required_capabilities=sorted(set(design_spec.required_capabilities) | {"need_semantic_reconstruction"}),
+                reason_codes=["explicit_user_ai_retry"],
+                use_remote_provider=True,
+                deterministic_finish=False,
+            )
+        elif self.route_override is not None:
             decision = forced_route_decision(
                 design_spec,
                 self.route_override,
@@ -1095,14 +1111,16 @@ class Engine:
             RouteKind.HYBRID,
         }
         deterministic_typography = (
-            route.deterministic_finish
+            not job.force_remote
+            and route.deterministic_finish
             and not harness_force_remote
             and design_spec.artwork_type is ArtworkType.TYPOGRAPHY
             and design_spec.typography is not None
             and bool(design_spec.typography.lines)
         )
         deterministic_geometry = (
-            route.deterministic_finish
+            not job.force_remote
+            and route.deterministic_finish
             and not harness_force_remote
             and design_spec.artwork_type is ArtworkType.LOGO
             and design_spec.geometry is not None
@@ -1631,6 +1649,40 @@ class Engine:
                 route,
                 fusion,
             )
+            output_blockers = artwork_output_blockers(
+                design_spec,
+                material_evidence,
+                candidate,
+                used_remote=used_remote,
+            )
+            self.checkpoints.write(
+                job_id,
+                "output_readiness",
+                {
+                    "print_artwork_isolated": not output_blockers,
+                    "blockers": output_blockers,
+                    "candidate_is_local_baseline": candidate.local_baseline,
+                    "remote_reconstruction_used": used_remote,
+                },
+            )
+            if output_blockers:
+                final_job = self.jobs.transition(
+                    job_id,
+                    JobState.REVIEW_REQUIRED,
+                    progress=1.0,
+                    message="No 2D artwork created — mockup requires semantic reconstruction",
+                    failure_category=FailureCategory.QUALITY_FAILURE,
+                    failure_reason=", ".join(output_blockers),
+                )
+                self._log_stage(
+                    final_job,
+                    "mockup_output_blocked",
+                    stage="job_total",
+                    duration_ms=round((time.perf_counter() - pipeline_started) * 1000),
+                    failure_reason=final_job.failure_reason,
+                )
+                return final_job
+
             judge_provider = self._judge_semantics(
                 job,
                 source_paths,

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import psutil
 
+from .provider_config import load_configuration
+
 
 GIB = 1024 ** 3
 MIB = 1024 ** 2
@@ -37,6 +39,7 @@ class Settings:
     remote_provider_url: str = ""
     remote_provider_token: str = ""
     remote_provider_name: str = "remote"
+    remote_provider_model_alias: str = ""
     remote_provider_timeout_seconds: float = 120.0
     remote_provider_failure_threshold: int = 3
     remote_provider_cooldown_seconds: float = 30.0
@@ -57,6 +60,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         default_root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "PODArtworkTool"
         root = Path(os.environ.get("POD_ARTWORK_DATA", default_root))
+        configured = load_configuration(root)
 
         logical = psutil.cpu_count(logical=True) or 8
         total_ram = psutil.virtual_memory().total
@@ -74,11 +78,12 @@ class Settings:
             max_concurrent_jobs=max(0, int(os.environ.get("POD_MAX_CONCURRENT_JOBS", "0"))),
             release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
             release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
-            remote_provider_url=os.environ.get("POD_REMOTE_PROVIDER_URL", ""),
+            remote_provider_url=os.environ.get("POD_REMOTE_PROVIDER_URL", configured.url if configured else ""),
             remote_provider_token=os.environ.get("POD_REMOTE_PROVIDER_TOKEN", ""),
-            remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", "remote"),
+            remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", configured.name if configured else "remote"),
+            remote_provider_model_alias=os.environ.get("POD_REMOTE_PROVIDER_MODEL_ALIAS", configured.model_alias if configured else ""),
             remote_provider_timeout_seconds=float(
-                os.environ.get("POD_REMOTE_PROVIDER_TIMEOUT_SECONDS", "120")
+                os.environ.get("POD_REMOTE_PROVIDER_TIMEOUT_SECONDS", str(configured.timeout_seconds if configured else 120))
             ),
             remote_provider_failure_threshold=max(
                 1, int(os.environ.get("POD_REMOTE_PROVIDER_FAILURE_THRESHOLD", "3"))

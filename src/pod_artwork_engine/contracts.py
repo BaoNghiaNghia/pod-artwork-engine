@@ -675,6 +675,8 @@ class JobRecord(StrictModel):
     job_id: str = Field(default_factory=lambda: uuid4().hex)
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
     quality_mode: QualityMode = QualityMode.PRINT_READY
+    force_remote: bool = False
+    parent_job_id: str | None = None
     state: JobState = JobState.QUEUED
     progress: float = Field(default=0, ge=0, le=1)
     stage_message: str = "Queued"

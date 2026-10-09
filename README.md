@@ -895,6 +895,85 @@ with no registry writes. Stale/modified images, expired tokens, bad indices
 and unsupported roles return 404, leaving the import gate unchanged.
 Even a blocked preflight may expose otherwise valid paired images for diagnosis.
 
+### AI provider connection and output recovery (v0.1.8)
+
+The desktop **AI Settings** tab now saves a POD typed-protocol provider's
+HTTPS endpoint, provider name, model alias and timeout in the local
+`provider-config.json`. A bearer API key entered via the UI stays in the
+current Engine process memory and is never written to the configuration
+file, logs or API response; set `POD_REMOTE_PROVIDER_TOKEN` in the Engine
+environment if a restart-persistent key is required.
+
+**Test provider** deliberately runs one real typed ANALYZE request with a
+synthetic image (the provider may charge for it), validates that a
+`design_spec` is returned, and does **not** claim to test reconstruction
+until a real reconstruction job runs. This provider interface expects
+`ProviderRequest`/`ProviderResult`; **OpenAI/Gemini API URLs are not
+plug-and-play** without a matching adapter.
+
+**Retry with AI** is an explicit new job that retains the parent job's
+images and quality mode but forces the remote semantic reconstruction route;
+it never overwrites the failed job. If the provider is unavailable or returns
+no image, the normal fail-closed output policy still applies.
+
+**Local Draft** displays a limited 900px preview of an already produced
+local baseline candidate, stamped `LOCAL DRAFT - NOT PRINT READY`.
+If a real provider returns an isolated candidate but semantic QC is still
+incomplete, `/jobs/{id}/ai-candidate` exposes a similarly watermarked
+900px **review-only AI candidate**; its existence never grants print export.
+`/jobs/{id}/preview-info` identifies which kind is actually available.
+Draft and AI candidate endpoints are separate from the print export endpoint,
+which only serves QC-approved `completed` jobs. The desktop distinguishes
+print-ready output, preview-only draft/candidate and AI-required blocked
+output, with Configure AI, Retry with AI and Use better reference actions.
+No model/policy is activated without user configuration.
+
+### Fail-closed mockup-to-2D output gate (v0.1.7)
+
+Job `e538ee2583b445f6875180be6c290457` was diagnosed from the real
+local job registry: the 2000x2000 shirt JPG was mislocalized with an artwork
+bounding box covering 80% width / 81.8% height. With no remote reconstruction
+provider configured, the local baseline cropped most of the sweatshirt and
+masked only the outer background. Its 4500x5400, 300-DPI PNG looked like a
+print file but still contained the clothing. Material separation was already
+`manual_review` / `fail_closed=true` and semantic QC failed with
+`semantic_provider_not_used`; technical QC alone was insufficient.
+
+The production engine now checks **output readiness** after reconstruction
+and before preparing a print master. If a local baseline candidate still
+requires semantic reconstruction and the material-separation gate is blocked,
+the job transitions to `review_required` with a clear reason, without creating
+a false `final/4500x5400.png` or publishing `result_path`. A checkpoint
+records the readiness decision. Verified transparent artwork and genuinely
+reconstructed candidates continue through existing semantic/technical QC.
+
+For legacy jobs with `semantic_provider_not_used`, the output endpoint
+returns HTTP 409 rather than serving an enlarged mockup as a print design.
+Desktop hides mockup previews/downloads as printable 2D, explains the missing
+semantic reconstruction provider, and warns in advance for JPEG mockup inputs
+when the local-only route is configured. This change does not invent or
+activate any AI provider. To reconstruct complex artwork or exact lettering
+from printed apparel, a real semantic reconstruction provider must be
+configured and benchmarked; Golden Holdout policy remains fail-closed.
+
+### Windows WebView2 engine connection fix (v0.1.6)
+
+The Windows Tauri 2 application loads its production UI at
+`http://tauri.localhost`, while the API previously allowed only
+`tauri://localhost` and development origins. The engine correctly returned
+HTTP 200 to `/health` and `/status`, but WebView2 blocked the JavaScript
+`fetch` due to the absent `Access-Control-Allow-Origin` header, displaying
+a misleading "Engine offline" warning.
+
+The loopback-bound API now permits the explicit Windows
+`http://tauri.localhost` origin (and its HTTPS variant); arbitrary web origins
+remain blocked. GET requests for `/status` and the POST preflight to `/jobs`
+and Historical Dataset onboarding have CORS regression tests. Engine startup
+and update policies are unchanged. To verify a packaged binary without
+disturbing the active tool, use `python scripts/smoke_webview_cors.py` to start
+the release engine on an isolated localhost port and probe browser-origin
+responses.
+
 ### Windows updater and Engine offline recovery (v0.1.4)
 
 Root cause confirmed on the live Windows workstation: the 0.1.3 bundle was

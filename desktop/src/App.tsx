@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
+import ProviderSettings from "./ProviderSettings";
 import { getVersion } from "@tauri-apps/api/app";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
@@ -64,9 +65,11 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<QualityMode>("print_ready");
   const [advanced, setAdvanced] = useState(false);
-  const [activeTab, setActiveTab] = useState<"artwork" | "dataset">("artwork");
+  const [activeTab, setActiveTab] = useState<"artwork" | "dataset" | "provider">("artwork");
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
+  const [providerRefresh, setProviderRefresh] = useState(0);
+  const [candidateKind, setCandidateKind] = useState<"local_draft" | "ai_candidate" | null>(null);
   const [error, setError] = useState("");
 
   const progress = useMemo(() => Math.round((job?.progress ?? 0) * 100), [job]);
@@ -78,6 +81,13 @@ export default function App() {
     job && !["completed", "review_required", "failed_final", "cancelled", "blocked_budget"].includes(job.state)
   );
   const activeTimelineIndex = timelineIndex(job?.state);
+  const mockupNotIsolated = Boolean(job?.failure_reason && (
+    job.failure_reason.includes("semantic_provider_not_used")
+    || job.failure_reason.includes("artwork_not_isolated_from_product_mockup")
+  ));
+  const canExport2D = Boolean(job?.state === "completed" && job?.result_path && !mockupNotIsolated);
+  const hasAICandidate = job?.state === "review_required" && candidateKind === "ai_candidate";
+  const requiresSemanticForMockup = files.length > 0 && !engineStatus?.remote_provider_configured;
 
   useEffect(() => {
     return () => {
@@ -109,7 +119,7 @@ export default function App() {
         if (!cancelled) {
           setEngineOnline(false);
           setEngineStatus(null);
-          setEngineIssue("Cannot connect to the engine. Check the desktop-engine.log in LocalAppData/PODArtworkTool/logs.");
+          setEngineIssue("The desktop cannot access the local engine API. Check %LOCALAPPDATA%\\PODArtworkTool\\logs\\desktop-engine.log or restart the app.");
         }
       }
     };
@@ -119,7 +129,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [appVersion]);
+  }, [appVersion, providerRefresh]);
 
   useEffect(() => {
     if (!job || ["completed", "failed_final", "cancelled", "review_required", "blocked_budget"].includes(job.state)) {
@@ -134,6 +144,19 @@ export default function App() {
       }
     }, 750);
     return () => window.clearInterval(timer);
+  }, [job?.job_id, job?.state]);
+
+  useEffect(() => {
+    if (!job || job.state !== "review_required") {
+      setCandidateKind(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${ENGINE_URL}/jobs/${job.job_id}/preview-info`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((info) => { if (!cancelled) setCandidateKind(info?.kind ?? null); })
+      .catch(() => { if (!cancelled) setCandidateKind(null); });
+    return () => { cancelled = true; };
   }, [job?.job_id, job?.state]);
 
   const chooseFiles = (event: ChangeEvent<HTMLInputElement>) => {
@@ -167,6 +190,21 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryWithAI = async () => {
+    if (!job || !engineOnline || !engineStatus?.remote_provider_available || busy) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`${ENGINE_URL}/jobs/${job.job_id}/retry-ai`, { method: "POST" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${response.status}`);
+      }
+      setJob(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to retry with AI");
+    } finally { setBusy(false); }
   };
 
   const providerLabel = !engineStatus?.remote_provider_configured
@@ -206,6 +244,8 @@ export default function App() {
           className={activeTab === "dataset" ? "selected" : ""}
           onClick={() => setActiveTab("dataset")}
         >Historical Dataset</button>
+        <button className={activeTab === "provider" ? "selected" : ""}
+          onClick={() => setActiveTab("provider")}>AI Settings</button>
       </nav>
 
       {activeTab === "artwork" ? (
@@ -292,6 +332,16 @@ export default function App() {
             </div>
           )}
 
+          {requiresSemanticForMockup && (
+            <div className="provider-warning">
+              AI reconstruction is not configured. Product mockups may require
+              semantic reconstruction before a clean 2D PNG can be exported.
+            </div>
+          )}
+
+          <div className="dataset-muted">
+            Best: isolated transparent PNG · Good: close-up artwork · Hard: full garment mockup.
+          </div>
           <button
             className="run-button"
             disabled={!files.length || !engineOnline || busy || jobActive}
@@ -318,7 +368,7 @@ export default function App() {
             return (
               <div className={`timeline-step ${state}`} key={stage.key}>
                 <span className="timeline-dot">{state === "complete" ? "✓" : index + 1}</span>
-                <span>{stage.label}</span>
+                <span>{index === 4 && job?.state === "review_required" ? "Review needed" : stage.label}</span>
               </div>
             );
           })}
@@ -329,7 +379,11 @@ export default function App() {
         </div>
 
         <div className="stage-line">
-          <strong>{job?.stage_message ?? "Select references and press Run."}</strong>
+          <strong>{hasAICandidate
+            ? "AI candidate created — waiting for semantic quality review"
+            : mockupNotIsolated
+              ? "2D artwork not created — mockup separation requires AI"
+              : job?.stage_message ?? "Select references and press Run."}</strong>
           {job && <span>{job.state.replaceAll("_", " ")}</span>}
         </div>
 
@@ -357,7 +411,63 @@ export default function App() {
           </div>
         )}
 
-        {job?.result_path && (
+        {job && (
+          <div className="output-label" role="status">
+            {canExport2D ? "Print-ready PNG available" :
+              hasAICandidate ? "AI candidate preview — not print-ready" :
+              mockupNotIsolated ? "Blocked — AI required · local draft only" :
+              jobActive ? "Processing — QC pending" : "Review needed — no approved print output"}
+          </div>
+        )}
+        {mockupNotIsolated && !hasAICandidate && (
+          <div className="output-not-ready" role="alert">
+            <strong>No isolated 2D artwork available</strong>
+            <p>The file is only a crop of the original product photo, not a
+              print-ready design. This job needs an AI reconstruction provider
+              to remove the garment and reconstruct the artwork faithfully.
+              No misleading Export PNG is offered.</p>
+            <span>For local-only processing, use an already isolated artwork
+              file with transparency rather than a shirt mockup.</span>
+            <div className="recovery-actions">
+              <button className="secondary-button" onClick={() => setActiveTab("provider")}>Configure AI</button>
+              <button className="secondary-button" onClick={retryWithAI}
+                disabled={!engineStatus?.remote_provider_available || busy}>
+                {busy ? "Starting…" : "Retry with AI"}
+              </button>
+              <label className="secondary-button">Use better reference
+                <input type="file" accept="image/*" multiple onChange={chooseFiles} hidden />
+              </label>
+            </div>
+            {candidateKind === "local_draft" && (
+              <div className="draft-preview">
+                <div className="eyebrow">LOCAL DRAFT · NOT PRINT READY</div>
+                <img src={`${ENGINE_URL}/jobs/${job?.job_id}/draft`} alt="Preview only — local crop not suitable for printing" />
+                <p>Preview only. Garment pixels may remain; no print-ready export is available.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasAICandidate && job && (
+          <div className="output-not-ready">
+            <strong>AI candidate generated · QC approval required</strong>
+            <p>The AI candidate can be inspected, but exact text, layout and detail fidelity
+              have not passed all semantic checks. Print-ready export remains disabled.</p>
+            <div className="draft-preview">
+              <div className="eyebrow">AI CANDIDATE · PREVIEW ONLY</div>
+              <img src={`${ENGINE_URL}/jobs/${job.job_id}/ai-candidate`}
+                alt="AI-generated design candidate, not approved for printing" />
+              <p>Watermarked preview. Use more references or a validated semantic judge before final export.</p>
+            </div>
+            <div className="recovery-actions">
+              <button className="secondary-button" onClick={() => setActiveTab("provider")}>Configure AI</button>
+              <button className="secondary-button" onClick={retryWithAI}
+                disabled={!engineStatus?.remote_provider_available || busy}>Retry with AI</button>
+            </div>
+          </div>
+        )}
+
+        {canExport2D && job && (
           <div className="output-preview">
             <img
               src={`${ENGINE_URL}/jobs/${job.job_id}/output`}
@@ -374,8 +484,10 @@ export default function App() {
         )}
       </section>
       </>
-      ) : (
+      ) : activeTab === "dataset" ? (
         <DatasetOnboarding engineOnline={engineOnline} />
+      ) : (
+        <ProviderSettings engineOnline={engineOnline} onChanged={() => setProviderRefresh((value) => value + 1)} />
       )}
     </main>
   );

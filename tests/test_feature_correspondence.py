@@ -417,5 +417,13 @@ def test_engine_persists_feature_correspondence_without_pixel_operation(
         / "master"
         / "artifact_manifest.json"
     )
-    assert manifest_path.is_file()
-    assert '"feature_correspondence"' in manifest_path.read_text(encoding="utf-8")
+    readiness = engine.checkpoints.payload(job.job_id, "output_readiness")
+    if readiness and not readiness["print_artwork_isolated"]:
+        # The correspondence is recorded even when the newer fail-closed gate
+        # refuses to publish an unisolated mockup as an artwork master.
+        assert result.state is JobState.REVIEW_REQUIRED
+        assert result.result_path is None
+        assert not manifest_path.exists()
+    else:
+        assert manifest_path.is_file()
+        assert '"feature_correspondence"' in manifest_path.read_text(encoding="utf-8")

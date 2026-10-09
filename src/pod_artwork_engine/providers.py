@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from .contracts import ProviderActionRecipe, ProviderRecipe, ProviderRequest, ProviderResult
+from .contracts import ProviderAction, ProviderActionRecipe, ProviderRecipe, ProviderRequest, ProviderResult
 from .settings import Settings
 from .typed_control import TypedBoundaryError, validate_typed_payload
 
@@ -98,7 +98,10 @@ class RemoteProvider:
     def recipe(self) -> ProviderRecipe:
         path = self.settings.provider_recipe_path
         if path is None:
-            return ProviderRecipe(provider_name=self.settings.remote_provider_name)
+            return ProviderRecipe(
+                provider_name=self.settings.remote_provider_name,
+                actions=[ProviderActionRecipe(action=action, model_alias=self.settings.remote_provider_model_alias) for action in ProviderAction],
+            )
         resolved = path.expanduser().resolve()
         if not resolved.is_file():
             raise ProviderProtocolError(f"provider recipe not found: {resolved}")

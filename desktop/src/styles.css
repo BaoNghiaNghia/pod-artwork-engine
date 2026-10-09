@@ -469,3 +469,24 @@ h2, h3 { margin: 0; }
 .app-version { display:inline-block; margin-left:8px; vertical-align:middle; font-size:12px; font-weight:650; color:#6d7b96; white-space:nowrap; }
 .engine-issue { max-width:350px; margin-top:7px; color:#b3525d; font-size:11px; line-height:1.4; text-align:right; }
 @media (max-width:560px) { .engine-issue { text-align:left; } }
+
+.output-not-ready { margin-top: 18px; padding: 17px 18px; border: 1px solid #ecc9ad; background: #fff7ee; border-radius: 12px; color: #784c26; }
+.output-not-ready strong { display: block; font-size: 14px; }
+.output-not-ready p { font-size: 12px; line-height: 1.6; margin: 9px 0; }
+.output-not-ready span { display: block; font-size: 11px; color: #8f704d; }
+.provider-warning { margin: 11px 0; border-left: 3px solid #b4782d; padding: 9px 12px; border-radius: 6px; background: #fff8e9; font-size: 11px; line-height: 1.5; color: #845927; }
+
+.provider-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.provider-fields label {display:block;min-width:0}
+.provider-fields label>span {display:block;font-size:12px;color:#46536b;font-weight:700;margin-bottom:6px}
+.provider-fields input {display:block;width:100%;min-width:0;padding:10px 11px;border:1px solid #dce2ec;border-radius:9px;background:white;color:#25344a}
+.provider-fields .dataset-checkbox-row {display:flex;align-items:center;gap:8px}
+.provider-fields .dataset-checkbox-row input {width:auto}
+.provider-actions,.recovery-actions {display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.provider-actions .secondary-button {margin-top:16px}
+.recovery-actions .secondary-button:disabled {opacity:.5;cursor:not-allowed}
+.draft-preview {max-width:430px;margin-top:20px;padding:12px;border:1px dashed #d8b99f;border-radius:10px;background:#fff}
+.draft-preview img {width:100%;max-height:370px;object-fit:contain;background:#f1f2f5;border-radius:8px;margin:10px 0}
+.draft-preview p {margin:2px 0;font-size:11px;color:#8e693b}
+.output-label {display:inline-flex;margin:12px 0 4px;padding:6px 11px;border-radius:7px;background:#f1f3f9;color:#3a516c;font-size:12px;font-weight:800}
+@media(max-width:650px){.provider-fields{grid-template-columns:1fr}}

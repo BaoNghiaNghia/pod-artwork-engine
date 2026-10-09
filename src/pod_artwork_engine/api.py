@@ -16,6 +16,9 @@ from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
+from .local_draft import local_draft_for_job, preview_kind_for_job, marked_preview_for_job
+from .provider_control import ProviderConfigUpdate, apply_provider_config, sanitized_config, test_provider_contract
+from .providers import ProviderUnavailable, ProviderProtocolError
 from .contracts import (
     DatasetMember,
     DatasetRecord,
@@ -81,6 +84,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
+            # Tauri 2 WebView2 loads packaged assets from this origin on Windows.
+            # Keep an explicit allowlist; the engine is bound to loopback only.
+            "http://tauri.localhost",
+            "https://tauri.localhost",
             "tauri://localhost",
             "http://localhost:1420",
             "http://127.0.0.1:1420",
@@ -320,8 +327,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = engine.jobs.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        # Legacy jobs may point to an enlarged garment mockup despite a
+        # failed semantic gate. Never serve that artifact as a 2D print.
+        if job.failure_reason and (
+            "semantic_provider_not_used" in job.failure_reason
+            or "artwork_not_isolated_from_product_mockup" in job.failure_reason
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Artwork was not isolated from the product mockup; "
+                "a semantic reconstruction provider is required",
+            )
+        if job.state is not JobState.COMPLETED:
+            raise HTTPException(status_code=409, detail="Print-ready export requires a completed QC-approved job")
         if not job.result_path:
-            raise HTTPException(status_code=404, detail="Output not available")
+            raise HTTPException(status_code=404, detail="2D output not available")
         path = Path(job.result_path)
         if not path.is_file():
             raise HTTPException(status_code=404, detail="Output file missing")
@@ -354,6 +374,91 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return job
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+    @app.get("/provider/config")
+    def provider_config() -> dict:
+        return sanitized_config(engine.provider)
+
+    @app.post("/provider/config")
+    def set_provider_config(request: ProviderConfigUpdate) -> dict:
+        try:
+            new_provider = apply_provider_config(engine.provider, request)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        engine.provider = new_provider
+        engine.settings = new_provider.settings
+        return sanitized_config(new_provider)
+
+    @app.post("/provider/test")
+    async def test_provider() -> dict:
+        try:
+            return await asyncio.to_thread(test_provider_contract, engine.provider)
+        except (ProviderUnavailable, ProviderProtocolError, ValueError, OSError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/jobs/{job_id}/retry-ai", response_model=JobRecord)
+    async def retry_with_ai(job_id: str) -> JobRecord:
+        previous = engine.jobs.get(job_id)
+        if previous is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if previous.state not in {JobState.REVIEW_REQUIRED, JobState.FAILED_FINAL}:
+            raise HTTPException(status_code=409, detail="Retry requires a stopped or review-needed job")
+        if not engine.provider.available:
+            raise HTTPException(status_code=409, detail="Configure an available AI provider before retrying")
+        if not previous.source_paths or not all(Path(path).is_file() for path in previous.source_paths):
+            raise HTTPException(status_code=404, detail="Original source images are missing")
+        retried = engine.create_job(
+            [Path(path) for path in previous.source_paths],
+            previous.quality_mode,
+            force_remote=True,
+            parent_job_id=previous.job_id,
+        )
+        asyncio.create_task(run_job_with_slot(retried.job_id))
+        return retried
+
+    @app.get("/jobs/{job_id}/preview-info")
+    def get_preview_info(job_id: str) -> dict:
+        job = engine.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {
+            "kind": preview_kind_for_job(settings.jobs_dir, job_id)
+            if job.state is JobState.REVIEW_REQUIRED else None,
+            "print_ready": job.state is JobState.COMPLETED,
+        }
+
+    @app.get("/jobs/{job_id}/ai-candidate")
+    def get_ai_candidate(job_id: str):
+        job = engine.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        candidate = marked_preview_for_job(
+            settings.jobs_dir, job_id, kind="ai_candidate",
+            review_required=job.state is JobState.REVIEW_REQUIRED,
+        )
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="AI candidate preview not available")
+        return FileResponse(candidate, media_type="image/png", headers={
+            "Cache-Control": "private, no-store",
+            "X-POD-Output-Type": "ai-candidate-review-only",
+        })
+
+    @app.get("/jobs/{job_id}/draft")
+    def get_local_draft(job_id: str):
+        job = engine.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        blocked = bool(job.state is JobState.REVIEW_REQUIRED and job.failure_reason
+            and ("artwork_not_isolated_from_product_mockup" in job.failure_reason
+                 or "semantic_provider_not_used" in job.failure_reason))
+        draft = local_draft_for_job(settings.jobs_dir, job_id, blocked=blocked)
+        if draft is None:
+            raise HTTPException(status_code=404, detail="Local preview-only draft unavailable")
+        return FileResponse(draft, media_type="image/png", headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-POD-Output-Type": "draft-not-print-ready",
+        })
 
     @app.get("/performance")
     def performance(limit: int = 1000) -> dict:

@@ -128,8 +128,13 @@ def test_health_and_upload_preflight(tmp_path: Path) -> None:
     assert checkpoint.exists()
     assert job["result_path"]
     output = client.get(f"/jobs/{job_id}/output")
-    assert output.status_code == 200
-    assert output.headers["content-type"].startswith("image/png")
+    if job["state"] == "completed":
+        assert output.status_code == 200
+        assert output.headers["content-type"].startswith("image/png")
+    else:
+        # A review-needed artifact is never published as QC-approved 2D.
+        assert output.status_code == 409
+        assert output.headers["content-type"].startswith("application/json")
 
 
 def test_dataset_read_api(tmp_path: Path) -> None:
@@ -192,3 +197,56 @@ def test_harness_read_api(tmp_path: Path) -> None:
 
     status = client.get("/status").json()
     assert status["harness_run_count"] == 1
+
+
+def test_production_tauri_webview_cors_allows_local_engine_requests(tmp_path: Path) -> None:
+    """Windows WebView2 uses http://tauri.localhost, not tauri://localhost."""
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    origin = "http://tauri.localhost"
+
+    for path in ("/health", "/status", "/datasets"):
+        response = client.get(path, headers={"Origin": origin})
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
+        assert response.headers["vary"] == "Origin"
+
+    preflight = client.options(
+        "/jobs?quality_mode=print_ready",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == origin
+    assert "POST" in preflight.headers["access-control-allow-methods"].split(", ")
+
+    onboarding = client.options(
+        "/historical/onboarding/preflight",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert onboarding.status_code == 200
+    assert onboarding.headers["access-control-allow-origin"] == origin
+
+
+def test_engine_cors_does_not_allow_arbitrary_websites(tmp_path: Path) -> None:
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    origin = "https://malicious.example"
+    response = client.get("/status", headers={"Origin": origin})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+    preflight = client.options(
+        "/jobs",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert preflight.status_code == 400
+    assert "access-control-allow-origin" not in preflight.headers
