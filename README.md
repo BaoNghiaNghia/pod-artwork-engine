@@ -895,6 +895,36 @@ with no registry writes. Stale/modified images, expired tokens, bad indices
 and unsupported roles return 404, leaving the import gate unchanged.
 Even a blocked preflight may expose otherwise valid paired images for diagnosis.
 
+### Windows updater and Engine offline recovery (v0.1.4)
+
+Root cause confirmed on the live Windows workstation: the 0.1.3 bundle was
+copied into `%LOCALAPPDATA%/PODArtworkTool/updates/releases/0.1.3`, but
+`update-state.json` kept `current_version=0.1.0`; the launcher therefore
+started the old desktop. An orphaned 0.1.0 engine was still listening on port
+8765 and caused the bootstrap instance-token health gate to fail.
+
+The fix stages a newer **bundled** version without considering it active
+until its exact child engine passes the version + instance-token health gate.
+The updater never downgrades an active version and preserves a newer staged
+remote version. On a staged launch, the bootstrap can reclaim a stale engine
+only when its executable belongs to this tool's managed release directory,
+it listens on the configured engine port, and **no desktop process is running**.
+It does not kill unrelated processes or active desktop instances.
+
+**v0.1.5 follow-up:** the same orphan check also runs when reopening an
+already active release and before any rollback, not only during a new-version
+activation. If a managed desktop process is already running, the launcher
+avoids starting a duplicate UI/engine; any bundled update remains staged until
+the existing window closes. The startup-regression tests cover relaunch,
+repeat opening and unrelated executables.
+
+The desktop shows the native app version next to its title and fails closed
+when the engine API version is incompatible. Engine startup stderr is written
+to a bounded local diagnostic log:
+`%LOCALAPPDATA%/PODArtworkTool/logs/desktop-engine.log`.
+Run `python scripts/diagnose_installation.py` from the repository for
+read-only installed release, running engine and updater-log diagnostics.
+
 ### Performance & Simplicity Foundation
 
 Implemented without changing production activation policy or router thresholds:

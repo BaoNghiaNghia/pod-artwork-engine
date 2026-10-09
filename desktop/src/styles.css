@@ -466,3 +466,6 @@ h2, h3 { margin: 0; }
 .pair-lightbox-views button{padding:5px 9px;border:1px solid #dfe3ed;border-radius:7px;background:#fff;font-size:11px;cursor:pointer}
 .pair-lightbox-views button.selected{background:#edf2ff;color:#315bd2;border-color:#315bd2}
 @media(max-width:640px){.pair-lightbox{padding:12px}.pair-lightbox-grid{grid-template-columns:1fr}.pair-lightbox-grid img{height:min(32vh,280px)}}
+.app-version { display:inline-block; margin-left:8px; vertical-align:middle; font-size:12px; font-weight:650; color:#6d7b96; white-space:nowrap; }
+.engine-issue { max-width:350px; margin-top:7px; color:#b3525d; font-size:11px; line-height:1.4; text-align:right; }
+@media (max-width:560px) { .engine-issue { text-align:left; } }

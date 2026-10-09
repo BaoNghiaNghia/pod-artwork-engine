@@ -126,3 +126,51 @@ def test_discard_staged_removes_failed_release(tmp_path: Path) -> None:
     assert not staged.exists()
     assert manager.state()["staged_version"] is None
     assert manager.state()["failed_version"] == "1.1.0"
+
+def test_new_bundled_version_is_staged_until_health_gated_activation(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    manager = UpdateManager(settings, "0.1.4")
+    old_bundle = _make_release(tmp_path / "old_bundle")
+    manager.seed_current_release(old_bundle, "0.1.0")
+
+    new_bundle = _make_release(tmp_path / "new_bundle")
+    config = new_bundle / "config" / "benchmark-recipe.local.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"recipe_id":"packaged-v1"}', encoding="utf-8")
+    candidate = manager.seed_current_release(new_bundle, "0.1.4")
+
+    assert manager.active_version() == "0.1.0"
+    assert manager.state()["staged_version"] == "0.1.4"
+    assert candidate == manager.releases_dir / "0.1.4"
+    assert (candidate / "config" / "benchmark-recipe.local.json").read_text(
+        encoding="utf-8"
+    ) == '{"recipe_id":"packaged-v1"}'
+
+    manager.mark_active("0.1.4")
+    assert manager.active_version() == "0.1.4"
+    assert manager.state()["staged_version"] is None
+    assert manager.rollback_target() is not None
+
+
+def test_bundled_seed_does_not_override_newer_staged_release(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    manager = UpdateManager(settings, "0.1.4")
+    manager.seed_current_release(_make_release(tmp_path / "old"), "0.1.0")
+    _make_release(manager.releases_dir / "0.1.5")
+    state = manager.state()
+    state["staged_version"] = "0.1.5"
+    manager._write_state(state)
+
+    manager.seed_current_release(_make_release(tmp_path / "bundled"), "0.1.4")
+    assert manager.state()["staged_version"] == "0.1.5"
+    assert manager.active_version() == "0.1.0"
+
+
+def test_bundled_seed_never_downgrades_active_version(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    manager = UpdateManager(settings, "0.1.4")
+    manager.seed_current_release(_make_release(tmp_path / "latest"), "0.1.5")
+    manager.seed_current_release(_make_release(tmp_path / "old"), "0.1.4")
+
+    assert manager.active_version() == "0.1.5"
+    assert manager.state().get("staged_version") is None

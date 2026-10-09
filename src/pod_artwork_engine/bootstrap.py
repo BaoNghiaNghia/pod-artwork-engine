@@ -10,6 +10,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+import psutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -148,6 +150,79 @@ def terminate_process_tree(process: subprocess.Popen) -> None:
             process.kill()
 
 
+def desktop_process_running(settings: Settings) -> bool:
+    """Avoid a duplicate managed GUI/engine instance on the same machine."""
+    releases_root = (settings.updates_dir / "releases").resolve()
+    for process in psutil.process_iter(["name", "exe"]):
+        try:
+            if (process.info.get("name") or "").lower() != DESKTOP_EXECUTABLE.lower():
+                continue
+            executable = process.info.get("exe")
+            if executable and Path(executable).resolve().parent.parent == releases_root:
+                return True
+        except (OSError, psutil.Error, ValueError):
+            continue
+    return False
+
+
+def reclaim_orphaned_managed_engine(settings: Settings) -> list[int]:
+    """Free the engine port only when it belongs to an orphaned managed engine.
+
+    Never terminate an engine while any POD desktop window process is running,
+    and never touch an unrelated program occupying the configured port.
+    """
+    managed_releases = (settings.updates_dir / "releases").resolve()
+    managed_engines: list[psutil.Process] = []
+    desktop_running = False
+    for process in psutil.process_iter(["name", "exe"]):
+        try:
+            name = (process.info.get("name") or "").lower()
+            if name == DESKTOP_EXECUTABLE.lower():
+                desktop_running = True
+            if name != "pod-artwork-engine.exe":
+                continue
+            executable = process.info.get("exe")
+            if not executable:
+                continue
+            path = Path(executable).resolve()
+            if path.name.lower() != "pod-artwork-engine.exe":
+                continue
+            # Only owned releases, never arbitrary engine binaries.
+            if path.parent.parent != managed_releases:
+                continue
+            managed_engines.append(process)
+        except (OSError, psutil.Error, ValueError):
+            continue
+
+    if desktop_running:
+        logger.warning("POD desktop already running; not terminating its engine")
+        return []
+
+    terminated: list[int] = []
+    for process in managed_engines:
+        try:
+            listening = any(
+                connection.status == psutil.CONN_LISTEN
+                and connection.laddr
+                and connection.laddr.port == settings.port
+                for connection in process.net_connections(kind="inet")
+            )
+            if not listening:
+                continue
+            pid = process.pid
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except psutil.TimeoutExpired:
+                logger.warning("managed engine pid=%s did not exit in 3s", pid)
+                continue
+            terminated.append(pid)
+            logger.warning("reclaimed orphaned managed engine pid=%s port=%s", pid, settings.port)
+        except (OSError, psutil.Error) as exc:
+            logger.warning("could not reclaim managed engine pid=%s: %s", process.pid, exc)
+    return terminated
+
+
 def _launch_and_validate(
     release_dir: Path,
     version: str,
@@ -195,6 +270,12 @@ def run_bootstrap(
             return 20
         logger.warning("could not seed bundled release; using managed current release: %s", exc)
 
+    # A second launcher instance must not start another desktop/engine on
+    # the same port. Pending bundled updates remain staged for the next launch.
+    if desktop_process_running(settings):
+        logger.info("POD desktop already running; skip duplicate launch")
+        return 0
+
     if settings.release_manifest_url:
         try:
             check = manager.check()
@@ -216,6 +297,9 @@ def run_bootstrap(
     staged = manager.staged_release()
     if staged is not None:
         staged_version, staged_dir = staged
+        # Old Tauri GUI releases can leave an engine orphan listening on 8765.
+        # Only reclaim this application's orphan: never kill unrelated apps.
+        reclaim_orphaned_managed_engine(settings)
         logger.info("validating staged release version=%s", staged_version)
         process, health = _launch_and_validate(
             staged_dir,
@@ -235,6 +319,9 @@ def run_bootstrap(
     active_version = manager.active_version()
     current_dir = manager.current_release_dir()
     if current_dir is not None:
+        # A desktop crash/abrupt close may leave its engine alive; reclaim
+        # that orphan on ordinary relaunch too, not only during upgrades.
+        reclaim_orphaned_managed_engine(settings)
         logger.info("launching active release version=%s", active_version)
         process, health = _launch_and_validate(
             current_dir,
@@ -260,6 +347,7 @@ def run_bootstrap(
         return 21
 
     rollback_version, rollback_dir = rollback
+    reclaim_orphaned_managed_engine(settings)
     logger.warning(
         "attempting automatic rollback failed=%s target=%s",
         active_version,

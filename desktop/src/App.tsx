@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
+import { getVersion } from "@tauri-apps/api/app";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
 
@@ -15,6 +16,7 @@ type Job = {
 };
 
 type EngineStatus = {
+  version?: string;
   job_concurrency?: number;
   remote_provider_configured?: boolean;
   remote_provider_available?: boolean;
@@ -56,6 +58,8 @@ function timelineIndex(state?: string) {
 
 export default function App() {
   const [engineOnline, setEngineOnline] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
+  const [engineIssue, setEngineIssue] = useState("");
   const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<QualityMode>("print_ready");
@@ -82,20 +86,30 @@ export default function App() {
   }, [previews]);
 
   useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const ping = async () => {
       try {
         const response = await fetch(`${ENGINE_URL}/status`);
         if (!response.ok) throw new Error("Engine status unavailable");
         const payload = (await response.json()) as EngineStatus;
+        const versionMatches = !appVersion || payload.version === appVersion;
         if (!cancelled) {
-          setEngineOnline(true);
+          setEngineOnline(versionMatches);
           setEngineStatus(payload);
+          setEngineIssue(
+            versionMatches ? "" :
+            `Engine v${payload.version ?? "unknown"} differs from desktop v${appVersion}. Close the old tool and restart.`
+          );
         }
       } catch {
         if (!cancelled) {
           setEngineOnline(false);
           setEngineStatus(null);
+          setEngineIssue("Cannot connect to the engine. Check the desktop-engine.log in LocalAppData/PODArtworkTool/logs.");
         }
       }
     };
@@ -105,7 +119,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [appVersion]);
 
   useEffect(() => {
     if (!job || ["completed", "failed_final", "cancelled", "review_required", "blocked_budget"].includes(job.state)) {
@@ -166,7 +180,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <div className="eyebrow">POD AI PRINT</div>
-          <h1>Artwork Reconstruction</h1>
+          <h1>Artwork Reconstruction <span className="app-version">v{appVersion || "…"}</span></h1>
           <p className="subtitle">Drop references, press Run, get a print-ready artwork.</p>
         </div>
         <div className="engine-summary">
@@ -179,6 +193,7 @@ export default function App() {
               {providerLabel} · {engineStatus?.job_concurrency ?? 1} job{(engineStatus?.job_concurrency ?? 1) > 1 ? "s" : ""} parallel
             </div>
           )}
+          {engineIssue && <div className="engine-issue" role="status">{engineIssue}</div>}
         </div>
       </header>
 

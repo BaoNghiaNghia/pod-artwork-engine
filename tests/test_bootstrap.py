@@ -132,3 +132,155 @@ def test_bootstrap_discards_bad_staged_release(monkeypatch, tmp_path: Path) -> N
     assert state["staged_version"] is None
     assert state["failed_version"] == "1.1.0"
     assert not staged.exists()
+
+def test_bootstrap_promotes_newer_bundled_release_after_health_pass(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    manager = UpdateManager(settings, "0.1.4")
+    manager.seed_current_release(_make_release(tmp_path / "old"), "0.1.0")
+    install = _make_release(tmp_path / "install")
+    launched = []
+    monkeypatch.setattr(bootstrap, "configure_bootstrap_logging", lambda settings: None)
+    monkeypatch.setattr(bootstrap, "reclaim_orphaned_managed_engine", lambda settings: [])
+    def launch(path, version, settings, timeout):
+        launched.append(version)
+        return object(), HealthResult(True, version, "ok")
+
+    monkeypatch.setattr(bootstrap, "_launch_and_validate", launch)
+    result = bootstrap.run_bootstrap(
+        settings, install_dir=install, current_version="0.1.4",
+        health_timeout_seconds=0.01
+    )
+    assert result == 0
+    assert launched == ["0.1.4"]
+    assert manager.active_version() == "0.1.4"
+    assert manager.rollback_target()[0] == "0.1.0"
+
+
+def test_reclaim_orphaned_managed_engine_ignores_other_app_and_running_desktop(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import psutil
+    settings = Settings(data_root=tmp_path / "data")
+
+    class Listener:
+        status = psutil.CONN_LISTEN
+        laddr = type("Addr", (), {"port": settings.port})()
+
+    class FakeProcess:
+        def __init__(self, pid, name, executable):
+            self.pid = pid
+            self.info = {"name": name, "exe": str(executable)}
+            self.terminated = False
+        def net_connections(self, **kwargs):
+            return [Listener()]
+        def terminate(self):
+            self.terminated = True
+        def wait(self, timeout):
+            return 0
+
+    owned = FakeProcess(10, "pod-artwork-engine.exe",
+        settings.updates_dir / "releases" / "0.1.0" / "pod-artwork-engine.exe")
+    other = FakeProcess(11, "pod-artwork-engine.exe",
+        tmp_path / "unrelated" / "pod-artwork-engine.exe")
+    desktop = FakeProcess(12, "pod-artwork-desktop.exe",
+        settings.updates_dir / "releases" / "0.1.0" / "pod-artwork-desktop.exe")
+
+    monkeypatch.setattr(bootstrap.psutil, "process_iter",
+                        lambda _attrs: [owned, other, desktop])
+    assert bootstrap.reclaim_orphaned_managed_engine(settings) == []
+    assert not owned.terminated
+    assert not other.terminated
+
+    monkeypatch.setattr(bootstrap.psutil, "process_iter",
+                        lambda _attrs: [owned, other])
+    assert bootstrap.reclaim_orphaned_managed_engine(settings) == [10]
+    assert owned.terminated
+    assert not other.terminated
+
+
+def test_bootstrap_reclaims_orphan_when_relaunching_active_version(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    manager = UpdateManager(settings, "1.0.0")
+    install = _make_release(tmp_path / "install")
+    manager.seed_current_release(install, "1.0.0")
+
+    calls: list[str] = []
+    monkeypatch.setattr(bootstrap, "configure_bootstrap_logging", lambda settings: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "reclaim_orphaned_managed_engine",
+        lambda settings: calls.append("cleanup") or [],
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_launch_and_validate",
+        lambda _path, version, _settings, _timeout: (
+            object(), HealthResult(True, version, "ok")
+        ),
+    )
+
+    result = bootstrap.run_bootstrap(
+        settings,
+        install_dir=install,
+        current_version="1.0.0",
+        health_timeout_seconds=0.01,
+    )
+    assert result == 0
+    assert calls == ["cleanup"]
+    assert manager.active_version() == "1.0.0"
+
+
+def test_bootstrap_does_not_launch_duplicate_managed_desktop(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+    install = _make_release(tmp_path / "install")
+    monkeypatch.setattr(bootstrap, "configure_bootstrap_logging", lambda settings: None)
+    monkeypatch.setattr(bootstrap, "desktop_process_running", lambda settings: True)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Must not launch duplicate desktop while one is running")
+
+    monkeypatch.setattr(bootstrap, "_launch_and_validate", unexpected)
+    assert bootstrap.run_bootstrap(
+        settings,
+        install_dir=install,
+        current_version="1.0.1",
+        health_timeout_seconds=0.01,
+    ) == 0
+    assert UpdateManager(settings, "1.0.1").active_version() == "1.0.1"
+
+
+def test_managed_desktop_detection_ignores_unrelated_processes(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = Settings(data_root=tmp_path / "data")
+
+    class FakeProcess:
+        def __init__(self, name: str, exe: Path):
+            self.info = {"name": name, "exe": str(exe)}
+
+    managed = FakeProcess(
+        "pod-artwork-desktop.exe",
+        settings.updates_dir / "releases" / "1.0.1" / "pod-artwork-desktop.exe",
+    )
+    unrelated = FakeProcess(
+        "pod-artwork-desktop.exe",
+        tmp_path / "other" / "pod-artwork-desktop.exe",
+    )
+    monkeypatch.setattr(
+        bootstrap.psutil,
+        "process_iter",
+        lambda _attrs: [unrelated],
+    )
+    assert bootstrap.desktop_process_running(settings) is False
+    monkeypatch.setattr(
+        bootstrap.psutil,
+        "process_iter",
+        lambda _attrs: [unrelated, managed],
+    )
+    assert bootstrap.desktop_process_running(settings) is True

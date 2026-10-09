@@ -264,6 +264,12 @@ class UpdateManager:
             if runtime_source.is_dir():
                 shutil.copytree(runtime_source, staging / "runtime")
 
+            # Keep the local benchmark recipe with its engine after seeding.
+            # The managed release does not run from the original build folder.
+            config_source = source_dir / "config"
+            if config_source.is_dir():
+                shutil.copytree(config_source, staging / "config")
+
             seeded_valid, seeded_reason = validate_release_dir(staging)
             if not seeded_valid:
                 raise RuntimeError(f"cannot seed installed release: {seeded_reason}")
@@ -273,7 +279,9 @@ class UpdateManager:
             os.replace(staging, target)
 
         state = self._read_state()
-        if not state.get("current_version"):
+        active = str(state.get("current_version") or "")
+        if not active:
+            # First install: no previous release to migrate.
             state.update(
                 {
                     "current_version": version,
@@ -285,6 +293,14 @@ class UpdateManager:
                 }
             )
             self._write_state(state)
+        elif _is_newer(version, active):
+            # A newly bundled executable must be validated and activated;
+            # simply copying it into releases/ left users on old UI forever.
+            already_staged = str(state.get("staged_version") or "")
+            if not already_staged or _is_newer(version, already_staged):
+                state["staged_version"] = version
+                state["channel"] = self.settings.release_channel
+                self._write_state(state)
         return target
 
     def mark_active(self, version: str) -> None:
