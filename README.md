@@ -22,6 +22,16 @@ The API key stays in Engine memory only and **is never saved in app config, job 
 
 Chat-generated PNGs are labeled **AI drafts, not print ready**. You can download drafts for review, or click **Kiểm tra chuẩn in** to create a new child job that runs the production pipeline and its semantic/technical quality gates. Only outputs from **completed** QC-approved jobs can be exported as print-ready artwork. Source, previous chat versions and earlier outputs are not overwritten. Image transfers are normalized to a maximum 1536-pixel long edge; the generated raster is not misrepresented as a native 4500×5400 print master. All files stay under the existing 40 GB storage budget.
 
+### Production Windows updates
+
+The packaged v0.1.9 bootstrap uses the public stable manifest at
+`https://raw.githubusercontent.com/BaoNghiaNghia/pod-artwork-engine/main/config/release-manifest.json`
+by default (override or disable with `POD_RELEASE_MANIFEST_URL`). Each stable GitHub Release publishes
+`PODArtworkTool-<version>.zip`, its SHA-256, the standalone launcher and a release manifest.
+The launcher downloads only releases whose SHA-256 matches the manifest, validates desktop+engine,
+checks engine readiness and keeps rollback safety. Older installations without a configured
+manifest URL may need one manual upgrade to v0.1.9 before automatic updates work.
+
 ## Current implementation stage
 
 ### Phase 0A — Standalone Foundation

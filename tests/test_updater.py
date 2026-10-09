@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pod_artwork_engine.settings import Settings
+from pod_artwork_engine.settings import Settings, DEFAULT_RELEASE_MANIFEST_URL
 from pod_artwork_engine.updater import (
     UpdateManager,
     _is_newer,
@@ -27,6 +27,14 @@ def _add_ocr_runtime(path: Path) -> Path:
     (runtime / "tesseract.exe").write_bytes(b"tesseract")
     (runtime / "tessdata" / "eng.traineddata").write_bytes(b"eng")
     return runtime
+
+
+def test_bundled_runtime_uses_public_stable_manifest_by_default(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delenv("POD_RELEASE_MANIFEST_URL", raising=False)
+    assert Settings.from_env().release_manifest_url == DEFAULT_RELEASE_MANIFEST_URL
+    monkeypatch.setenv("POD_RELEASE_MANIFEST_URL", "https://example.com/custom.json")
+    assert Settings.from_env().release_manifest_url == "https://example.com/custom.json"
 
 
 def test_version_comparison() -> None:

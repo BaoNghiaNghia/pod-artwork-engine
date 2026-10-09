@@ -11,6 +11,11 @@ from .provider_config import load_configuration
 
 GIB = 1024 ** 3
 MIB = 1024 ** 2
+# Public stable channel manifest. Explicit POD_RELEASE_MANIFEST_URL overrides it.
+DEFAULT_RELEASE_MANIFEST_URL = (
+    "https://raw.githubusercontent.com/BaoNghiaNghia/"
+    "pod-artwork-engine/main/config/release-manifest.json"
+)
 
 
 @dataclass(frozen=True)
@@ -77,7 +82,7 @@ class Settings:
             ram_hard_bytes=int(float(os.environ.get("POD_RAM_HARD_GB", default_ram_hard / GIB)) * GIB),
             max_concurrent_jobs=max(0, int(os.environ.get("POD_MAX_CONCURRENT_JOBS", "0"))),
             release_channel=os.environ.get("POD_RELEASE_CHANNEL", "stable"),
-            release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", ""),
+            release_manifest_url=os.environ.get("POD_RELEASE_MANIFEST_URL", DEFAULT_RELEASE_MANIFEST_URL),
             remote_provider_url=os.environ.get("POD_REMOTE_PROVIDER_URL", configured.url if configured else ""),
             remote_provider_token=os.environ.get("POD_REMOTE_PROVIDER_TOKEN", ""),
             remote_provider_name=os.environ.get("POD_REMOTE_PROVIDER_NAME", configured.name if configured else "remote"),
