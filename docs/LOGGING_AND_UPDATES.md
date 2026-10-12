@@ -16,6 +16,7 @@ UI: `AI Settings -> Version & updates / Logger`. Log UI displays rotation policy
 - The launcher compares version and instance token on local /health. On failure, it discards the staged version and falls back to the current release, with previous version rollback support.
 - `update-state.json` tracks `current_version`, `previous_version`, `staged_version`, timestamps and errors; do not edit it manually.
 - If disconnected, the tool continues using the existing version and presents a recoverable error. Manual checks use a lock to prevent duplicate downloads.
+- Maintainer deployment when a desktop or Engine process is stuck: run `.venv\\Scripts\\python.exe scripts/inspect_pod_processes.py` to identify *only POD* processes, then `.venv\\Scripts\\python.exe scripts/apply_staged_release.py`. The latter refuses to proceed if any job is active/queued or when no validated staged release exists. It only stops managed POD processes under the updates/release directory, starts the packaged bootstrap, and verifies the new `/health` version and updater state. Do not use while editing unsaved inputs.
 
 ## Verification
 - `npm --prefix desktop run build`
