@@ -4,7 +4,7 @@ The Windows app retains Tauri 2 + React/Vite + FastAPI/Python engine. UI changes
 
 ## Design direction and framework
 - **Recommended long-term UI system:** shadcn/ui (Radix primitives + Tailwind) with POD-specific design tokens. It is source-owned, suitable for complex artwork editors and can be adopted incrementally.
-- **Immediate zero-migration baseline:** existing React + CSS, with `studio.css` as the non-breaking visual layer and `lucide-react` for uniform icons. Do not mix multiple component libraries in the same control surface.
+- **Implemented in v0.1.10:** shadcn/ui source-owned components (Button, Card, Input, Textarea, Badge, Progress, Tooltip, Separator), Tailwind CSS v4 Vite plugin, Radix primitives, CVA/clsx/tailwind-merge, Lucide icons, and a consistent POD theme in `src/tailwind.css`. The legacy styles remain temporarily to avoid regressions while shared controls are migrated. Future UI must use shadcn components rather than adding new legacy CSS-only controls.
 - Alternative: Mantine for faster CRUD forms, onboarding and overlays; Fluent UI 2 for Windows-native styling. Neither requires changing the Tauri shell.
 - Avoid Electron migration: it adds runtime weight while the existing Tauri/WebView2 implementation works.
 

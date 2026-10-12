@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import GoldenReadiness from "./GoldenReadiness";
 import PairReview, { type PairedArtwork } from "./PairReview";
 
@@ -197,7 +200,7 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
           <h2>Historical Dataset</h2>
           <p>Pair source images with approved designs. Preview changes before import.</p>
         </div>
-        <span className="dataset-safe">Safe preview</span>
+        <Badge variant="secondary" className="dataset-safe">Safe preview</Badge>
       </div>
 
       <div className="dataset-panel">
@@ -212,14 +215,14 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
             <label>
               <span>Source images folder</span>
               <div className="dataset-path-control">
-                <input value={form.source_dir} onChange={(e) => update("source_dir", e.target.value)} placeholder="D:\\Artwork\\Sources" />
+                <Input value={form.source_dir} onChange={(e) => update("source_dir", e.target.value)} placeholder="D:\\Artwork\\Sources" />
                 <button onClick={() => choosePath("source_dir")}>Browse</button>
               </div>
             </label>
             <label>
               <span>Approved final artworks folder</span>
               <div className="dataset-path-control">
-                <input value={form.target_dir} onChange={(e) => update("target_dir", e.target.value)} placeholder="D:\\Artwork\\Finals" />
+                <Input value={form.target_dir} onChange={(e) => update("target_dir", e.target.value)} placeholder="D:\\Artwork\\Finals" />
                 <button onClick={() => choosePath("target_dir")}>Browse</button>
               </div>
             </label>
@@ -229,7 +232,7 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
             <label>
               <span>Pairs manifest (.json)</span>
               <div className="dataset-path-control">
-                <input value={form.manifest_path} onChange={(e) => update("manifest_path", e.target.value)} placeholder="D:\\Artwork\\pairs.json" />
+                <Input value={form.manifest_path} onChange={(e) => update("manifest_path", e.target.value)} placeholder="D:\\Artwork\\pairs.json" />
                 <button onClick={() => choosePath("manifest_path")}>Browse</button>
               </div>
             </label>
@@ -262,9 +265,9 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
           </div>
         </details>
 
-        <button className="dataset-action" onClick={runPreflight} disabled={!engineOnline || !fieldsPresent || Boolean(busy)}>
+        <Button className="dataset-action" onClick={runPreflight} disabled={!engineOnline || !fieldsPresent || Boolean(busy)}>
           {busy === "preflight" ? "Checking images and pairing…" : "Run Preflight"}
-        </button>
+        </Button>
       </div>
 
       <div className={`dataset-panel dataset-review-panel ${!report && !imported ? "is-empty" : ""}`}>
@@ -336,9 +339,9 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
               <input type="checkbox" checked={confirmed} disabled={!isReady || Boolean(busy)} onChange={(e) => setConfirmed(e.target.checked)} />
               I verified these source/final pairs and approve registration.
             </label>
-            <button className="dataset-action import" onClick={runImport} disabled={!isReady || !confirmed || !form.dataset_name.trim() || Boolean(busy) || !engineOnline}>
+            <Button className="dataset-action import" onClick={runImport} disabled={!isReady || !confirmed || !form.dataset_name.trim() || Boolean(busy) || !engineOnline}>
               {busy === "import" ? "Importing…" : "Import verified dataset"}
-            </button>
+            </Button>
           </>
         )}
       </details>

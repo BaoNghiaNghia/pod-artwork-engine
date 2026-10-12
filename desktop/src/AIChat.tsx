@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { ImagePlus, Send, Sparkles, ShieldCheck, Download, CheckCircle2 } from "lucide-react";
 
 const API = "http://127.0.0.1:8765";
@@ -152,17 +156,17 @@ export default function AIChat({
           <h2>AI Image Studio</h2>
           <p>Chỉnh sửa bằng ngôn ngữ tự nhiên, lưu mọi phiên bản.</p>
         </div>
-        <span className={config?.configured ? "chat-connected" : "chat-disconnected"}>
+        <Badge variant={config?.configured ? "secondary" : "destructive"} className={config?.configured ? "chat-connected" : "chat-disconnected"}>
           {config?.configured ? "Image AI ready" : "Chưa kết nối"}
-        </span>
+        </Badge>
       </div>
 
       <details className="chat-config" open={!config?.configured}>
         <summary><Sparkles size={14}/> Cấu hình Image AI <span>{config?.configured ? "Đã kết nối" : "Cần API key"}</span></summary>
         <div className="chat-config-fields">
-          <label>Model ảnh <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-image-1" /></label>
-          <label>OpenAI API key <input value={key} type="password" autoComplete="off" onChange={(e) => setKey(e.target.value)} placeholder={config?.configured ? "Đã cấu hình — để trống nếu giữ key" : "Nhập API key"} /></label>
-          <button type="button" className="secondary-button" disabled={!engineOnline || savingKey} onClick={saveConfig}>{savingKey ? "Đang lưu…" : "Lưu AI"}</button>
+          <label>Model ảnh <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-image-1" /></label>
+          <label>OpenAI API key <Input value={key} type="password" autoComplete="off" onChange={(e) => setKey(e.target.value)} placeholder={config?.configured ? "Đã cấu hình — để trống nếu giữ key" : "Nhập API key"} /></label>
+          <Button type="button" variant="outline" size="sm" className="secondary-button" disabled={!engineOnline || savingKey} onClick={saveConfig}>{savingKey ? "Đang lưu…" : "Lưu AI"}</Button>
         </div>
         <p>Key chỉ giữ trong Engine đang chạy, không lưu vào file. Muốn giữ sau khởi động lại, đặt biến môi trường POD_IMAGE_API_KEY và POD_IMAGE_MODEL.</p>
       </details>
@@ -215,12 +219,12 @@ export default function AIChat({
           </div>
           <div className="chat-composer">
             <div className="chat-compose-label">Đang sửa từ: {baseVersion ? `V${versions.findIndex((v) => v.version_id === baseVersion) + 1}` : "Ảnh gốc"}</div>
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
+            <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }}
               rows={4} maxLength={4000} placeholder="VD: Giữ nguyên toàn bộ chữ, thay hoa hồng thành hoa cúc, màu trắng nền trong suốt, nét sắc rõ để in áo." />
-            <button className="run-button" onClick={send} disabled={!engineOnline || !activeJobId || !config?.configured || !prompt.trim() || running || busy}>
+            <Button className="run-button" onClick={send} disabled={!engineOnline || !activeJobId || !config?.configured || !prompt.trim() || running || busy}>
               <Send size={14}/>{running ? "Đang tạo ảnh…" : busy ? "Đang gửi…" : "Tạo phiên bản mới"}
-            </button>
+            </Button>
             <small>Ctrl + Enter để gửi · Lưu riêng mỗi phiên bản</small>
           </div>
         </div>

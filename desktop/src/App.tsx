@@ -3,6 +3,10 @@ import DatasetOnboarding from "./DatasetOnboarding";
 import ProviderSettings from "./ProviderSettings";
 import AIChat from "./AIChat";
 import { getVersion } from "@tauri-apps/api/app";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Layers3, Images, MessageSquareText, Database, SlidersHorizontal, ImagePlus, Play, Sparkles, CheckCircle2, ChevronRight, Cpu } from "lucide-react";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
@@ -228,32 +232,32 @@ export default function App() {
         </div>
         <div className="engine-summary">
           {engineOnline && <span className="runtime-note">{providerLabel} · {engineStatus?.job_concurrency ?? 1} parallel</span>}
-          <div className={`status ${engineOnline ? "online" : "offline"}`} role="status">
+          <Badge variant="outline" className={`status ${engineOnline ? "online" : "offline"}`} role="status">
             <span />{engineOnline ? "Engine ready" : "Engine offline"}
-          </div>
+          </Badge>
           {engineIssue && <div className="engine-issue" role="alert">{engineIssue}</div>}
         </div>
       </header>
       <div className="app-body">
         <nav className="primary-tabs" aria-label="Tool sections">
           <div className="nav-label">WORKSPACE</div>
-          <button type="button" className={activeTab === "artwork" ? "selected" : ""}
+          <Button type="button" variant="ghost" className={activeTab === "artwork" ? "selected" : ""}
             aria-current={activeTab === "artwork" ? "page" : undefined} onClick={() => setActiveTab("artwork")}>
             <Images size={17}/> <span>Artwork</span><ChevronRight className="nav-chevron" size={14}/>
-          </button>
-          <button type="button" className={activeTab === "chat" ? "selected" : ""}
+          </Button>
+          <Button type="button" variant="ghost" className={activeTab === "chat" ? "selected" : ""}
             aria-current={activeTab === "chat" ? "page" : undefined} onClick={() => setActiveTab("chat")}>
             <MessageSquareText size={17}/> <span>AI Image Chat</span><ChevronRight className="nav-chevron" size={14}/>
-          </button>
-          <button type="button" className={activeTab === "dataset" ? "selected" : ""}
+          </Button>
+          <Button type="button" variant="ghost" className={activeTab === "dataset" ? "selected" : ""}
             aria-current={activeTab === "dataset" ? "page" : undefined} onClick={() => setActiveTab("dataset")}>
             <Database size={17}/> <span>Datasets</span><ChevronRight className="nav-chevron" size={14}/>
-          </button>
+          </Button>
           <div className="nav-label nav-label-settings">SYSTEM</div>
-          <button type="button" className={activeTab === "provider" ? "selected" : ""}
+          <Button type="button" variant="ghost" className={activeTab === "provider" ? "selected" : ""}
             aria-current={activeTab === "provider" ? "page" : undefined} onClick={() => setActiveTab("provider")}>
             <SlidersHorizontal size={17}/> <span>AI Settings</span><ChevronRight className="nav-chevron" size={14}/>
-          </button>
+          </Button>
           <div className="nav-footer">
             <Cpu size={15}/>
             <span>Local engine<br/><strong>{engineOnline ? "Connected" : "Disconnected"}</strong></span>
@@ -265,7 +269,7 @@ export default function App() {
       <>
       <div className="studio-page-heading"><div><span className="eyebrow">CREATE</span><h1>Artwork Reconstruction</h1><p>Turn product references into print-ready artwork.</p></div><span className="studio-page-tag"><Sparkles size={13}/> Local-first pipeline</span></div>
       <section className="workspace">
-        <div className={`upload-card ${files.length ? "has-files" : ""}`}>
+        <Card className={`upload-card gap-0 py-0 ${files.length ? "has-files" : ""}`}>
           {files.length === 0 ? (
             <>
               <div className="upload-icon" aria-hidden="true"><ImagePlus size={25}/></div>
@@ -311,21 +315,21 @@ export default function App() {
               </div>
             </>
           )}
-        </div>
+        </Card>
 
-        <div className="run-card">
+        <Card className="run-card gap-0 py-0">
           <div className="auto-row">
             <div>
               <div className="eyebrow">PROCESSING</div>
               <h3>Auto reconstruction</h3>
               <p>Local-first. AI is used only when the quality gates require rescue.</p>
             </div>
-            <span className="auto-badge"><CheckCircle2 size={13}/> Recommended</span>
+            <Badge variant="secondary" className="auto-badge"><CheckCircle2 size={13}/> Recommended</Badge>
           </div>
 
-          <button className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}>
+          <Button variant="link" size="sm" className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}>
             {advanced ? "Hide advanced" : "Advanced"}
-          </button>
+          </Button>
 
           {advanced && (
             <div className="mode-grid">
@@ -354,18 +358,18 @@ export default function App() {
           )}
 
           <div className="dataset-muted processing-hint">Transparent artwork is ideal. Product mockups may need AI reconstruction.</div>
-          <button
+          <Button type="button"
             className="run-button"
             disabled={!files.length || !engineOnline || busy || jobActive}
             onClick={createJob}
           >
             <Play size={15} fill="currentColor"/> {busy ? "Starting…" : jobActive ? "Processing…" : "Generate artwork"}
-          </button>
+          </Button>
           {error && <div className="error">{error}</div>}
-        </div>
+        </Card>
       </section>
 
-      <section className={`result-card ${!job ? "is-empty" : ""}`}>
+      <Card className={`result-card gap-0 py-0 ${!job ? "is-empty" : ""}`}>
         <div className="result-header">
           <div>
             <div className="eyebrow">CURRENT JOB</div>
@@ -386,9 +390,7 @@ export default function App() {
           })}
         </div>
 
-        <div className="progress-track">
-          <div className="progress-value" style={{ width: `${progress}%` }} />
-        </div>
+        <Progress value={progress} aria-label="Job progress" className="progress-track" />
 
         <div className="stage-line">
           <strong>{hasAICandidate
@@ -492,7 +494,7 @@ export default function App() {
             </div>
           </div>
         )}
-      </section>
+      </Card>
       </>
       ) : activeTab === "chat" ? (
         <AIChat engineOnline={engineOnline} inputFiles={files} artworkJob={job}
