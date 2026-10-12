@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { audit } from "./system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,7 @@ export default function ProviderSettings({ engineOnline, onChanged }: {
       if (!r.ok) throw new Error(await responseError(r));
       setConfig(await r.json()); setToken(""); setClearToken(false);
       setMessage("Saved. Provider settings apply to new jobs immediately.");
+      audit("provider_config_saved", "provider");
       onChanged();
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setBusy(false); }

@@ -217,6 +217,36 @@ button:disabled { cursor: not-allowed; }
   .run-card .run-button { margin-top: 10px; }
   .provider-essential { grid-template-columns: 1fr; }
 }
+
+/* Updater and local logger diagnostics */
+.system-settings-stack { display: grid; max-width: 940px; gap: 14px; }
+.system-monitor { display: grid; gap: 12px; }
+.system-monitor-card { border: 1px solid var(--studio-line, #e3e7ee); box-shadow: 0 3px 12px #1b2a480d; min-width: 0; }
+.system-monitor-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.system-monitor-heading h3 { font-size: 15px; line-height: 1.3; font-weight: 750; margin: 4px 0; }
+.system-monitor-heading p { font-size: 11px; color: #7b8597; margin: 3px 0 0; line-height: 1.5; }
+.system-update-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 15px; font-size: 11px; color: #8390a4; }
+.system-update-meta>span:first-child { display: inline-flex; gap: 5px; align-items: center; font-weight: 700; color: #52627a; }
+.system-update-meta .system-update-available { color: #315cbb !important; }
+.system-update-meta .system-update-ready { color: #27825d !important; }
+.system-monitor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.system-monitor-actions button { min-height: 34px; font-size: 11px; }
+.system-monitor-hint { color: #8892a5; font-size: 10px; line-height: 1.55; margin: 0; }
+.system-log-path { margin: 0; font-size: 11px; color: #55637b; overflow-wrap: anywhere; }
+.system-log-path code { font-family: Consolas, ui-monospace, monospace; font-size: 10px; }
+.system-log-files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.system-log-files>div { display: flex; align-items: center; gap: 7px; min-width: 0; background: #f6f8fc; border: 1px solid #ebeff5; border-radius: 9px; padding: 10px; }
+.system-log-files svg { color: #7890bf; flex-shrink: 0; }
+.system-log-files strong { color: #40506c; font-weight: 700; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+.system-log-files span { color: #8d99aa; margin-left: auto; font-size: 10px; white-space: nowrap; }
+.system-log-recent { border-top: 1px solid #edf0f5; padding-top: 12px; display: grid; gap: 5px; }
+.system-log-recent>strong { font-size: 11px; margin-bottom: 4px; }
+.system-log-event { display: grid; grid-template-columns: 78px minmax(100px,1fr) minmax(65px,1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid #f1f2f6; font-size: 10px; }
+.system-log-event span { color: #8c97a9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.system-log-event strong { color: #52617d; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.system-update-head { font-size: 10px; color: #2954b6; background: #eef3ff; }
+@media (max-width: 630px) { .system-log-files { grid-template-columns: 1fr; } .system-monitor-heading { align-items: flex-start; } }
+
 @media (max-width: 530px) {
   .engine-summary .runtime-note { display: none; }
   .topbar { padding: 0 12px; }

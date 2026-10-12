@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 import shutil
 import tempfile
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 import psutil
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -47,6 +51,15 @@ from .local_ocr import backend_status as local_ocr_backend_status
 from .scheduler import recommended_job_concurrency
 from .settings import Settings
 from .updater import UpdateManager
+from .system_monitor import log_summary, recent_safe_events
+from .logging_config import log_event
+
+
+class DesktopAuditEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event: Literal["tab_opened", "references_selected", "job_submitted", "job_retried", "chat_session_created", "chat_edit_submitted", "chat_print_check", "image_ai_config_saved", "provider_config_saved", "dataset_preflight", "dataset_import", "update_restarted"]
+    screen: Literal["artwork", "chat", "dataset", "provider", "system"]
+    job_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 class GoldenPreflightRequest(BaseModel):
@@ -69,6 +82,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     onboarding_import_lock = threading.Lock()
     pair_preview_sessions = PairPreviewSessions()
     image_chat = ImageChatService(settings)
+    audit_logger = logging.getLogger("pod_artwork.audit")
+    updater_logger = logging.getLogger("pod_artwork.updates")
+    update_lock = threading.Lock()
+    last_check: dict | None = None
 
     async def run_job_with_slot(job_id: str) -> None:
         async with job_slots:
@@ -98,6 +115,93 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def safe_api_audit(request, call_next):
+        began = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            route = getattr(request.scope.get("route"), "path", None)
+            if route and not route.startswith(("/health", "/status", "/system/")):
+                audit_logger.exception("api_unhandled_exception", extra={
+                    "event": "api_unhandled_exception", "route": route,
+                    "duration_ms": round((time.perf_counter() - began) * 1000),
+                })
+            raise
+        route = getattr(request.scope.get("route"), "path", None)
+        if request.method != "GET" and route and not route.startswith("/system/events"):
+            # Never log query strings, paths with resource IDs, request bodies, or API keys.
+            log_event(audit_logger, "api_mutation", route=route,
+                      duration_ms=round((time.perf_counter() - began) * 1000),
+                      stage=f"http_{response.status_code}")
+        return response
+
+    @app.get("/system/overview")
+    def system_overview() -> dict:
+        return {
+            "current_version": UpdateManager(settings, __version__).active_version(),
+            "update_state": UpdateManager(settings, __version__).state(),
+            "last_check": last_check,
+            "logs": log_summary(settings),
+        }
+
+    @app.get("/system/events")
+    def system_events(limit: int = 40) -> list[dict]:
+        return recent_safe_events(settings, min(max(1, limit), 100))
+
+    @app.post("/system/events", status_code=204)
+    def record_desktop_event(request: DesktopAuditEvent) -> Response:
+        fields = {"stage": request.screen}
+        if request.job_id:
+            fields["job_id"] = request.job_id
+        log_event(audit_logger, request.event, **fields)
+        return Response(status_code=204)
+
+    @app.post("/system/check-updates")
+    async def check_updates() -> dict:
+        nonlocal last_check
+        if not update_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="An update operation is already running")
+        try:
+            try:
+                result = await asyncio.to_thread(UpdateManager(settings, __version__).check)
+                last_check = {**result.__dict__, "checked_at": datetime.now(timezone.utc).isoformat()}
+                log_event(updater_logger, "update_check_complete",
+                          stage="available" if result.update_available else "current")
+                return last_check
+            except Exception as exc:
+                log_event(updater_logger, "update_check_failed", stage=type(exc).__name__)
+                raise HTTPException(status_code=503, detail="Could not check updates; verify your internet connection") from None
+        finally:
+            update_lock.release()
+
+    @app.post("/system/stage-update")
+    async def stage_update() -> dict:
+        nonlocal last_check
+        if not update_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="An update operation is already running")
+        try:
+            manager = UpdateManager(settings, __version__)
+            try:
+                check = await asyncio.to_thread(manager.check)
+                last_check = {**check.__dict__, "checked_at": datetime.now(timezone.utc).isoformat()}
+                if not check.update_available:
+                    return {"status": "up_to_date", "version": check.current_version}
+                staged = manager.staged_release()
+                if staged is not None and staged[0] == check.latest_version:
+                    return {"status": "restart_required", "version": staged[0]}
+                manifest = await asyncio.to_thread(manager.fetch_manifest)
+                if manifest.version != check.latest_version:
+                    raise RuntimeError("release manifest changed during check")
+                await asyncio.to_thread(manager.stage, manifest)
+                log_event(updater_logger, "update_staged", stage=manifest.version)
+                return {"status": "restart_required", "version": manifest.version}
+            except Exception as exc:
+                log_event(updater_logger, "update_stage_failed", stage=type(exc).__name__)
+                raise HTTPException(status_code=503, detail="Update download failed; existing version is unchanged") from None
+        finally:
+            update_lock.release()
 
     @app.get("/health")
     def health() -> dict:

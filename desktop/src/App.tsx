@@ -1,7 +1,9 @@
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
 import ProviderSettings from "./ProviderSettings";
 import AIChat from "./AIChat";
+import SystemStatus from "./SystemStatus";
+import { audit, systemRequest, type UpdateCheck } from "./system";
 import { getVersion } from "@tauri-apps/api/app";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -75,6 +77,8 @@ export default function App() {
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [providerRefresh, setProviderRefresh] = useState(0);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const updateCheckStarted = useRef(false);
   const [candidateKind, setCandidateKind] = useState<"local_draft" | "ai_candidate" | null>(null);
   const [error, setError] = useState("");
 
@@ -165,8 +169,21 @@ export default function App() {
     return () => { cancelled = true; };
   }, [job?.job_id, job?.state]);
 
+  useEffect(() => {
+    if (!engineOnline || updateCheckStarted.current) return;
+    updateCheckStarted.current = true;
+    void systemRequest<UpdateCheck>("/system/check-updates", "POST")
+      .then(setUpdateCheck).catch(() => { /* Keep the tool usable when offline. */ });
+  }, [engineOnline]);
+
+  useEffect(() => {
+    if (engineOnline) audit("tab_opened", activeTab);
+  }, [engineOnline, activeTab]);
+
   const chooseFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    setFiles(Array.from(event.target.files ?? []));
+    const selected = Array.from(event.target.files ?? []);
+    setFiles(selected);
+    if (selected.length) audit("references_selected", "artwork");
     setJob(null);
     setError("");
     event.target.value = "";
@@ -190,7 +207,9 @@ export default function App() {
         body
       });
       if (!response.ok) throw new Error(await response.text());
-      setJob(await response.json());
+      const created = await response.json() as Job;
+      setJob(created);
+      audit("job_submitted", "artwork", created.job_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
     } finally {
@@ -207,7 +226,9 @@ export default function App() {
         const data = await response.json().catch(() => ({}));
         throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${response.status}`);
       }
-      setJob(await response.json());
+      const retried = await response.json() as Job;
+      setJob(retried);
+      audit("job_retried", "artwork", retried.job_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to retry with AI");
     } finally { setBusy(false); }
@@ -235,6 +256,7 @@ export default function App() {
           <Badge variant="outline" className={`status ${engineOnline ? "online" : "offline"}`} role="status">
             <span />{engineOnline ? "Engine ready" : "Engine offline"}
           </Badge>
+          {updateCheck?.update_available && <Badge variant="secondary" className="system-update-head">New v{updateCheck.latest_version}</Badge>}
           {engineIssue && <div className="engine-issue" role="alert">{engineIssue}</div>}
         </div>
       </header>
@@ -502,7 +524,10 @@ export default function App() {
       ) : activeTab === "dataset" ? (
         <DatasetOnboarding engineOnline={engineOnline} />
       ) : (
-        <ProviderSettings engineOnline={engineOnline} onChanged={() => setProviderRefresh((value) => value + 1)} />
+        <div className="system-settings-stack">
+          <ProviderSettings engineOnline={engineOnline} onChanged={() => setProviderRefresh((value) => value + 1)} />
+          <SystemStatus engineOnline={engineOnline} latestCheck={updateCheck} onChecked={setUpdateCheck}/>
+        </div>
       )}
         </div>
       </div>

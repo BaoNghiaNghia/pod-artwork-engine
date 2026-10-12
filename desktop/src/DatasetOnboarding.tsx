@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { audit } from "./system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +153,7 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
       });
       if (!response.ok) throw new Error(await decodeError(response));
       setPreview((await response.json()) as PreviewResponse);
+      audit("dataset_preflight", "dataset");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Preflight failed");
     } finally {
@@ -176,6 +178,7 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
       });
       if (!response.ok) throw new Error(await decodeError(response));
       setImported((await response.json()) as ImportResponse);
+      audit("dataset_import", "dataset");
       setConfirmed(false);
       setPreview(null);
     } catch (err) {

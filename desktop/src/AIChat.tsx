@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { audit } from "./system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -99,6 +100,7 @@ export default function AIChat({
       });
       if (!response.ok) throw new Error(await responseError(response));
       setConfig(await response.json());
+      audit("image_ai_config_saved", "chat");
       setKey("");
       setNotice("Đã cấu hình Image AI cho phiên Engine hiện tại.");
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
@@ -116,6 +118,7 @@ export default function AIChat({
       if (!response.ok) throw new Error(await responseError(response));
       const result = (await response.json()) as ArtworkJob;
       setUsingArtwork(false); setChatJobId(result.job_id); setVersions([]); setBaseVersion(null);
+      audit("chat_session_created", "chat", result.job_id);
       setNotice("Đã mở phiên chỉnh sửa. Nhập mô tả bạn muốn thay đổi.");
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setBusy(false); }
@@ -132,6 +135,7 @@ export default function AIChat({
       if (!response.ok) throw new Error(await responseError(response));
       const result = (await response.json()) as Version;
       setVersions((items) => [...items, result]);
+      audit("chat_edit_submitted", "chat", activeJobId);
       setPrompt(""); setBaseVersion(result.version_id);
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setBusy(false); }
@@ -144,6 +148,7 @@ export default function AIChat({
       const response = await fetch(`${API}/jobs/${activeJobId}/image-chat/${versionId}/print-check`, {method:"POST"});
       if (!response.ok) throw new Error(await responseError(response));
       onPrintCheck(await response.json() as ArtworkJob);
+      audit("chat_print_check", "chat", activeJobId);
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setBusy(false); }
   };

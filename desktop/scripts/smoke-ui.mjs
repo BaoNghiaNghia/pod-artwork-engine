@@ -60,6 +60,9 @@ async function run() {
           if (view.tab === "AI Settings") {
             await page.getByText("Advanced connection options").click();
             await page.getByRole("textbox", { name: "Provider name" }).waitFor();
+            await page.getByRole("heading", { name: "Version & updates" }).waitFor();
+            await page.getByRole("heading", { name: "Logger" }).waitFor();
+            await page.getByRole("button", { name: "Check for updates" }).waitFor();
           }
           checks++;
         }
