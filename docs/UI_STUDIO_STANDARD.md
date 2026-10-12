@@ -21,5 +21,6 @@ The Windows app retains Tauri 2 + React/Vite + FastAPI/Python engine. UI changes
 - Never expose print-ready download from chat draft version.
 - All data-layer operations, source preservation, provider sessions and retry semantics unchanged.
 - Test Tauri build with `npm --prefix desktop run build`.
-- Browser QA at 1180×780, 900×650, 768×1024 and 390×844. Check keyboard access, no horizontal overflow, image containment, filename truncation, sidebar collapse.
+- Automated browser smoke QA: start the dev server with `npm --prefix desktop run dev`, then run `npm --prefix desktop run qa:ui`. The check uses installed Chrome through Playwright (no bundled browser download), covers Artwork, AI Image Chat, Datasets, and AI Settings at 1280×800, 1024×768, 768×1024 and 390×844; it catches horizontal overflow, JavaScript exceptions, broken navigation, and disabled-control regressions. Set `POD_UI_QA_URL` or `POD_UI_QA_BROWSER` to override defaults. No screenshots, API keys or artwork are saved.
+- Native Windows UI capture and interaction is a separate release gate when Windows capture tooling is available. Browser QA does not prove all WebView2/Tauri-specific behavior; do not claim native QA passed on the basis of browser tests.
 - Audit icon+text consistency for every future new section. Prefer scoped tokens and compact responsive layout instead of scattered CSS overrides.
