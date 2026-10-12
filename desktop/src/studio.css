@@ -219,6 +219,22 @@ button:disabled { cursor: not-allowed; }
 }
 
 /* Updater and local logger diagnostics */
+.system-diagnostics-snapshot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  background: #f7f9fd; border: 1px solid #e8edf6; border-radius: 9px;
+  padding: 10px 12px;
+}
+.system-diagnostics-snapshot > div {
+  display: inline-flex; align-items: center; gap: 6px; color: #63728b;
+  font-size: 11px; padding-right: 14px;
+}
+.system-diagnostics-snapshot > div strong { color: #344260; font-size: 13px; }
+.system-diagnostics-snapshot > a { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; white-space: nowrap; }
+@media (max-width: 560px) {
+  .system-diagnostics-snapshot { align-items: stretch; }
+  .system-diagnostics-snapshot > a { margin-left: 0; width: 100%; justify-content: center; }
+}
+
 .system-settings-stack { display: grid; max-width: 940px; gap: 14px; }
 .system-monitor { display: grid; gap: 12px; }
 .system-monitor-card { border: 1px solid var(--studio-line, #e3e7ee); box-shadow: 0 3px 12px #1b2a480d; min-width: 0; }

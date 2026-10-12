@@ -25,3 +25,10 @@ UI: `AI Settings -> Version & updates / Logger`. Log UI displays rotation policy
 - On a packaged Windows release, confirm `/health` reports the new version and `/system/overview` reports the current update state.
 
 Security: Update fetches only the configured release manifest, and downloads are SHA-256 validated. The local Engine is bound to loopback with a configured CORS allowlist. Do not share raw `logs` or diagnostic archives without reviewing them for sensitive data.
+
+## v0.1.12: In-app support diagnostics & long-session update checks
+- **AI Settings → Logger** displays recent event counts and failures from the last 24 hours (a bounded sample of up to 100 safe events; this is not an exhaustive 24-hour total).
+- **Export diagnostic JSON** downloads an in-memory support snapshot containing only release versions, updater status timestamps/flags, log sizes, log retention, and aggregate event/error counts. No raw logs, exception messages, filenames, local paths, AI prompts, provider response bodies, or credentials are included.
+- The active desktop checks the stable release every 6 hours while Engine remains online, as well as on startup and on reconnection. Manual **Check for updates** remains available. New versions are never applied during running jobs; activation remains a separate launcher restart.
+- The safe-event viewer validates event identifiers and rejects malformed or unbounded fields before showing them. This reduces accidental data disclosure from unexpected log records.
+- Quality gates: `tests/test_safe_diagnostics.py`, `tests/test_system_monitor.py`, `npm --prefix desktop run qa:ui` and all prior updater/rollback tests.

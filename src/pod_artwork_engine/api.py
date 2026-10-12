@@ -16,7 +16,7 @@ from typing import Literal
 
 import psutil
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
@@ -52,6 +52,7 @@ from .scheduler import recommended_job_concurrency
 from .settings import Settings
 from .updater import UpdateManager
 from .system_monitor import log_summary, recent_safe_events
+from .safe_diagnostics import safe_diagnostic_report
 from .logging_config import log_event
 
 
@@ -149,6 +150,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/system/events")
     def system_events(limit: int = 40) -> list[dict]:
         return recent_safe_events(settings, min(max(1, limit), 100))
+
+    @app.get("/system/diagnostics")
+    def system_diagnostics() -> dict:
+        return safe_diagnostic_report(settings)
+
+    @app.get("/system/diagnostics/download")
+    def system_diagnostics_download() -> JSONResponse:
+        # Deliberately excludes raw logs and secrets. The report is created
+        # in memory; exporting it does not fill the limited local disk.
+        return JSONResponse(
+            content=safe_diagnostic_report(settings),
+            headers={"Content-Disposition": 'attachment; filename="pod-diagnostics-safe.json"',
+                     "Cache-Control": "no-store"},
+        )
 
     @app.post("/system/events", status_code=204)
     def record_desktop_event(request: DesktopAuditEvent) -> Response:

@@ -29,6 +29,19 @@ export type SystemOverview = {
   };
 };
 
+export type SafeDiagnosticReport = {
+  schema_version: number;
+  generated_at: string;
+  app_version: string;
+  update: { current: string; previous: string | null; staged: string | null;
+    last_success_at: string | null; last_failure_at: string | null; has_last_error: boolean };
+  logs: { job_retention_days: number; job_log_count: number;
+    files: Array<{ name: string; present: boolean; bytes: number }> };
+  recent_event_sample: { count: number; window_hours: number; max_scanned: number;
+    error_or_failure_count: number; error_level_count: number };
+  privacy: string;
+};
+
 export type SafeLogEntry = {
   timestamp?: string;
   level?: string;

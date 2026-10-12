@@ -78,7 +78,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [providerRefresh, setProviderRefresh] = useState(0);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
-  const updateCheckStarted = useRef(false);
+  const updateCheckInFlight = useRef(false);
   const [candidateKind, setCandidateKind] = useState<"local_draft" | "ai_candidate" | null>(null);
   const [error, setError] = useState("");
 
@@ -170,10 +170,24 @@ export default function App() {
   }, [job?.job_id, job?.state]);
 
   useEffect(() => {
-    if (!engineOnline || updateCheckStarted.current) return;
-    updateCheckStarted.current = true;
-    void systemRequest<UpdateCheck>("/system/check-updates", "POST")
-      .then(setUpdateCheck).catch(() => { /* Keep the tool usable when offline. */ });
+    if (!engineOnline) return;
+    let stopped = false;
+    const checkForUpdates = async () => {
+      if (updateCheckInFlight.current) return;
+      updateCheckInFlight.current = true;
+      try {
+        const result = await systemRequest<UpdateCheck>("/system/check-updates", "POST");
+        if (!stopped) setUpdateCheck(result);
+      } catch {
+        // Offline or concurrent checks must never interrupt artwork jobs.
+      } finally {
+        updateCheckInFlight.current = false;
+      }
+    };
+    void checkForUpdates();
+    // A long-running studio session also discovers new releases without a restart.
+    const interval = window.setInterval(checkForUpdates, 6 * 60 * 60 * 1000);
+    return () => { stopped = true; window.clearInterval(interval); };
   }, [engineOnline]);
 
   useEffect(() => {

@@ -6,6 +6,7 @@ provider response bodies can contain secrets or user image prompts.
 from __future__ import annotations
 
 import json
+import re
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,13 @@ from .settings import Settings
 
 LOG_NAMES = ("engine.log", "updater.log", "desktop-engine.log")
 SAFE_FIELDS = ("timestamp", "level", "logger", "event", "stage", "route", "duration_ms", "job_id")
+# Accept only bounded structured event fields; never render raw message/exception text.
+_SAFE_EVENT = re.compile(r"^[a-z][a-z0-9_]{1,79}$")
+_SAFE_STAGE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+_SAFE_ROUTE = re.compile(r"^/[a-zA-Z0-9/_{}.-]{1,120}$")
+_SAFE_LOGGER = re.compile(r"^[a-zA-Z0-9_.]{1,80}$")
+_SAFE_JOB_ID = re.compile(r"^[a-f0-9]{32}$")
+_SAFE_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 
 def log_summary(settings: Settings) -> dict:
@@ -49,9 +57,29 @@ def recent_safe_events(settings: Settings, limit: int = 40) -> list[dict]:
             record = json.loads(line)
             if not isinstance(record, dict) or not record.get("event"):
                 continue
-            safe = {key: record[key] for key in SAFE_FIELDS if key in record
-                    and isinstance(record[key], (str, int, float))}
-            # No message, prompt, file path, API key, exception or arbitrary extra fields.
+            if not isinstance(record.get("event"), str) or not _SAFE_EVENT.fullmatch(record["event"]):
+                continue
+            safe = {"event": record["event"]}
+            for key, pattern in (
+                ("logger", _SAFE_LOGGER), ("stage", _SAFE_STAGE),
+                ("route", _SAFE_ROUTE), ("job_id", _SAFE_JOB_ID),
+            ):
+                value = record.get(key)
+                if isinstance(value, str) and pattern.fullmatch(value):
+                    safe[key] = value
+            level = record.get("level")
+            if isinstance(level, str) and level in _SAFE_LEVELS:
+                safe["level"] = level
+            stamp = record.get("timestamp")
+            if isinstance(stamp, str) and len(stamp) <= 40:
+                try:
+                    datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                    safe["timestamp"] = stamp
+                except ValueError:
+                    pass
+            duration = record.get("duration_ms")
+            if type(duration) in (int, float) and 0 <= duration < 1_000_000_000:
+                safe["duration_ms"] = duration
             entries.append(safe)
         except (ValueError, TypeError):
             continue

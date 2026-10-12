@@ -32,6 +32,16 @@ async function run() {
       const page = await context.newPage();
       const runtimeErrors = [];
       page.on("pageerror", (error) => runtimeErrors.push(error.message));
+      // The QA frontend may run against the previous installed engine.
+      // Mock only the newly introduced, read-only safe diagnostic snapshot.
+      await page.route("http://127.0.0.1:8765/system/diagnostics", async (route) => {
+        await route.fulfill({ status: 200, contentType: "application/json",
+          body: JSON.stringify({
+            schema_version: 1, app_version: "0.1.12", generated_at: new Date().toISOString(),
+            recent_event_sample: { count: 3, window_hours: 24, max_scanned: 100, error_or_failure_count: 0, error_level_count: 0 },
+          }),
+        });
+      });
       try {
         await page.goto(baseURL, { waitUntil: "networkidle", timeout: 25000 });
         await page.getByRole("navigation", { name: "Tool sections" }).waitFor();
@@ -63,6 +73,7 @@ async function run() {
             await page.getByRole("heading", { name: "Version & updates" }).waitFor();
             await page.getByRole("heading", { name: "Logger" }).waitFor();
             await page.getByRole("button", { name: "Check for updates" }).waitFor();
+            await page.getByRole("link", { name: "Export sanitized diagnostics report" }).waitFor();
           }
           checks++;
         }

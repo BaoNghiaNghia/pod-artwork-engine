@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, FileText, RefreshCcw, ShieldCheck, CircleAlert } from "lucide-react";
+import { Activity, Download, FileDown, FileText, RefreshCcw, ShieldCheck, CircleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { systemRequest, type SafeLogEntry, type SystemOverview, type UpdateCheck } from "./system";
+import { ENGINE_URL, systemRequest, type SafeDiagnosticReport, type SafeLogEntry, type SystemOverview, type UpdateCheck } from "./system";
 
 export default function SystemStatus({
   engineOnline, latestCheck, onChecked,
@@ -14,6 +14,7 @@ export default function SystemStatus({
 }) {
   const [overview, setOverview] = useState<SystemOverview | null>(null);
   const [events, setEvents] = useState<SafeLogEntry[]>([]);
+  const [report, setReport] = useState<SafeDiagnosticReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [staging, setStaging] = useState(false);
   const [error, setError] = useState("");
@@ -24,12 +25,14 @@ export default function SystemStatus({
   const refresh = useCallback(async () => {
     if (!engineOnline) return;
     try {
-      const [state, logs] = await Promise.all([
+      const [state, logs, diagnostics] = await Promise.all([
         systemRequest<SystemOverview>("/system/overview"),
         systemRequest<SafeLogEntry[]>("/system/events?limit=30"),
+        systemRequest<SafeDiagnosticReport>("/system/diagnostics").catch(() => null),
       ]);
       setOverview(state);
       setEvents(logs);
+      setReport(diagnostics);
       setError("");
     } catch {
       setError("Không thể tải trạng thái updater/logger từ Engine.");
@@ -83,7 +86,7 @@ export default function SystemStatus({
             ? <span className="system-update-ready"><ShieldCheck size={15}/> v{pending} đã sẵn sàng · khởi động lại để kích hoạt</span>
             : check?.update_available
               ? <span className="system-update-available"><Download size={15}/> Có phiên bản mới: v{check.latest_version}</span>
-              : <span><ShieldCheck size={15}/> {check ? "Đang sử dụng bản mới nhất" : "Chưa kiểm tra trong phiên này"}</span>}
+              : <span><ShieldCheck size={15}/> {!check ? "Chưa kiểm tra trong phiên này" : !check.enabled ? "Kênh cập nhật đang tắt" : "Đang sử dụng bản mới nhất"}</span>}
           <span>Channel: stable{check?.checked_at ? ` · Checked ${new Date(check.checked_at).toLocaleString()}` : ""}</span>
         </div>
         <div className="system-monitor-actions">
@@ -120,6 +123,14 @@ export default function SystemStatus({
             ))}
           </div>
         </>}
+        {report && <div className="system-diagnostics-snapshot">
+          <div><Activity size={15}/><strong>{report.recent_event_sample.count}</strong><span>events sampled (24h)</span></div>
+          <div><CircleAlert size={15}/><strong>{report.recent_event_sample.error_or_failure_count}</strong><span>failures in sample</span></div>
+          <Button variant="outline" size="sm" asChild>
+            <a href={`${ENGINE_URL}/system/diagnostics/download`} download="pod-diagnostics-safe.json"
+               aria-label="Export sanitized diagnostics report"><FileDown size={14}/> Export diagnostic JSON</a>
+          </Button>
+        </div>}
         <div className="system-log-recent">
           <strong>Recent events</strong>
           {events.length ? events.slice(-12).reverse().map((entry, i) => (
