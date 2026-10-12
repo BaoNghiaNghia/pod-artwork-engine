@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ImagePlus, Send, Sparkles, ShieldCheck, Download, CheckCircle2 } from "lucide-react";
 
 const API = "http://127.0.0.1:8765";
 const LAST_CHAT_KEY = "pod-artwork-last-image-chat";
@@ -148,8 +149,8 @@ export default function AIChat({
       <div className="image-chat-heading">
         <div>
           <div className="eyebrow">ARTWORK IMAGE STUDIO</div>
-          <h2>Chỉnh sửa ảnh bằng AI Chat</h2>
-          <p>Viết yêu cầu · Tạo version · Chọn bản phù hợp · Kiểm tra chuẩn in.</p>
+          <h2>AI Image Studio</h2>
+          <p>Chỉnh sửa bằng ngôn ngữ tự nhiên, lưu mọi phiên bản.</p>
         </div>
         <span className={config?.configured ? "chat-connected" : "chat-disconnected"}>
           {config?.configured ? "Image AI ready" : "Chưa kết nối"}
@@ -157,7 +158,7 @@ export default function AIChat({
       </div>
 
       <details className="chat-config" open={!config?.configured}>
-        <summary>Cấu hình OpenAI Image AI <span>{config?.configured ? "Đã có key" : "Cần API key"}</span></summary>
+        <summary><Sparkles size={14}/> Cấu hình Image AI <span>{config?.configured ? "Đã kết nối" : "Cần API key"}</span></summary>
         <div className="chat-config-fields">
           <label>Model ảnh <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-image-1" /></label>
           <label>OpenAI API key <input value={key} type="password" autoComplete="off" onChange={(e) => setKey(e.target.value)} placeholder={config?.configured ? "Đã cấu hình — để trống nếu giữ key" : "Nhập API key"} /></label>
@@ -170,26 +171,28 @@ export default function AIChat({
         <div className="chat-session-buttons">
           {artworkJob && <button type="button" className={usingArtwork ? "selected" : ""} onClick={() => setUsingArtwork(true)}>Dùng job hiện tại</button>}
           {chatJobId && <button type="button" className={!usingArtwork ? "selected" : ""} onClick={() => setUsingArtwork(false)}>Phiên chat đã lưu</button>}
-          <label className="secondary-button">Thêm ảnh tham chiếu
+          <label className="secondary-button"><ImagePlus size={15}/> Thêm ảnh
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => setAttached(Array.from(event.target.files ?? []))}/>
           </label>
-          <button type="button" className="secondary-button" disabled={busy || !engineOnline || !(attached.length || inputFiles.length)}
-            onClick={createSession}>Tạo phiên từ ảnh ({attached.length || inputFiles.length})</button>
+          {(attached.length > 0 || inputFiles.length > 0) && (
+            <button type="button" className="primary-button" disabled={busy || !engineOnline}
+              onClick={createSession}>Tạo phiên từ {attached.length || inputFiles.length} ảnh</button>
+          )}
         </div>
         <span>{activeJobId ? `Session ${activeJobId.slice(0, 12)}` : "Chọn ảnh hoặc dùng job hiện tại để bắt đầu"}</span>
       </div>
 
-      <div className="chat-workspace">
+      <div className={`chat-workspace ${!activeJobId ? "is-empty" : ""}`}>
         <div className="chat-preview-pane">
           <div className="chat-pane-title"><strong>Ảnh đang chọn</strong><span>{visibleVersion ? `Version ${versions.findIndex((v) => v.version_id === visibleVersion.version_id) + 1}` : "Ảnh gốc"}</span></div>
           <div className="chat-canvas">
             {previewUrl ? <img src={previewUrl} alt="Ảnh đang chỉnh sửa" key={previewUrl}/> :
-              <div className="chat-empty">Chọn ảnh tham chiếu để bắt đầu chỉnh sửa bằng AI.</div>}
+              <div className="chat-empty"><div className="chat-empty-icon"><ImagePlus size={27}/></div><strong>Chưa có ảnh làm việc</strong><span>Thêm ảnh tham chiếu ở thanh công cụ để bắt đầu chỉnh sửa.</span></div>}
           </div>
           <div className="chat-preview-footer">
-            <span>AI version là bản nháp, chưa xác nhận chuẩn in.</span>
-            {visibleVersion && <a className="secondary-button" href={previewUrl} download={`artwork-ai-${visibleVersion.version_id.slice(0,8)}.png`}>Tải PNG nháp</a>}
-            {visibleVersion && <button className="primary-button" disabled={busy} onClick={() => printCheck(visibleVersion.version_id)}>Kiểm tra chuẩn in</button>}
+            <span><ShieldCheck size={13}/> Kết quả AI cần qua QC trước khi in.</span>
+            {visibleVersion && <a className="secondary-button" href={previewUrl} download={`artwork-ai-${visibleVersion.version_id.slice(0,8)}.png`}><Download size={14}/> Tải bản nháp</a>}
+            {visibleVersion && <button className="primary-button" disabled={busy} onClick={() => printCheck(visibleVersion.version_id)}><CheckCircle2 size={14}/> Kiểm tra chuẩn in</button>}
           </div>
         </div>
         <div className="chat-conversation">
@@ -216,9 +219,9 @@ export default function AIChat({
               onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }}
               rows={4} maxLength={4000} placeholder="VD: Giữ nguyên toàn bộ chữ, thay hoa hồng thành hoa cúc, màu trắng nền trong suốt, nét sắc rõ để in áo." />
             <button className="run-button" onClick={send} disabled={!engineOnline || !activeJobId || !config?.configured || !prompt.trim() || running || busy}>
-              {running ? "AI đang tạo ảnh…" : busy ? "Đang gửi…" : "Gửi yêu cầu chỉnh sửa"}
+              <Send size={14}/>{running ? "Đang tạo ảnh…" : busy ? "Đang gửi…" : "Tạo phiên bản mới"}
             </button>
-            <small>Ctrl + Enter để gửi · Mỗi lượt tạo version mới · Ảnh gốc luôn được giữ lại.</small>
+            <small>Ctrl + Enter để gửi · Lưu riêng mỗi phiên bản</small>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import DatasetOnboarding from "./DatasetOnboarding";
 import ProviderSettings from "./ProviderSettings";
 import AIChat from "./AIChat";
 import { getVersion } from "@tauri-apps/api/app";
+import { Layers3, Images, MessageSquareText, Database, SlidersHorizontal, ImagePlus, Play, Sparkles, CheckCircle2, ChevronRight, Cpu } from "lucide-react";
 
 type QualityMode = "quick_2d" | "print_ready" | "max_fidelity";
 
@@ -215,53 +216,63 @@ export default function App() {
       : "AI rescue cooling down";
 
   return (
+
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <div className="eyebrow">POD AI PRINT</div>
-          <h1>Artwork Reconstruction <span className="app-version">v{appVersion || "…"}</span></h1>
-          <p className="subtitle">Drop references, press Run, get a print-ready artwork.</p>
+        <div className="brand-identity">
+          <span className="brand-mark"><Layers3 size={20} strokeWidth={2.1}/></span>
+          <div className="brand-copy">
+            <strong>POD Artwork <span className="app-version">v{appVersion || "…"}</span></strong>
+            <small>AI PRINT STUDIO</small>
+          </div>
         </div>
         <div className="engine-summary">
-          <div className={`status ${engineOnline ? "online" : "offline"}`}>
-            <span />
-            {engineOnline ? "Engine ready" : "Engine offline"}
+          {engineOnline && <span className="runtime-note">{providerLabel} · {engineStatus?.job_concurrency ?? 1} parallel</span>}
+          <div className={`status ${engineOnline ? "online" : "offline"}`} role="status">
+            <span />{engineOnline ? "Engine ready" : "Engine offline"}
           </div>
-          {engineOnline && (
-            <div className="runtime-note">
-              {providerLabel} · {engineStatus?.job_concurrency ?? 1} job{(engineStatus?.job_concurrency ?? 1) > 1 ? "s" : ""} parallel
-            </div>
-          )}
-          {engineIssue && <div className="engine-issue" role="status">{engineIssue}</div>}
+          {engineIssue && <div className="engine-issue" role="alert">{engineIssue}</div>}
         </div>
       </header>
-
-      <nav className="primary-tabs" aria-label="Tool sections">
-        <button
-          className={activeTab === "artwork" ? "selected" : ""}
-          onClick={() => setActiveTab("artwork")}
-        >Artwork</button>
-        <button className={activeTab === "chat" ? "selected" : ""}
-          onClick={() => setActiveTab("chat")}>AI Image Chat</button>
-        <button
-          className={activeTab === "dataset" ? "selected" : ""}
-          onClick={() => setActiveTab("dataset")}
-        >Historical Dataset</button>
-        <button className={activeTab === "provider" ? "selected" : ""}
-          onClick={() => setActiveTab("provider")}>AI Settings</button>
-      </nav>
+      <div className="app-body">
+        <nav className="primary-tabs" aria-label="Tool sections">
+          <div className="nav-label">WORKSPACE</div>
+          <button type="button" className={activeTab === "artwork" ? "selected" : ""}
+            aria-current={activeTab === "artwork" ? "page" : undefined} onClick={() => setActiveTab("artwork")}>
+            <Images size={17}/> <span>Artwork</span><ChevronRight className="nav-chevron" size={14}/>
+          </button>
+          <button type="button" className={activeTab === "chat" ? "selected" : ""}
+            aria-current={activeTab === "chat" ? "page" : undefined} onClick={() => setActiveTab("chat")}>
+            <MessageSquareText size={17}/> <span>AI Image Chat</span><ChevronRight className="nav-chevron" size={14}/>
+          </button>
+          <button type="button" className={activeTab === "dataset" ? "selected" : ""}
+            aria-current={activeTab === "dataset" ? "page" : undefined} onClick={() => setActiveTab("dataset")}>
+            <Database size={17}/> <span>Datasets</span><ChevronRight className="nav-chevron" size={14}/>
+          </button>
+          <div className="nav-label nav-label-settings">SYSTEM</div>
+          <button type="button" className={activeTab === "provider" ? "selected" : ""}
+            aria-current={activeTab === "provider" ? "page" : undefined} onClick={() => setActiveTab("provider")}>
+            <SlidersHorizontal size={17}/> <span>AI Settings</span><ChevronRight className="nav-chevron" size={14}/>
+          </button>
+          <div className="nav-footer">
+            <Cpu size={15}/>
+            <span>Local engine<br/><strong>{engineOnline ? "Connected" : "Disconnected"}</strong></span>
+          </div>
+        </nav>
+        <div className="app-content">
 
       {activeTab === "artwork" ? (
       <>
+      <div className="studio-page-heading"><div><span className="eyebrow">CREATE</span><h1>Artwork Reconstruction</h1><p>Turn product references into print-ready artwork.</p></div><span className="studio-page-tag"><Sparkles size={13}/> Local-first pipeline</span></div>
       <section className="workspace">
         <div className={`upload-card ${files.length ? "has-files" : ""}`}>
           {files.length === 0 ? (
             <>
-              <div className="upload-icon" aria-hidden="true">+</div>
-              <h2>Choose product references</h2>
-              <p>One image or several views of the same artwork.</p>
+              <div className="upload-icon" aria-hidden="true"><ImagePlus size={25}/></div>
+              <h2>Add reference images</h2>
+              <p>Drop images here or browse your files.</p>
               <label className="primary-button">
-                Select images
+                <ImagePlus size={15}/> Select images
                 <input type="file" accept="image/*" multiple onChange={chooseFiles} hidden />
               </label>
             </>
@@ -306,10 +317,10 @@ export default function App() {
           <div className="auto-row">
             <div>
               <div className="eyebrow">PROCESSING</div>
-              <h3>Auto Mode</h3>
+              <h3>Auto reconstruction</h3>
               <p>Local-first. AI is used only when the quality gates require rescue.</p>
             </div>
-            <span className="auto-badge">Recommended</span>
+            <span className="auto-badge"><CheckCircle2 size={13}/> Recommended</span>
           </div>
 
           <button className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}>
@@ -342,25 +353,23 @@ export default function App() {
             </div>
           )}
 
-          <div className="dataset-muted">
-            Best: isolated transparent PNG · Good: close-up artwork · Hard: full garment mockup.
-          </div>
+          <div className="dataset-muted processing-hint">Transparent artwork is ideal. Product mockups may need AI reconstruction.</div>
           <button
             className="run-button"
             disabled={!files.length || !engineOnline || busy || jobActive}
             onClick={createJob}
           >
-            {busy ? "Starting…" : jobActive ? "Processing…" : "Run"}
+            <Play size={15} fill="currentColor"/> {busy ? "Starting…" : jobActive ? "Processing…" : "Generate artwork"}
           </button>
           {error && <div className="error">{error}</div>}
         </div>
       </section>
 
-      <section className="result-card">
+      <section className={`result-card ${!job ? "is-empty" : ""}`}>
         <div className="result-header">
           <div>
             <div className="eyebrow">CURRENT JOB</div>
-            <h3>{job ? job.job_id.slice(0, 12) : "Ready for a job"}</h3>
+            <h3>{job ? job.job_id.slice(0, 12) : "No job running"}</h3>
           </div>
           <strong>{progress}%</strong>
         </div>
@@ -386,7 +395,7 @@ export default function App() {
             ? "AI candidate created — waiting for semantic quality review"
             : mockupNotIsolated
               ? "2D artwork not created — mockup separation requires AI"
-              : job?.stage_message ?? "Select references and press Run."}</strong>
+              : job?.stage_message ?? "Your results and quality checks will appear here."}</strong>
           {job && <span>{job.state.replaceAll("_", " ")}</span>}
         </div>
 
@@ -493,6 +502,8 @@ export default function App() {
       ) : (
         <ProviderSettings engineOnline={engineOnline} onChanged={() => setProviderRefresh((value) => value + 1)} />
       )}
+        </div>
+      </div>
     </main>
   );
 }

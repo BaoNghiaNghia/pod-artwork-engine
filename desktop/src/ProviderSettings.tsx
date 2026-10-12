@@ -76,38 +76,55 @@ export default function ProviderSettings({ engineOnline, onChanged }: {
     <section className="dataset-workspace provider-settings">
       <div className="dataset-intro">
         <div>
-          <div className="eyebrow">AI RECONSTRUCTION</div>
-          <h2>Provider settings</h2>
-          <p>Connect a server implementing the POD Engine typed analyze / reconstruct / judge contract.</p>
+          <div className="eyebrow">CONNECTIONS</div>
+          <h2>AI Reconstruction</h2>
+          <p>Manage the image reconstruction service used for artwork recovery.</p>
         </div>
-        <span className="dataset-safe">{config?.provider_state.available ? "Provider available" : "Not connected"}</span>
+        <span className={config?.provider_state.available ? "dataset-safe" : "chat-disconnected"}>
+          {config?.provider_state.available ? "Connected" : "Not connected"}
+        </span>
       </div>
-      <div className="dataset-panel">
-        <div className="dataset-section-title">Connection</div>
-        <p className="dataset-muted">A generic OpenAI or Gemini API URL does not implement the POD protocol directly. An adapter is required. HTTPS is mandatory for remote URLs.</p>
-        {config && (
-          <div className="provider-fields">
-            <label><span>Provider URL</span>
-              <input value={config.url} onChange={(e) => update("url",e.target.value)} placeholder="https://your-pod-provider.example/v1/execute" /></label>
-            <label><span>Provider name</span>
-              <input value={config.name} onChange={(e) => update("name",e.target.value)} /></label>
-            <label><span>Model alias</span>
-              <input value={config.model_alias} onChange={(e) => update("model_alias",e.target.value)} placeholder="provider-specific model identifier" /></label>
-            <label><span>Timeout (seconds)</span>
-              <input type="number" min={5} max={600} value={config.timeout_seconds} onChange={(e) => update("timeout_seconds",e.target.value)} /></label>
-            <label><span>API key (optional, hidden)</span>
-              <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={config.token_set ? "Key active; leave blank to retain" : "Paste API key"} /></label>
-            <label className="dataset-checkbox-row"><input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} />Clear current key</label>
-          </div>
-        )}
-        <p className="dataset-muted">For security, keys entered here are kept only in this Engine session, never saved in the configuration file. To retain a key across restarts, set POD_REMOTE_PROVIDER_TOKEN in the process environment.</p>
-        <div className="provider-actions">
-          <button className="dataset-action" disabled={!engineOnline || !config || busy || testing} onClick={save}>
-            {busy ? "Saving…" : "Save connection"}</button>
-          <button className="secondary-button" disabled={!engineOnline || !config?.provider_state.available || busy || testing} onClick={test}>
-            {testing ? "Checking…" : "Test provider"}</button>
-        </div>
-        <p className="dataset-muted">Test provider makes a real ANALYZE request using a synthetic image; your provider may charge for it. Reconstruction is verified only by running an actual job.</p>
+      <div className="dataset-panel provider-main">
+        <div className="dataset-section-title">Provider connection</div>
+        {config ? (
+          <>
+            <div className="provider-essential">
+              <label><span>Provider endpoint</span>
+                <input value={config.url} onChange={(e) => update("url", e.target.value)}
+                  placeholder="https://your-pod-provider.example/v1/execute" /></label>
+              <label><span>API key <small>(optional)</small></span>
+                <input type="password" autoComplete="off" value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder={config.token_set ? "Key active — leave blank to keep" : "Enter provider API key"} /></label>
+            </div>
+            <details className="provider-advanced">
+              <summary>Advanced connection options</summary>
+              <div className="provider-fields">
+                <label><span>Provider name</span>
+                  <input value={config.name} onChange={(e) => update("name", e.target.value)} /></label>
+                <label><span>Model alias</span>
+                  <input value={config.model_alias} onChange={(e) => update("model_alias", e.target.value)}
+                    placeholder="Provider-specific identifier" /></label>
+                <label><span>Timeout (seconds)</span>
+                  <input type="number" min={5} max={600} value={config.timeout_seconds}
+                    onChange={(e) => update("timeout_seconds", e.target.value)} /></label>
+                <label className="dataset-checkbox-row"><input type="checkbox" checked={clearToken}
+                  onChange={(e) => setClearToken(e.target.checked)} />Clear saved session key</label>
+              </div>
+              <p className="dataset-muted">Requires a POD-compatible analyze / reconstruct / judge endpoint, not a direct OpenAI/Gemini URL. Remote endpoints must use HTTPS.</p>
+            </details>
+            <div className="provider-bottom">
+              <div className="provider-actions">
+                <button className="dataset-action" disabled={!engineOnline || busy || testing} onClick={save}>
+                  {busy ? "Saving…" : "Save connection"}</button>
+                <button className="secondary-button"
+                  disabled={!engineOnline || !config.provider_state.available || busy || testing} onClick={test}>
+                  {testing ? "Testing…" : "Test provider"}</button>
+              </div>
+              <p className="provider-small-note">Keys stay in the running engine session. Tests call the provider and may incur usage costs.</p>
+            </div>
+          </>
+        ) : <p className="dataset-muted">Connect the local engine to edit provider settings.</p>}
         {message && <div className="dataset-status ready" role="status">{message}</div>}
         {error && <div className="dataset-error" role="alert">{error}</div>}
       </div>

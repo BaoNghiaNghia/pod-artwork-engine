@@ -195,9 +195,9 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
         <div>
           <div className="eyebrow">LEARNING DATA</div>
           <h2>Historical Dataset</h2>
-          <p>Match original product images to approved final artworks. Preflight never writes to the dataset registry.</p>
+          <p>Pair source images with approved designs. Preview changes before import.</p>
         </div>
-        <span className="dataset-safe">Read-only until Import</span>
+        <span className="dataset-safe">Safe preview</span>
       </div>
 
       <div className="dataset-panel">
@@ -267,9 +267,9 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
         </button>
       </div>
 
-      <div className="dataset-panel">
+      <div className={`dataset-panel dataset-review-panel ${!report && !imported ? "is-empty" : ""}`}>
         <div className="dataset-section-title">2. Review results</div>
-        {!report && !imported && <p className="dataset-muted">Run Preflight to see valid pairs, mismatches, duplicates and the projected Golden split.</p>}
+        {!report && !imported && <p className="dataset-muted">Run Preflight to preview matches and check for conflicts before importing.</p>}
         {report && (
           <>
             <div className={`dataset-status ${isReady ? "ready" : "blocked"}`}>
@@ -318,8 +318,8 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
         )}
       </div>
 
-      <div className="dataset-panel">
-        <div className="dataset-section-title">3. Import approved data</div>
+      <details className="dataset-panel dataset-disclosure" open={isReady || Boolean(imported)}>
+        <summary className="dataset-section-title">3. Import approved data <span>{isReady ? "Ready" : "After preflight"}</span></summary>
         {imported?.dataset ? (
           <div className="dataset-status ready">
             <strong>Dataset registered</strong>
@@ -341,8 +341,11 @@ export default function DatasetOnboarding({ engineOnline }: { engineOnline: bool
             </button>
           </>
         )}
-      </div>
-      <GoldenReadiness engineOnline={engineOnline} importedDatasetId={imported?.dataset?.dataset_id} />
+      </details>
+      <details className="golden-disclosure">
+        <summary>4. Golden holdout readiness <span>Advanced · Dataset QA</span></summary>
+        <GoldenReadiness engineOnline={engineOnline} importedDatasetId={imported?.dataset?.dataset_id} />
+      </details>
       {error && <p className="dataset-error" role="alert">{error}</p>}
     </section>
   );
