@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ImagePlus, Send, Settings2, ShieldCheck, Download, CheckCircle2 } from "lucide-react";
 
 const API = "http://127.0.0.1:8765";
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const LAST_CHAT_KEY = "pod-artwork-last-image-chat";
 
 type ArtworkJob = { job_id: string; state: string };
@@ -90,6 +91,11 @@ export default function AIChat({
   const createSession = async () => {
     const images = attached.length ? attached : inputFiles;
     if (!images.length || busy) return;
+    const oversized = images.find((file) => file.size > MAX_UPLOAD_BYTES);
+    if (oversized) {
+      setError(`Ảnh "${oversized.name}" vượt 50 MB. Vui lòng chọn ảnh nhỏ hơn.`);
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
     try {
       const body = new FormData();
@@ -160,8 +166,19 @@ export default function AIChat({
           {artworkJob && <button type="button" className={usingArtwork ? "selected" : ""} onClick={() => setUsingArtwork(true)}>Dùng job hiện tại</button>}
           {chatJobId && <button type="button" className={!usingArtwork ? "selected" : ""} onClick={() => setUsingArtwork(false)}>Phiên chat đã lưu</button>}
           <label className="secondary-button"><ImagePlus size={15}/> Thêm ảnh
-            <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => setAttached(Array.from(event.target.files ?? []))}/>
+            <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => {
+              const selected = Array.from(event.target.files ?? []);
+              const oversized = selected.find((file) => file.size > MAX_UPLOAD_BYTES);
+              if (oversized) {
+                setError(`Ảnh "${oversized.name}" vượt giới hạn 50 MB/ảnh.`);
+              } else {
+                setAttached(selected);
+                setError("");
+              }
+              event.target.value = "";
+            }}/>
           </label>
+          <span className="chat-upload-limit">Max 50 MB / image</span>
           {(attached.length > 0 || inputFiles.length > 0) && (
             <button type="button" className="primary-button" disabled={busy || !engineOnline}
               onClick={createSession}>Tạo phiên từ {attached.length || inputFiles.length} ảnh</button>

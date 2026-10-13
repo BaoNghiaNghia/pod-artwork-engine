@@ -478,6 +478,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     async def _read_enhance_image(file: UploadFile):
         payload = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(payload) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Each image must be 50 MB or smaller")
         try:
             return await asyncio.to_thread(load_artwork, payload)
         except ValueError as exc:
@@ -531,11 +533,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         staging = Path(tempfile.mkdtemp(prefix="pod-upload-", dir=settings.data_root))
         staged_paths: list[Path] = []
         try:
-            for upload in files:
-                safe_name = Path(upload.filename or "input.bin").name
-                target = staging / safe_name
+            for index, upload in enumerate(files):
+                safe_name = Path(upload.filename or f"input-{index}.bin").name
+                target = staging / f"{index:03d}-{safe_name}"
+                total = 0
                 with target.open("wb") as handle:
                     while chunk := await upload.read(1024 * 1024):
+                        total += len(chunk)
+                        if total > MAX_UPLOAD_BYTES:
+                            raise HTTPException(status_code=413, detail="Each image must be 50 MB or smaller")
                         handle.write(chunk)
                 staged_paths.append(target)
 
@@ -644,8 +650,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 with target.open("wb") as handle:
                     while chunk := await upload.read(1024 * 1024):
                         total += len(chunk)
-                        if total > 15 * 1024 * 1024:
-                            raise HTTPException(status_code=413, detail="Each image must be under 15 MB")
+                        if total > MAX_UPLOAD_BYTES:
+                            raise HTTPException(status_code=413, detail="Each image must be 50 MB or smaller")
                         handle.write(chunk)
                 from PIL import Image
                 try:

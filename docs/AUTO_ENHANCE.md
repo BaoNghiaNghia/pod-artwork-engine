@@ -1,4 +1,4 @@
-# Auto Enhance Artwork — v0.1.14
+# Auto Enhance Artwork — v0.1.15
 
 ## User flow
 On the **Artwork** tab, selecting/uploading images automatically starts a local, bounded
@@ -19,11 +19,17 @@ according to the chosen mode. There is no external API cost or key requirement.
   previews are transmitted directly and held in memory. No new backend file or preview
   is stored, and browser object URLs are revoked on selection changes/unmount.
 - The existing **Generate artwork** button and its job/print QC pipeline remain unchanged.
+- The UI displays a before/after image comparison per source, processing status, detected category, confidence, route, file size and download action. All layouts support mobile and tablet.
 
 ## Technical safeguards
-- Each file <=16 MB; <=16 million source pixels. Maximum raster output <=20 million
-  pixels and longest side <=4500, at most 2x local upscale. Transparent backgrounds are
-  preserved. JPEG/WebP allowed only if decoded by Pillow safely.
+- Each file <=50 MB (50 MiB in binary units), validated in both desktop and API
+  for Artwork Reconstruction, AI Chat session upload, and Auto Enhance.
+- Auto Enhance image safety: <=30 million decoded source pixels (accepts 4500×5400),
+  maximum raster output <=20 million pixels with longest edge <=4500.
+  Large sources may be downscaled; smaller images upscale at most 2x.
+  Preserve transparency; JPEG/WebP only when Pillow can decode the image safely.
+- Artwork upload streams files to disk with a per-file cap and unique staging filenames,
+  including multiple original files with the same display name.
 - Algorithms use Pillow resampling, alpha preservation, modest channel-specific
   unsharp/brightness transformations. They **do not** synthesize missing semantic detail,
   guarantee OCR accuracy, generate true vectors/SVG, or call an image AI provider.

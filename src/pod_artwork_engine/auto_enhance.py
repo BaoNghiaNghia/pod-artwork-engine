@@ -11,8 +11,8 @@ from typing import Any, Literal
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 
-MAX_UPLOAD_BYTES = 16 * 1024 * 1024
-MAX_INPUT_PIXELS = 16_000_000
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_INPUT_PIXELS = 30_000_000
 MAX_OUTPUT_PIXELS = 20_000_000
 MAX_OUTPUT_EDGE = 4500
 
@@ -38,7 +38,7 @@ CATEGORY_MODES = {
 
 def load_artwork(data: bytes) -> Image.Image:
     if not data or len(data) > MAX_UPLOAD_BYTES:
-        raise ValueError("Image must be between 1 byte and 16 MB")
+        raise ValueError("Image must be between 1 byte and 50 MB")
     try:
         with Image.open(BytesIO(data)) as source:
             if source.format not in {"PNG", "JPEG", "WEBP"}:
@@ -46,7 +46,7 @@ def load_artwork(data: bytes) -> Image.Image:
             if source.width < 8 or source.height < 8:
                 raise ValueError("Image dimensions must be at least 8 x 8")
             if source.width * source.height > MAX_INPUT_PIXELS:
-                raise ValueError("Image exceeds the 16 megapixel safety limit")
+                raise ValueError("Image exceeds the 30 megapixel safety limit")
             image = ImageOps.exif_transpose(source).convert("RGBA")
             image.load()
             return image
@@ -159,13 +159,13 @@ def enhance_artwork(image: Image.Image, *, mode: EnhanceMode = "auto") -> tuple[
     if mode != "auto" and mode not in SUPPORTED_MODES:
         raise ValueError("Unsupported enhancement mode")
     if image.width * image.height > MAX_INPUT_PIXELS:
-        raise ValueError("Image exceeds the 16 megapixel safety limit")
+        raise ValueError("Image exceeds the 30 megapixel safety limit")
     report = analyze_artwork(image)
     selected = report["mode"] if mode == "auto" else mode
     report = {**report, "mode": selected, "override": mode != "auto"}
     width, height = image.size
-    scale = max(1.0, min(2.0, MAX_OUTPUT_EDGE / max(width, height),
-                         math.sqrt(MAX_OUTPUT_PIXELS / (width * height))))
+    scale = min(2.0, MAX_OUTPUT_EDGE / max(width, height),
+                math.sqrt(MAX_OUTPUT_PIXELS / (width * height)))
     new_size = (max(1, int(round(width * scale))), max(1, int(round(height * scale))))
     rgba = image.convert("RGBA")
     if new_size != rgba.size:

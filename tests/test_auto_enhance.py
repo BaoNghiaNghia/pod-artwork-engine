@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
 from pod_artwork_engine.api import create_app
-from pod_artwork_engine.auto_enhance import analyze_artwork, enhance_artwork
+from pod_artwork_engine.auto_enhance import MAX_UPLOAD_BYTES, analyze_artwork, enhance_artwork
 from pod_artwork_engine.settings import Settings
 
 
@@ -33,6 +33,61 @@ def png_bytes(im: Image.Image) -> bytes:
     im.save(buffer, format="PNG")
     return buffer.getvalue()
 
+
+
+
+def test_maximum_upload_file_size_is_50_mib():
+    assert MAX_UPLOAD_BYTES == 50 * 1024 * 1024
+
+
+def test_enhance_upload_rejects_over_limit_before_decoding(monkeypatch, tmp_path):
+    # Small patched threshold keeps the regression fast without allocating 50 MiB.
+    import pod_artwork_engine.api as api
+    monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 128)
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    result = client.post("/enhance/analyze", files={"file": ("oversize.png", b"x" * 129, "image/png")})
+    assert result.status_code == 413
+    assert "50 MB" in result.json()["detail"]
+
+
+def test_artwork_job_upload_rejects_over_limit(monkeypatch, tmp_path):
+    import pod_artwork_engine.api as api
+    monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 128)
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    result = client.post("/jobs", files={"files": ("oversize.png", b"x" * 129, "image/png")})
+    assert result.status_code == 413
+    assert "50 MB" in result.json()["detail"]
+    assert not any((tmp_path / "jobs").iterdir())
+
+
+def test_image_chat_upload_rejects_over_limit(monkeypatch, tmp_path):
+    import pod_artwork_engine.api as api
+    monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 128)
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    result = client.post("/image-chat/sessions",
+                         files={"files": ("too-big.png", b"x" * 129, "image/png")})
+    assert result.status_code == 413
+    assert "50 MB" in result.json()["detail"]
+
+
+def test_input_pixel_capacity_allows_standard_print_canvas():
+    from pod_artwork_engine.auto_enhance import MAX_INPUT_PIXELS
+    assert MAX_INPUT_PIXELS >= 4500 * 5400
+
+
+def test_artwork_job_keeps_both_same_named_images(tmp_path):
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    red = png_bytes(Image.new("RGBA", (64, 64), "#ff0000"))
+    blue = png_bytes(Image.new("RGBA", (64, 64), "#0000ff"))
+    response = client.post("/jobs?quality_mode=quick_2d", files=[
+        ("files", ("same.png", red, "image/png")),
+        ("files", ("same.png", blue, "image/png")),
+    ])
+    assert response.status_code == 200
+    paths = response.json()["source_paths"]
+    assert len(paths) == 2 and paths[0] != paths[1]
+    with Image.open(paths[0]) as first, Image.open(paths[1]) as second:
+        assert first.convert("RGB").getpixel((0, 0)) != second.convert("RGB").getpixel((0, 0))
 
 def test_classifier_is_deterministic_and_explains_choice():
     result = analyze_artwork(fixture("flat"))

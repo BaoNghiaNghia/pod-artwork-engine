@@ -47,6 +47,7 @@ type EngineStatus = {
 };
 
 const ENGINE_URL = "http://127.0.0.1:8765";
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 const TIMELINE = [
   { key: "checking", label: "Checking" },
@@ -196,11 +197,16 @@ export default function App() {
 
   const chooseFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    const oversized = selected.find((file) => file.size > MAX_UPLOAD_BYTES);
+    if (oversized) {
+      setError(`Ảnh "${oversized.name}" vượt giới hạn 50 MB/ảnh. Vui lòng chọn ảnh nhỏ hơn.`);
+      return;
+    }
     setFiles(selected);
     if (selected.length) audit("references_selected", "artwork");
     setJob(null);
     setError("");
-    event.target.value = "";
   };
 
   const removeFile = (index: number) => {
@@ -311,6 +317,7 @@ export default function App() {
               <div className="upload-icon" aria-hidden="true"><ImagePlus size={25}/></div>
               <h2>Add reference images</h2>
               <p>Drop images here or browse your files.</p>
+              <p>PNG, JPG, WebP · tối đa 50 MB mỗi ảnh</p>
               <label className="primary-button">
                 <ImagePlus size={15}/> Select images
                 <input type="file" accept="image/*" multiple onChange={chooseFiles} hidden />
@@ -347,7 +354,7 @@ export default function App() {
                 ))}
               </div>
               <div className="file-summary">
-                These images will be processed together as one artwork reference set.
+                These images will be processed together as one artwork reference set · 50 MB per file.
               </div>
             </>
           )}

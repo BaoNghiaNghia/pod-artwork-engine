@@ -98,7 +98,12 @@ async function run() {
               name: "qa-sticker.png", mimeType: "image/png", buffer: tinyPng,
             });
             await page.getByRole("heading", { name: "Auto Enhance Artwork" }).waitFor();
+            await page.getByText("50 MB / file", { exact: true }).waitFor();
+            await page.getByRole("img", { name: "Original: qa-sticker.png" }).waitFor();
+            await page.getByText("Ảnh gốc", { exact: true }).waitFor();
+            await page.getByText("Ảnh sau xử lý", { exact: true }).waitFor();
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
+            await page.getByRole("img", { name: "Enhanced: qa-sticker.png" }).waitFor();
             if (enhancedRequests !== 2) throw new Error("Upload did not auto-analyze AND auto-enhance");
             await page.getByLabel("Chế độ xử lý").selectOption("sticker_clean");
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
