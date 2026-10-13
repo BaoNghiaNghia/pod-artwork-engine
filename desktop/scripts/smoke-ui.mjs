@@ -114,12 +114,37 @@ async function run() {
             await page.getByRole("heading", { name: "Auto Enhance Artwork" }).waitFor();
             await page.getByText("50 MB / file", { exact: true }).waitFor();
             await page.getByRole("img", { name: "Original: qa-sticker.png" }).waitFor();
-            await page.getByText("Ảnh gốc", { exact: true }).waitFor();
-            await page.getByText("Ảnh sau xử lý", { exact: true }).waitFor();
+            await page.getByRole("region", { name: "Trình xem Before/After" }).waitFor();
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
             await page.getByRole("link", { name: "Download SVG" }).waitFor();
             await page.getByRole("img", { name: "Enhanced: qa-sticker.png" }).waitFor();
-            if (enhancedRequests !== 2) throw new Error("Upload did not auto-analyze AND auto-enhance");
+            // Regression: the artwork must be inspectable at true source pixels;
+            // rendering only two 240px thumbnails is not sufficient.
+            const comparator = page.getByRole("region", { name: "Trình xem Before/After" });
+            await comparator.waitFor();
+            await comparator.getByRole("button", { name: "So sánh kéo" }).waitFor();
+            await comparator.getByRole("button", { name: "Song song" }).click();
+            await comparator.getByRole("button", { name: "100%" }).click();
+            await comparator.getByRole("button", { name: "400%" }).click();
+            await comparator.getByRole("button", { name: "Vừa khung" }).click();
+            if (viewport.name === "desktop") {
+              await comparator.getByRole("button", { name: "Phóng to trình xem" }).click();
+              await page.locator(".enhance-inspector.is-expanded").waitFor();
+              await page.keyboard.press("Escape");
+              await comparator.getByRole("button", { name: "Phóng to trình xem" }).waitFor();
+              await comparator.getByRole("button", { name: "Nền tối" }).click();
+              await comparator.getByRole("button", { name: "Nền caro" }).click();
+            }
+            await comparator.getByRole("button", { name: "Khác biệt" }).click();
+            await comparator.getByText("Thay đổi pixel", { exact: false }).waitFor();
+            await comparator.getByRole("button", { name: "So sánh kéo" }).click();
+            const dividerSlider = comparator.getByRole("slider", { name: "Vị trí thanh Before/After" });
+            await dividerSlider.focus();
+            await dividerSlider.press("ArrowRight");
+            if (await dividerSlider.inputValue() !== "51") {
+              throw new Error("Comparison divider slider not keyboard interactive");
+            }
+            if (enhancedRequests !== 2) throw new Error("Compare mode unexpectedly reran image processing");
             await page.getByLabel("Chế độ xử lý").selectOption("sticker_clean");
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
             const enhancedOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);

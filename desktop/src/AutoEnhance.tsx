@@ -4,6 +4,7 @@ import {
   ImageIcon, RefreshCw, ScanSearch, Settings2, ShieldCheck, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import EnhanceComparator from "./EnhanceComparator";
 
 const API = "http://127.0.0.1:8765";
 const MAX_AUTOMATIC_IMAGES = 6;
@@ -269,32 +270,16 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                 </span>
               </div>
 
-              <div className="enhance-compare">
-                <div className="enhance-compare-pane">
-                  <div className="enhance-compare-title"><strong>Ảnh gốc</strong><span>Original</span></div>
-                  <div className="enhance-image-frame">
-                    <img src={sourceUrls[index]} alt={`Original: ${file.name}`} loading="lazy"/>
-                  </div>
+              {result?.url ? (
+                <EnhanceComparator before={sourceUrls[index]} after={result.url} name={file.name}/>
+              ) : (
+                <div className="enhance-awaiting-comparison">
+                  <ImageIcon size={27}/>
+                  <strong>{result?.status === "error" ? "Không thể so sánh" :
+                    active ? "Đang phân tích và xử lý ảnh" : "Đang đợi Engine"}</strong>
+                  <span>{result?.error || "Trình xem Before/After sẽ mở ngay sau khi xử lý xong."}</span>
                 </div>
-                <ArrowRight className="enhance-compare-arrow" size={19} aria-hidden="true"/>
-                <div className="enhance-compare-pane">
-                  <div className="enhance-compare-title">
-                    <strong>Ảnh sau xử lý</strong><span>Raster draft</span>
-                  </div>
-                  <div className="enhance-image-frame">
-                    {result?.url ? (
-                      <img src={result.url} alt={`Enhanced: ${file.name}`} loading="lazy"/>
-                    ) : (
-                      <div className="enhance-image-placeholder">
-                        {result?.status === "error" ? <AlertTriangle size={25}/> :
-                          active ? <RefreshCw size={25}/> : <ImageIcon size={25}/>}
-                        <span>{result?.status === "error" ? "Chưa thể xử lý" :
-                          active ? "Đang xử lý ảnh…" : "Chờ Engine kết nối"}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              )}
 
               <div className="enhance-result-footer">
                 <div className="enhance-detection">
@@ -307,6 +292,9 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       <span>Pipeline: <strong>{MODE_LABELS[result.route.mode] || result.route.mode}</strong></span>
                       <span>Engine: <strong>{result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Raster fallback"}</strong></span>
                       {result.svgUrl && <span>SVG: <strong>VTracer</strong></span>}
+                      {result.svgUrl && (
+                        <small>Với artwork phẳng, PNG có thể trông gần như ảnh gốc. Hãy dùng SVG để kiểm tra đường nét vector khi zoom lớn.</small>
+                      )}
                       {result.fallbackReason && <small>Fallback: {result.fallbackReason}</small>}
                       <small>{result.route.reasons.join(" · ")}</small>
                     </>

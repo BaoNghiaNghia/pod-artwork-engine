@@ -24,7 +24,7 @@ def fixture(kind: str) -> Image.Image:
         draw.ellipse((176, 95, 198, 125), fill="#101010")
         draw.arc((107, 115, 197, 186), 10, 170, fill="#101010", width=8)
     elif kind == "dark":
-        draw.ellipse((42, 28, 256, 223), fill="#171717")
+        draw.rectangle((0, 0, 299, 239), fill="#171717")
     return im
 
 
@@ -100,6 +100,17 @@ def test_classifier_is_deterministic_and_explains_choice():
     assert result["reasons"]
     assert len(result["scores"]) >= 3
     assert result["print_ready"] is False
+
+
+def test_black_art_on_transparent_background_is_not_dark_rescue():
+    image = Image.new("RGBA", (300, 240), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((35, 25, 260, 212), fill="#111111")
+    draw.line((35, 25, 260, 212), fill="#111111", width=10)
+    route = analyze_artwork(image)
+    assert route["category"] == "logo_vector"
+    assert route["mode"] == "vector_clean"
+    assert any("transparen" in reason.lower() for reason in route["reasons"])
 
 
 def test_dark_flat_detects_dark_rescue_without_lightening_source():

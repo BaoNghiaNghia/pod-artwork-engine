@@ -113,10 +113,17 @@ def analyze_artwork(image: Image.Image) -> dict[str, Any]:
     f = _features(image.convert("RGBA"))
     scores: dict[str, float] = {}
     reasons: list[str] = []
-    # Dark rescue is a visibility recommendation rather than a semantic claim.
-    if f["dark_ratio"] > .78 and f["saturation"] < .28:
+    # Very dark line art with a TRANSPARENT canvas is often a healthy POD logo.
+    # Boosting brightness would not reconstruct its edges and hides the
+    # useful VTracer route. Only use dark rescue for mostly opaque canvases.
+    if (f["dark_ratio"] > .78 and f["saturation"] < .28
+            and f["visible_ratio"] < .93 and f["color_complexity"] < .40):
+        category, confidence = "logo_vector", .67
+        reasons = ["Dark shapes on a transparent canvas", "Vector tracing is preferable to dark rescue"]
+    elif (f["dark_ratio"] > .78 and f["saturation"] < .28
+            and f["visible_ratio"] >= .93):
         category, confidence = "dark_low_contrast", .83
-        reasons = ["Most visible artwork pixels are dark", "Low color separation"]
+        reasons = ["Mostly opaque dark artwork", "Low color separation"]
     elif f["color_complexity"] < .36 and f["row_runs"] >= 2 and f["edge_density"] < .19:
         category, confidence = "typography", .67
         reasons = ["Few flat colors", "Multiple separated horizontal content bands"]
