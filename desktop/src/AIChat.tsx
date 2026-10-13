@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { audit } from "./system";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ImagePlus, Send, Sparkles, ShieldCheck, Download, CheckCircle2 } from "lucide-react";
+import { ImagePlus, Send, Settings2, ShieldCheck, Download, CheckCircle2 } from "lucide-react";
 
 const API = "http://127.0.0.1:8765";
 const LAST_CHAT_KEY = "pod-artwork-last-image-chat";
@@ -23,17 +22,15 @@ type Version = {
 type ImageConfig = { configured: boolean; model: string; provider: string; key_persistence: string };
 
 export default function AIChat({
-  engineOnline, inputFiles, artworkJob, onPrintCheck
+  engineOnline, inputFiles, artworkJob, onPrintCheck, onOpenSettings
 }: {
   engineOnline: boolean;
   inputFiles: File[];
   artworkJob: ArtworkJob | null;
   onPrintCheck: (job: ArtworkJob) => void;
+  onOpenSettings: () => void;
 }) {
   const [config, setConfig] = useState<ImageConfig | null>(null);
-  const [key, setKey] = useState("");
-  const [model, setModel] = useState("gpt-image-1");
-  const [savingKey, setSavingKey] = useState(false);
   const [usingArtwork, setUsingArtwork] = useState(Boolean(artworkJob));
   const [chatJobId, setChatJobId] = useState(() => window.localStorage.getItem(LAST_CHAT_KEY) || "");
   const [attached, setAttached] = useState<File[]>([]);
@@ -57,7 +54,7 @@ export default function AIChat({
     let cancelled = false;
     fetch(`${API}/image-chat/config`)
       .then(async (r) => { if (!r.ok) throw new Error("Cannot load image AI settings"); return await r.json() as ImageConfig; })
-      .then((value) => { if (!cancelled) { setConfig(value); setModel(value.model); } })
+      .then((value) => { if (!cancelled) setConfig(value); })
       .catch((err) => { if (!cancelled) setError(String(err)); });
     return () => { cancelled = true; };
   }, [engineOnline]);
@@ -88,23 +85,6 @@ export default function AIChat({
   const responseError = async (response: Response) => {
     const result = await response.json().catch(() => ({}));
     return typeof result.detail === "string" ? result.detail : `HTTP ${response.status}`;
-  };
-
-  const saveConfig = async () => {
-    if (savingKey || !engineOnline) return;
-    setSavingKey(true); setError(""); setNotice("");
-    try {
-      const response = await fetch(`${API}/image-chat/config`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: model.trim(), ...(key.trim() ? {api_key:key.trim()} : {}) })
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      setConfig(await response.json());
-      audit("image_ai_config_saved", "chat");
-      setKey("");
-      setNotice("Đã cấu hình Image AI cho phiên Engine hiện tại.");
-    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-    finally { setSavingKey(false); }
   };
 
   const createSession = async () => {
@@ -166,15 +146,14 @@ export default function AIChat({
         </Badge>
       </div>
 
-      <details className="chat-config" open={!config?.configured}>
-        <summary><Sparkles size={14}/> Cấu hình Image AI <span>{config?.configured ? "Đã kết nối" : "Cần API key"}</span></summary>
-        <div className="chat-config-fields">
-          <label>Model ảnh <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-image-1" /></label>
-          <label>OpenAI API key <Input value={key} type="password" autoComplete="off" onChange={(e) => setKey(e.target.value)} placeholder={config?.configured ? "Đã cấu hình — để trống nếu giữ key" : "Nhập API key"} /></label>
-          <Button type="button" variant="outline" size="sm" className="secondary-button" disabled={!engineOnline || savingKey} onClick={saveConfig}>{savingKey ? "Đang lưu…" : "Lưu AI"}</Button>
-        </div>
-        <p>Key chỉ giữ trong Engine đang chạy, không lưu vào file. Muốn giữ sau khởi động lại, đặt biến môi trường POD_IMAGE_API_KEY và POD_IMAGE_MODEL.</p>
-      </details>
+      <div className="chat-settings-summary">
+        <span><Settings2 size={14}/> {config?.configured
+          ? `Image AI ready · ${config.model}`
+          : "Image AI chưa kết nối · cấu hình trong AI Settings"}</span>
+        <Button type="button" variant="outline" size="sm" onClick={onOpenSettings}>
+          <Settings2 size={14}/> Mở AI Settings
+        </Button>
+      </div>
 
       <div className="chat-session-bar">
         <div className="chat-session-buttons">

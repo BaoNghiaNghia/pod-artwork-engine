@@ -17,7 +17,7 @@ const views = [
   { tab: "Artwork", heading: "Artwork Reconstruction" },
   { tab: "AI Image Chat", heading: "AI Image Studio" },
   { tab: "Datasets", heading: "Historical Dataset" },
-  { tab: "AI Settings", heading: "AI Reconstruction" },
+  { tab: "AI Settings", heading: "AI Settings" },
 ];
 
 async function run() {
@@ -31,7 +31,16 @@ async function run() {
       const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
       const page = await context.newPage();
       const runtimeErrors = [];
+      let imageConfigSubmission = null;
       page.on("pageerror", (error) => runtimeErrors.push(error.message));
+      await page.route("http://127.0.0.1:8765/image-chat/config", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        imageConfigSubmission = route.request().postDataJSON();
+        await route.fulfill({ status: 200, contentType: "application/json",
+          body: JSON.stringify({ configured: true, model: imageConfigSubmission.model,
+            provider: "OpenAI Images API", key_persistence: "session_only_or_environment" }),
+        });
+      });
       // The QA frontend may run against the previous installed engine.
       // Mock only the newly introduced, read-only safe diagnostic snapshot.
       await page.route("http://127.0.0.1:8765/system/diagnostics", async (route) => {
@@ -63,11 +72,36 @@ async function run() {
             }
           }
           if (view.tab === "AI Image Chat") {
+            await page.getByRole("button", { name: "Mở AI Settings" }).waitFor();
+            if (await page.getByRole("textbox", { name: "OpenAI API key" }).count()) {
+              throw new Error("Image Chat must not duplicate AI credentials settings");
+            }
             if (await page.getByRole("button", { name: "Tạo phiên bản mới" }).isEnabled()) {
               throw new Error("Image chat sends before attaching artwork and configuring key");
             }
+            if (viewport.name === "desktop") {
+              await page.getByRole("button", { name: "Mở AI Settings" }).click();
+              await page.getByRole("heading", { name: "AI Settings", exact: true }).waitFor();
+            }
           }
           if (view.tab === "AI Settings") {
+            await page.getByRole("heading", { name: "Image AI", exact: true }).waitFor();
+            await page.getByRole("heading", { name: "AI Reconstruction", exact: true }).waitFor();
+            await page.getByRole("textbox", { name: "Image model" }).waitFor();
+            await page.getByRole("textbox", { name: "OpenAI API key" }).waitFor();
+            if (viewport.name === "desktop") {
+              await page.getByRole("textbox", { name: "Image model" }).fill("gpt-image-1");
+              await page.getByRole("textbox", { name: "OpenAI API key" }).fill("sk-qa-not-real");
+              await page.getByRole("button", { name: "Save Image AI" }).click();
+              await page.getByText("Đã lưu cấu hình Image AI.", { exact: false }).waitFor();
+              if (imageConfigSubmission?.api_key !== "sk-qa-not-real" ||
+                  imageConfigSubmission?.model !== "gpt-image-1") {
+                throw new Error("Centralized Image AI form did not submit the intended configuration");
+              }
+              if (await page.getByRole("textbox", { name: "OpenAI API key" }).inputValue()) {
+                throw new Error("Image API key must be cleared from form after saving");
+              }
+            }
             await page.getByText("Advanced connection options").click();
             await page.getByRole("textbox", { name: "Provider name" }).waitFor();
             await page.getByRole("heading", { name: "Version & updates" }).waitFor();

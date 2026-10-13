@@ -218,6 +218,34 @@ button:disabled { cursor: not-allowed; }
   .provider-essential { grid-template-columns: 1fr; }
 }
 
+
+/* One AI configuration location; two independent provider protocols. */
+.ai-settings-page { display: grid; max-width: 1230px; gap: 14px; min-width: 0; }
+.ai-settings-page .studio-page-heading { margin-bottom: 2px; }
+.ai-settings-connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.ai-settings-connections .provider-settings { max-width: none; min-width: 0; }
+.ai-settings-connections .dataset-intro { display: flex; align-items: start; justify-content: space-between; gap: 10px; min-height: 80px; }
+.ai-settings-connections .dataset-intro h2 { font-size: 17px; margin: 2px 0 4px; }
+.ai-settings-connections .dataset-intro p { font-size: 11px; }
+.ai-settings-connections .provider-main { height: calc(100% - 80px); }
+.ai-settings-connections .provider-essential { grid-template-columns: 1fr; }
+.ai-settings-connections .provider-advanced { margin-top: 12px; }
+.ai-settings-connections .provider-fields { grid-template-columns: minmax(0, 1fr); }
+.ai-settings-connections .provider-bottom { margin-top: 12px; }
+.ai-settings-info { padding: 11px 14px; border: 1px solid #dfe6f3; background: #f0f4ff; border-radius: 11px; }
+.ai-settings-info strong { color: #445989; font-size: 11px; }
+.ai-settings-info p { color: #687895; font-size: 10px; line-height: 1.6; margin: 3px 0 0; }
+.ai-clear-key { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 11px; color: #6f7b92; }
+.ai-settings-health { display: grid; gap: 10px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--studio-line); }
+.ai-settings-health .system-monitor { max-width: none; }
+.ai-connection-card .provider-small-note { display: flex; align-items: start; gap: 6px; }
+.ai-connection-card .provider-small-note svg { flex: none; margin-top: 1px; }
+.chat-settings-summary { padding: 9px 12px; border: 1px solid #e5eaf4; background: #f7f9fd; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chat-settings-summary > span { display: inline-flex; align-items: center; gap: 7px; color: #687794; font-size: 11px; }
+.chat-settings-summary button { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; white-space: nowrap; font-size: 11px; }
+@media (max-width: 1160px) { .ai-settings-connections { grid-template-columns: 1fr; } .ai-settings-connections .dataset-intro { min-height: 0; } .ai-settings-connections .provider-main { height: auto; } .ai-settings-connections .provider-essential { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 610px) { .ai-settings-connections .provider-essential { grid-template-columns: 1fr; } .chat-settings-summary { align-items: start; flex-direction: column; } .chat-settings-summary button { width: 100%; } }
+
 /* Updater and local logger diagnostics */
 .system-diagnostics-snapshot {
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px;

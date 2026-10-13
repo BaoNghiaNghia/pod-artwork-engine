@@ -1,8 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
-import ProviderSettings from "./ProviderSettings";
+import AISettings from "./AISettings";
 import AIChat from "./AIChat";
-import SystemStatus from "./SystemStatus";
 import { audit, systemRequest, type UpdateCheck } from "./system";
 import { getVersion } from "@tauri-apps/api/app";
 import { Button } from "@/components/ui/button";
@@ -534,14 +533,14 @@ export default function App() {
       </>
       ) : activeTab === "chat" ? (
         <AIChat engineOnline={engineOnline} inputFiles={files} artworkJob={job}
+          onOpenSettings={() => setActiveTab("provider")}
           onPrintCheck={(checked) => { setJob(checked as Job); setActiveTab("artwork"); }} />
       ) : activeTab === "dataset" ? (
         <DatasetOnboarding engineOnline={engineOnline} />
       ) : (
-        <div className="system-settings-stack">
-          <ProviderSettings engineOnline={engineOnline} onChanged={() => setProviderRefresh((value) => value + 1)} />
-          <SystemStatus engineOnline={engineOnline} latestCheck={updateCheck} onChecked={setUpdateCheck}/>
-        </div>
+        <AISettings engineOnline={engineOnline}
+          onProviderChanged={() => setProviderRefresh((value) => value + 1)}
+          latestCheck={updateCheck} onChecked={setUpdateCheck} />
       )}
         </div>
       </div>
