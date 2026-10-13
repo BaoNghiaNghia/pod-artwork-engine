@@ -1,0 +1,113 @@
+"""Auto Enhance MVP: regression/contract tests written before implementation."""
+from __future__ import annotations
+
+from io import BytesIO
+
+from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
+
+from pod_artwork_engine.api import create_app
+from pod_artwork_engine.auto_enhance import analyze_artwork, enhance_artwork
+from pod_artwork_engine.settings import Settings
+
+
+def fixture(kind: str) -> Image.Image:
+    im = Image.new("RGBA", (300, 240), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(im)
+    if kind == "flat":
+        draw.rectangle((30, 55, 260, 93), fill="#dc4894")
+        draw.rectangle((35, 127, 245, 165), fill="#dc4894")
+        draw.ellipse((100, 175, 160, 220), fill="#dc4894")
+    elif kind == "sticker":
+        draw.ellipse((50, 24, 249, 224), fill="#ffe92e", outline="#101010", width=12)
+        draw.ellipse((98, 95, 120, 125), fill="#101010")
+        draw.ellipse((176, 95, 198, 125), fill="#101010")
+        draw.arc((107, 115, 197, 186), 10, 170, fill="#101010", width=8)
+    elif kind == "dark":
+        draw.ellipse((42, 28, 256, 223), fill="#171717")
+    return im
+
+
+def png_bytes(im: Image.Image) -> bytes:
+    buffer = BytesIO()
+    im.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_classifier_is_deterministic_and_explains_choice():
+    result = analyze_artwork(fixture("flat"))
+    assert result == analyze_artwork(fixture("flat"))
+    assert result["category"] in {"typography", "logo_vector", "sticker_cartoon", "mixed"}
+    assert result["mode"] in {
+        "typography_clean", "vector_clean", "sticker_clean", "gentle_clean",
+    }
+    assert 0 <= result["confidence"] <= 1
+    assert result["reasons"]
+    assert len(result["scores"]) >= 3
+    assert result["print_ready"] is False
+
+
+def test_dark_flat_detects_dark_rescue_without_lightening_source():
+    image = fixture("dark")
+    report = analyze_artwork(image)
+    assert report["category"] == "dark_low_contrast"
+    result, chosen = enhance_artwork(image, mode="auto")
+    assert chosen["mode"] == "dark_rescue"
+    assert image.getpixel((80, 95))[:3] == (23, 23, 23)  # no mutation
+    assert result.mode == "RGBA"
+
+
+def test_sticker_override_preserves_transparency_and_distinct_colors():
+    image = fixture("sticker")
+    result, report = enhance_artwork(image, mode="sticker_clean")
+    assert report["mode"] == "sticker_clean"
+    assert result.width > image.width
+    assert result.getpixel((0, 0))[3] == 0
+    assert result.getpixel((300, 240))[3] > 0
+
+
+def test_light_edges_do_not_acquire_black_fringe():
+    image = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    ImageDraw.Draw(image).ellipse((12, 12, 84, 84), fill=(255, 255, 255, 255))
+    out, _ = enhance_artwork(image, mode="vector_clean")
+    edge_pixels = [pixel for pixel in out.getdata() if 20 < pixel[3] < 235]
+    assert edge_pixels, "Expected smooth antialiased alpha edge pixels"
+    assert min(min(pixel[:3]) for pixel in edge_pixels) > 218, (
+        "Transparent white artwork must not develop dark RGB halo"
+    )
+
+
+def test_photo_override_does_not_modify_subject_semantics():
+    original = Image.new("RGBA", (200, 150), (135, 96, 75, 255))
+    result, plan = enhance_artwork(original, mode="photo_cutout")
+    assert plan["mode"] == "photo_cutout"
+    assert result.size[0] >= 200
+    assert result.getpixel((result.width // 2, result.height // 2))[0] in range(125, 146)
+
+
+def test_api_analyze_run_and_safe_override(tmp_path):
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    source = png_bytes(fixture("sticker"))
+    classified = client.post("/enhance/analyze", files={"file": ("input.png", source, "image/png")})
+    assert classified.status_code == 200
+    report = classified.json()
+    assert report["mode"] in report["supported_modes"]
+    assert report["confidence"] <= 1
+    output = client.post("/enhance/run?mode=sticker_clean",
+                         files={"file": ("input.png", source, "image/png")})
+    assert output.status_code == 200
+    assert output.headers["content-type"].startswith("image/png")
+    assert output.headers["x-enhance-mode"] == "sticker_clean"
+    assert output.headers["x-enhance-draft"] == "true"
+    with Image.open(BytesIO(output.content)) as result:
+        assert result.width > 300
+        assert result.mode == "RGBA"
+    assert client.post("/enhance/run?mode=unknown",
+                       files={"file": ("x.png", source, "image/png")}).status_code == 422
+
+
+def test_api_rejects_invalid_image_and_preserves_data_root(tmp_path):
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    bad = client.post("/enhance/analyze", files={"file": ("bad.png", b"not-an-image", "image/png")})
+    assert bad.status_code == 422
+    assert not (tmp_path / "enhancements").exists()

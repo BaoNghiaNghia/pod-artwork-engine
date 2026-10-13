@@ -32,6 +32,7 @@ async function run() {
       const page = await context.newPage();
       const runtimeErrors = [];
       let imageConfigSubmission = null;
+      let enhancedRequests = 0;
       page.on("pageerror", (error) => runtimeErrors.push(error.message));
       await page.route("http://127.0.0.1:8765/image-chat/config", async (route) => {
         if (route.request().method() !== "POST") return route.continue();
@@ -40,6 +41,29 @@ async function run() {
           body: JSON.stringify({ configured: true, model: imageConfigSubmission.model,
             provider: "OpenAI Images API", key_persistence: "session_only_or_environment" }),
         });
+      });
+      // Test auto-detect and routed draft processing without uploading a real image
+      // or relying on whichever production Engine version is installed.
+      const tinyPng = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
+        "base64");
+      await page.route("http://127.0.0.1:8765/enhance/*", async (route) => {
+        enhancedRequests++;
+        if (route.request().url().includes("/analyze")) {
+          await route.fulfill({ status: 200, contentType: "application/json",
+            body: JSON.stringify({
+              category: "sticker_cartoon", mode: "sticker_clean",
+              confidence: 0.58, method: "deterministic-local-heuristics-v1",
+              reasons: ["Strong outlines", "Flat colors"], scores: {},
+              requires_review: true, print_ready: false,
+              supported_modes: ["sticker_clean","gentle_clean"],
+            }),
+          });
+        } else {
+          await route.fulfill({ status: 200, contentType: "image/png",
+            headers: { "X-Enhance-Mode": "sticker_clean", "X-Enhance-Draft": "true" },
+            body: tinyPng });
+        }
       });
       // The QA frontend may run against the previous installed engine.
       // Mock only the newly introduced, read-only safe diagnostic snapshot.
@@ -70,6 +94,16 @@ async function run() {
             if (await page.getByRole("button", { name: "Generate artwork" }).isEnabled()) {
               throw new Error("Generate is enabled with no reference images");
             }
+            await page.locator('input[type="file"]').first().setInputFiles({
+              name: "qa-sticker.png", mimeType: "image/png", buffer: tinyPng,
+            });
+            await page.getByRole("heading", { name: "Auto Enhance Artwork" }).waitFor();
+            await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
+            if (enhancedRequests !== 2) throw new Error("Upload did not auto-analyze AND auto-enhance");
+            await page.getByLabel("Chế độ xử lý").selectOption("sticker_clean");
+            await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
+            const enhancedOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+            if (enhancedOverflow) throw new Error(`${viewport.name}: Auto Enhance horizontal overflow`);
           }
           if (view.tab === "AI Image Chat") {
             await page.getByRole("button", { name: "Mở AI Settings" }).waitFor();

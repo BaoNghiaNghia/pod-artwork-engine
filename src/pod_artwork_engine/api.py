@@ -10,6 +10,7 @@ import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from io import BytesIO
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
@@ -54,6 +55,9 @@ from .updater import UpdateManager
 from .system_monitor import log_summary, recent_safe_events
 from .safe_diagnostics import safe_diagnostic_report
 from .logging_config import log_event
+from .auto_enhance import (
+    MAX_UPLOAD_BYTES, EnhanceMode, load_artwork, analyze_artwork, enhance_artwork,
+)
 
 
 class DesktopAuditEvent(BaseModel):
@@ -115,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft"],
     )
 
     @app.middleware("http")
@@ -469,6 +474,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(
             path,
             media_type="image/png",
+        )
+
+    async def _read_enhance_image(file: UploadFile):
+        payload = await file.read(MAX_UPLOAD_BYTES + 1)
+        try:
+            return await asyncio.to_thread(load_artwork, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/enhance/analyze")
+    async def enhance_analyze(file: UploadFile = File(...)) -> dict:
+        image = await _read_enhance_image(file)
+        try:
+            return await asyncio.to_thread(analyze_artwork, image)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/enhance/run")
+    async def enhance_run(
+        file: UploadFile = File(...),
+        mode: EnhanceMode = "auto",
+    ) -> Response:
+        image = await _read_enhance_image(file)
+
+        def render() -> tuple[bytes, dict]:
+            output, report = enhance_artwork(image, mode=mode)
+            buffer = BytesIO()
+            output.save(buffer, format="PNG", dpi=(300, 300))
+            return buffer.getvalue(), report
+
+        try:
+            content, report = await asyncio.to_thread(render)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return Response(
+            content=content,
+            media_type="image/png",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Enhance-Category": report["category"],
+                "X-Enhance-Confidence": str(report["confidence"]),
+                "X-Enhance-Mode": report["mode"],
+                "X-Enhance-Draft": "true",
+            },
         )
 
     @app.post("/jobs", response_model=JobRecord)

@@ -2,6 +2,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import DatasetOnboarding from "./DatasetOnboarding";
 import AISettings from "./AISettings";
 import AIChat from "./AIChat";
+import AutoEnhance from "./AutoEnhance";
 import { audit, systemRequest, type UpdateCheck } from "./system";
 import { getVersion } from "@tauri-apps/api/app";
 import { Button } from "@/components/ui/button";
@@ -403,6 +404,8 @@ export default function App() {
           {error && <div className="error">{error}</div>}
         </Card>
       </section>
+
+      <AutoEnhance files={files} engineOnline={engineOnline} />
 
       <Card className={`result-card gap-0 py-0 ${!job ? "is-empty" : ""}`}>
         <div className="result-header">
