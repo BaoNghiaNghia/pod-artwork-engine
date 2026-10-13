@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+import psutil
 
 PORT = 18769
 BASE = f"http://127.0.0.1:{PORT}"
@@ -101,6 +102,23 @@ def main():
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=5)
+            # PyInstaller onefile may leave a separate bootloader child alive;
+            # stop only processes running THIS isolated build/release binary.
+            children = []
+            for owned in psutil.process_iter(["exe"]):
+                try:
+                    executable = owned.info.get("exe")
+                    if executable and Path(executable).resolve() == EXE:
+                        children.append(owned)
+                except (OSError, psutil.Error):
+                    continue
+            for owned in children:
+                try: owned.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied): pass
+            _, remaining = psutil.wait_procs(children, timeout=8)
+            for owned in remaining:
+                try: owned.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied): pass
             time.sleep(1.0)
 
 if __name__=="__main__":
