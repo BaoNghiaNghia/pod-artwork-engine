@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pod-artwork-engine"
-version = "0.1.15"
+version = "0.1.16"
 description = "Standalone POD artwork reconstruction engine"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,7 +15,8 @@ dependencies = [
   "pillow>=11,<13",
   "psutil>=6,<8",
   "python-multipart>=0.0.12,<1",
-  "packaging>=24,<26"
+  "packaging>=24,<26",
+  "vtracer==0.6.15"
 ]
 
 [project.optional-dependencies]

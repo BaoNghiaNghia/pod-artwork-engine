@@ -55,6 +55,7 @@ from .updater import UpdateManager
 from .system_monitor import log_summary, recent_safe_events
 from .safe_diagnostics import safe_diagnostic_report
 from .logging_config import log_event
+from .enhance_engines import VECTOR_MODES, generate_vector_svg, enhance_capabilities
 from .auto_enhance import (
     MAX_UPLOAD_BYTES, EnhanceMode, load_artwork, analyze_artwork, enhance_artwork,
 )
@@ -119,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft"],
+        expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft", "X-Enhance-Engine", "X-Enhance-Fallback-Reason"],
     )
 
     @app.middleware("http")
@@ -485,6 +486,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/enhance/capabilities")
+    def enhance_runtime_capabilities() -> dict:
+        return enhance_capabilities()
+
+    @app.post("/enhance/vector")
+    async def enhance_vector(
+        file: UploadFile = File(...),
+        mode: EnhanceMode = "auto",
+    ) -> Response:
+        image = await _read_enhance_image(file)
+        if mode == "auto":
+            selected = (await asyncio.to_thread(analyze_artwork, image))["mode"]
+        else:
+            selected = mode
+        if selected not in VECTOR_MODES:
+            raise HTTPException(
+                status_code=422, detail="This vectorization mode is only suitable for vector artwork"
+            )
+        try:
+            svg = await asyncio.to_thread(generate_vector_svg, image)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return Response(
+            content=svg,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "no-store",
+                     "Content-Disposition": 'attachment; filename="artwork-vector.svg"',
+                     "X-Content-Type-Options": "nosniff",
+                     "Content-Security-Policy": "default-src 'none'; sandbox",
+                     "X-Enhance-Engine": "vtracer",
+                     "X-Enhance-Draft": "true"},
+        )
+
     @app.post("/enhance/analyze")
     async def enhance_analyze(file: UploadFile = File(...)) -> dict:
         image = await _read_enhance_image(file)
@@ -519,6 +553,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Enhance-Confidence": str(report["confidence"]),
                 "X-Enhance-Mode": report["mode"],
                 "X-Enhance-Draft": "true",
+                "X-Enhance-Engine": report.get("engine", "pillow-fallback"),
+                "X-Enhance-Fallback-Reason": report.get("fallback_reason", ""),
             },
         )
 

@@ -2,6 +2,12 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
+if (-not (Test-Path ".venv\\Scripts\\python.exe")) { python -m venv .venv }
+
+# Pin/check the official NCNN archive, only extract allowlisted model binaries.
+& ".venv\Scripts\python.exe" "scripts\install_enhance_models.py"
+if ($LASTEXITCODE -ne 0) { throw "Real-ESRGAN model installation failed" }
+
 & "$PSScriptRoot\build_engine.ps1"
 if ($LASTEXITCODE -ne 0) {
     throw "Engine build failed with exit code $LASTEXITCODE"

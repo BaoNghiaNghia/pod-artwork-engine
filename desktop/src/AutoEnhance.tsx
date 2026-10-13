@@ -19,11 +19,20 @@ type Route = {
   requires_review: boolean;
   print_ready: boolean;
 };
+type RuntimeReport = {
+  vtracer: { installed: boolean };
+  realesrgan: { installed: boolean; model_names: string[] };
+};
+
 type Entry = {
   name: string;
   status: "analyzing" | "enhancing" | "ready" | "error";
   route?: Route;
   url?: string;
+  svgUrl?: string;
+  engine?: string;
+  fallbackReason?: string;
+  vectorWarning?: string;
   error?: string;
 };
 
@@ -63,6 +72,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
   const [override, setOverride] = useState("auto");
   const [retry, setRetry] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [runtime, setRuntime] = useState<RuntimeReport | null>(null);
   const selected = files.slice(0, MAX_AUTOMATIC_IMAGES);
   const sourceUrls = useMemo(
     () => files.slice(0, MAX_AUTOMATIC_IMAGES).map((file) => URL.createObjectURL(file)),
@@ -91,6 +101,16 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
 
     // Serial processing bounds memory when several 50 MB images are selected.
     void (async () => {
+      let capabilities: RuntimeReport | null = null;
+      try {
+        const status = await fetch(`${API}/enhance/capabilities`, { signal: abort.signal });
+        if (status.ok) {
+          capabilities = await status.json() as RuntimeReport;
+          if (!abort.signal.aborted) setRuntime(capabilities);
+        }
+      } catch {
+        if (!abort.signal.aborted) setRuntime(null);
+      }
       for (let i = 0; i < batch.length; i++) {
         if (abort.signal.aborted) return;
         const file = batch[i];
@@ -119,9 +139,33 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
           if (abort.signal.aborted) return;
           const url = URL.createObjectURL(blob);
           outputUrls.push(url);
+          const actualMode = processed.headers.get("X-Enhance-Mode") || route.mode;
+          const actualEngine = processed.headers.get("X-Enhance-Engine") || "pillow-fallback";
+          const fallbackReason = processed.headers.get("X-Enhance-Fallback-Reason") || undefined;
+          let svgUrl: string | undefined;
+          let vectorWarning: string | undefined;
+          if (capabilities?.vtracer?.installed &&
+              ["typography_clean", "vector_clean", "sticker_clean"].includes(actualMode)) {
+            try {
+              const vectorData = new FormData();
+              vectorData.append("file", file);
+              const vector = await fetch(
+                `${API}/enhance/vector?mode=${encodeURIComponent(actualMode)}`,
+                { method: "POST", body: vectorData, signal: abort.signal },
+              );
+              if (!vector.ok) throw new Error(await readFailure(vector));
+              const svgBlob = await vector.blob();
+              if (abort.signal.aborted) return;
+              svgUrl = URL.createObjectURL(svgBlob);
+              outputUrls.push(svgUrl);
+            } catch (cause) {
+              if (abort.signal.aborted) return;
+              vectorWarning = cause instanceof Error ? cause.message : "SVG export unavailable";
+            }
+          }
           update(i, {
-            status: "ready", url,
-            route: { ...route, mode: processed.headers.get("X-Enhance-Mode") || route.mode },
+            status: "ready", url, svgUrl, vectorWarning, engine: actualEngine, fallbackReason,
+            route: { ...route, mode: actualMode },
           });
         } catch (error) {
           if (abort.signal.aborted) return;
@@ -156,6 +200,10 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
           </div>
         </div>
         <div className="enhance-heading-meta">
+          {runtime && <span className="enhance-limit subtle">
+            Real-ESRGAN {runtime.realesrgan.installed ? "ready" : "unavailable"}
+            {" · "}VTracer {runtime.vtracer.installed ? "ready" : "unavailable"}
+          </span>}
           <span className="enhance-limit"><FileImage size={14}/> 50 MB / file</span>
           <span className="enhance-limit subtle">Max 30 MP input</span>
         </div>
@@ -257,15 +305,27 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       </span>
                       <span>Confidence: <strong>{Math.round(result.route.confidence * 100)}%</strong></span>
                       <span>Pipeline: <strong>{MODE_LABELS[result.route.mode] || result.route.mode}</strong></span>
+                      <span>Engine: <strong>{result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Raster fallback"}</strong></span>
+                      {result.svgUrl && <span>SVG: <strong>VTracer</strong></span>}
+                      {result.fallbackReason && <small>Fallback: {result.fallbackReason}</small>}
                       <small>{result.route.reasons.join(" · ")}</small>
                     </>
                   ) : <span>Hệ thống tự nhận diện nhóm và chọn bộ xử lý phù hợp.</span>}
                 </div>
+                {result?.svgUrl && (
+                  <a className="enhance-download" href={result.svgUrl}
+                    download={`vector_${file.name.replace(/\.[^.]+$/, "")}.svg`}>
+                    <Download size={15}/> Download SVG
+                  </a>
+                )}
                 {result?.url && (
                   <a className="enhance-download" href={result.url}
                     download={`enhanced_${file.name.replace(/\.[^.]+$/, "")}.png`}>
                     <Download size={15}/> Download draft PNG
                   </a>
+                )}
+                {result?.vectorWarning && (
+                  <div className="enhance-error" role="status">Vector: {result.vectorWarning}</div>
                 )}
                 {result?.error && (
                   <div className="enhance-error" role="alert">{result.error}</div>
@@ -278,8 +338,8 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
 
       <p className="enhance-disclaimer">
         <ShieldCheck size={15} aria-hidden="true"/>
-        Đây là bản raster cleanup/upscale, không phải ảnh AI redraw hoặc SVG.
-        Kết quả chưa được duyệt chuẩn in; kiểm tra chi tiết trước khi dùng cho POD.
+        Ảnh phẳng có thể xuất SVG bằng VTracer; ảnh phù hợp có thể được upscale bằng Real-ESRGAN.
+        Các ảnh khác dùng fallback raster. Tất cả đầu ra đều cần duyệt và kiểm tra Print QC trước khi in.
       </p>
     </section>
   );

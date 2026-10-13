@@ -48,8 +48,20 @@ async function run() {
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
         "base64");
       await page.route("http://127.0.0.1:8765/enhance/*", async (route) => {
-        enhancedRequests++;
-        if (route.request().url().includes("/analyze")) {
+        const url = route.request().url();
+        if (url.includes("/capabilities")) {
+          await route.fulfill({ status: 200, contentType: "application/json",
+            body: JSON.stringify({
+              vtracer: { installed: true }, realesrgan: { installed: true,
+                model_names: ["realesrgan-x4plus"] },
+            }),
+          });
+        } else if (url.includes("/vector")) {
+          await route.fulfill({ status: 200, contentType: "image/svg+xml",
+            headers: { "X-Enhance-Engine": "vtracer" },
+            body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M 0 0 L 9 0 L 9 9 Z"/></svg>' });
+        } else if (url.includes("/analyze")) {
+          enhancedRequests++;
           await route.fulfill({ status: 200, contentType: "application/json",
             body: JSON.stringify({
               category: "sticker_cartoon", mode: "sticker_clean",
@@ -60,8 +72,10 @@ async function run() {
             }),
           });
         } else {
+          enhancedRequests++;
           await route.fulfill({ status: 200, contentType: "image/png",
-            headers: { "X-Enhance-Mode": "sticker_clean", "X-Enhance-Draft": "true" },
+            headers: { "X-Enhance-Mode": "sticker_clean", "X-Enhance-Draft": "true",
+              "X-Enhance-Engine": "pillow-fallback" },
             body: tinyPng });
         }
       });
@@ -103,6 +117,7 @@ async function run() {
             await page.getByText("Ảnh gốc", { exact: true }).waitFor();
             await page.getByText("Ảnh sau xử lý", { exact: true }).waitFor();
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
+            await page.getByRole("link", { name: "Download SVG" }).waitFor();
             await page.getByRole("img", { name: "Enhanced: qa-sticker.png" }).waitFor();
             if (enhancedRequests !== 2) throw new Error("Upload did not auto-analyze AND auto-enhance");
             await page.getByLabel("Chế độ xử lý").selectOption("sticker_clean");

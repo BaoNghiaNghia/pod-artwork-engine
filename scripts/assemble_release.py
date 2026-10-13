@@ -64,6 +64,14 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
             release_dir / OCR_RUNTIME_RELATIVE,
         )
 
+    # Optional for fixture/test packages; Windows production build installs
+    # the verified runtime before calling assemble_release.
+    esrgan_source = repo_root / "vendor" / "realesrgan"
+    esrgan_target = release_dir / "runtime" / "realesrgan"
+    esrgan_runtime_included = (esrgan_source / "realesrgan-ncnn-vulkan.exe").is_file()
+    if esrgan_runtime_included:
+        shutil.copytree(esrgan_source, esrgan_target)
+
     valid, reason = validate_release_dir(release_dir)
     if not valid:
         raise RuntimeError(f"assembled release is invalid: {reason}")
@@ -109,6 +117,7 @@ def assemble(repo_root: Path, package_url: str | None = None, channel: str = "st
         "package": str(package_path),
         "sha256": digest,
         "ocr_runtime_included": ocr_runtime_included,
+        "realesrgan_runtime_included": esrgan_runtime_included,
         "manifest": str(manifest_path) if manifest_path else None,
     }
 

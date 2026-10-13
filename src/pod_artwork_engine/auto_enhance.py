@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 
+from .enhance_engines import enhance_with_realesrgan
+
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_INPUT_PIXELS = 30_000_000
 MAX_OUTPUT_PIXELS = 20_000_000
@@ -163,6 +165,26 @@ def enhance_artwork(image: Image.Image, *, mode: EnhanceMode = "auto") -> tuple[
     report = analyze_artwork(image)
     selected = report["mode"] if mode == "auto" else mode
     report = {**report, "mode": selected, "override": mode != "auto"}
+    # Real inference only for compatible image types. Flat artwork is
+    # vectorized separately through /enhance/vector, not hallucinated here.
+    fallback_reason = None
+    if selected in {"photo_cutout", "painterly_clean", "metal_preserve"}:
+        model = "realesrgan-x4plus"
+        improved, meta = enhance_with_realesrgan(image, model=model)
+        if improved is not None:
+            report.update({
+                "engine": "real-esrgan-ncnn-vulkan",
+                "model": model,
+                "operation": "real-esrgan-vulkan-upscale",
+                "output_width": improved.width,
+                "output_height": improved.height,
+                "warning": "AI reconstructed details can differ from the source. Review before printing.",
+            })
+            return improved, report
+        fallback_reason = meta.get("reason", "Real-ESRGAN not available")
+    report["engine"] = "pillow-fallback"
+    if fallback_reason:
+        report["fallback_reason"] = fallback_reason
     width, height = image.size
     scale = min(2.0, MAX_OUTPUT_EDGE / max(width, height),
                 math.sqrt(MAX_OUTPUT_PIXELS / (width * height)))

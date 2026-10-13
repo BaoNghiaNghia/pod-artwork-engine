@@ -15,7 +15,7 @@ $Work = Join-Path $RepoRoot "build\pyinstaller"
 Remove-Item $Dist -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 
-& $Python -m PyInstaller --noconfirm --clean --onefile --name "pod-artwork-engine" --distpath $Dist --workpath $Work --specpath $Work "packaging\engine_entry.py"
+& $Python -m PyInstaller --noconfirm --clean --hidden-import vtracer --onefile --name "pod-artwork-engine" --distpath $Dist --workpath $Work --specpath $Work "packaging\engine_entry.py"
 
 $Source = Join-Path $Dist "pod-artwork-engine.exe"
 $TargetDir = Join-Path $RepoRoot "desktop\src-tauri\binaries"
