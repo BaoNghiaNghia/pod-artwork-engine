@@ -66,17 +66,37 @@ def enhance_capabilities() -> dict[str, Any]:
     }
 
 
-def generate_vector_svg(image: Image.Image) -> str:
-    """Trace a bounded PNG in a temporary directory and return a real SVG."""
+def vector_settings(profile: str = "fast", preset: str = "logo") -> dict[str, Any]:
+    """Deterministic bounded VTracer settings per family and quality."""
+    if profile not in {"fast", "balanced", "max_quality"}:
+        raise ValueError("Unsupported vector quality profile")
+    if preset not in {"logo", "text", "sticker"}:
+        raise ValueError("Unsupported vector preset")
+    edge = {"fast": 1600, "balanced": 2300, "max_quality": 3200}[profile]
+    precision = {"fast": 3, "balanced": 4, "max_quality": 6}[profile]
+    speckle = {"fast": 3, "balanced": 2, "max_quality": 1}[profile]
+    return {
+        "max_edge": edge,
+        "path_precision": precision,
+        "filter_speckle": 0 if preset == "text" and profile == "max_quality" else speckle,
+        "corner_threshold": 43 if preset == "text" else 55 if preset == "sticker" else 58,
+        "length_threshold": 2.0 if profile == "max_quality" else 3.5,
+        "max_iterations": 16 if profile == "max_quality" else 10,
+    }
+
+
+def generate_vector_svg(image: Image.Image, *, profile: str = "fast", preset: str = "logo") -> str:
+    """Trace a bounded PNG with route-specific curve and small-detail precision."""
     try:
         import vtracer
     except ImportError as exc:
         raise RuntimeError("VTracer not installed") from exc
     if image.width * image.height > 30_000_000:
         raise ValueError("Image exceeds the vectorization source limit")
+    settings = vector_settings(profile, preset)
     rgba = image.convert("RGBA")
-    if max(rgba.size) > VECTOR_MAX_EDGE:
-        factor = VECTOR_MAX_EDGE / max(rgba.size)
+    if max(rgba.size) > settings["max_edge"]:
+        factor = settings["max_edge"] / max(rgba.size)
         size = (max(1, round(rgba.width * factor)),
                 max(1, round(rgba.height * factor)))
         rgba = rgba.resize(size, Image.Resampling.LANCZOS)
@@ -87,10 +107,10 @@ def generate_vector_svg(image: Image.Image) -> str:
         vtracer.convert_image_to_svg_py(
             str(src), str(dest),
             colormode="color", hierarchical="stacked", mode="spline",
-            filter_speckle=3, color_precision=7, layer_difference=12,
-            corner_threshold=58, length_threshold=3.5,
-            max_iterations=10, splice_threshold=45,
-            path_precision=3,
+            filter_speckle=settings["filter_speckle"], color_precision=7, layer_difference=12,
+            corner_threshold=settings["corner_threshold"], length_threshold=settings["length_threshold"],
+            max_iterations=settings["max_iterations"], splice_threshold=45,
+            path_precision=settings["path_precision"],
         )
         if not dest.is_file() or dest.stat().st_size > 8 * 1024 * 1024:
             raise RuntimeError("VTracer returned no bounded SVG")
@@ -108,6 +128,8 @@ def generate_vector_svg(image: Image.Image) -> str:
 def enhance_with_realesrgan(
     image: Image.Image, runtime_root: Path | None = None, *,
     model: str = "realesrgan-x4plus",
+    allow_alpha: bool = False,
+    wait_for_gpu_seconds: float = 0,
 ) -> tuple[Image.Image | None, dict[str, str]]:
     """Try genuine Vulkan inference; return (None, reason) for safe fallback."""
     if model not in REAL_ESRGAN_MODELS:
@@ -123,19 +145,29 @@ def enhance_with_realesrgan(
     rgba = image.convert("RGBA")
     # The NCNN runner can introduce halos at alpha edges: preserve
     # alpha-heavy cutouts with the existing gentler raster processing.
-    if rgba.getchannel("A").getextrema()[0] < 255:
+    transparent = rgba.getchannel("A").getextrema()[0] < 255
+    if transparent and not allow_alpha:
         return None, {"engine": "fallback", "reason": "Transparent image uses alpha-safe raster fallback"}
     if (rgba.width * rgba.height * 4 > OUTPUT_PIXEL_LIMIT
             or max(rgba.size) * 2 > 4500):
         return None, {"engine": "fallback", "reason": "Image too large for safe 2x AI upscale"}
-    if not _GPU_LOCK.acquire(blocking=False):
-        return None, {"engine": "fallback", "reason": "Real-ESRGAN GPU busy; using raster fallback"}
+    # Max Quality queues briefly behind a running Vulkan job instead of
+    # silently abandoning AI. Fast retains its existing immediate fallback.
+    wait = max(0.0, min(float(wait_for_gpu_seconds), 120.0))
+    acquired = _GPU_LOCK.acquire(timeout=wait) if wait > 0 else _GPU_LOCK.acquire(blocking=False)
+    if not acquired:
+        return None, {"engine": "fallback", "reason": "Real-ESRGAN GPU busy; timed out waiting for a safe inference slot"}
     try:
         try:
             with tempfile.TemporaryDirectory(prefix="pod-esrgan-") as tmp:
                 input_path = Path(tmp) / "input.png"
                 output_path = Path(tmp) / "output.png"
-                rgba.convert("RGB").save(input_path, "PNG")
+                if transparent:
+                    from PIL import Image as PILImage
+                    matte = PILImage.new("RGBA", rgba.size, (245, 245, 245, 255))
+                    PILImage.alpha_composite(matte, rgba).convert("RGB").save(input_path, "PNG")
+                else:
+                    rgba.convert("RGB").save(input_path, "PNG")
                 args = [
                     str(exe), "-i", str(input_path), "-o", str(output_path),
                     "-m", str(models), "-n", model, "-s", "2",
@@ -151,6 +183,15 @@ def enhance_with_realesrgan(
                     if loaded.size != (rgba.width * 2, rgba.height * 2):
                         return None, {"engine": "fallback", "reason": "AI upscale returned unexpected dimensions"}
                     output = loaded.convert("RGBA")
+                if transparent:
+                    # NCNN outputs opaque RGB. Apply the precisely resampled original alpha,
+                    # while retaining the original colors near transparent edges, preventing
+                    # the model's artificial matte from leaking into POD cutout contours.
+                    original_up = rgba.resize(output.size, Image.Resampling.LANCZOS)
+                    alpha = original_up.getchannel("A")
+                    blend = alpha.point(lambda a: min(255, max(0, round((a - 205) * 255 / 50))))
+                    output = Image.composite(output, original_up, blend)
+                    output.putalpha(alpha)
                 return output, {"engine": "real-esrgan-ncnn-vulkan", "model": model}
         except (OSError, ValueError, subprocess.TimeoutExpired):
             return None, {"engine": "fallback", "reason": "Real-ESRGAN inference unavailable or timed out"}

@@ -29,6 +29,25 @@ def png() -> bytes:
     return out.getvalue()
 
 
+def test_vector_hq_presets_are_deterministic_and_more_precise():
+    from pod_artwork_engine.enhance_engines import vector_settings
+    fast=vector_settings("fast","logo")
+    hq=vector_settings("max_quality","logo")
+    assert hq["max_edge"]>fast["max_edge"]
+    assert hq["path_precision"] >= fast["path_precision"]
+    assert hq["filter_speckle"]<=fast["filter_speckle"]
+    assert vector_settings("max_quality","text")["filter_speckle"]<=fast["filter_speckle"]
+
+
+def test_vector_hq_api_export_has_mode_and_profile(tmp_path):
+    client=TestClient(create_app(Settings(data_root=tmp_path)))
+    response=client.post("/enhance/vector?mode=sticker_clean&profile=max_quality",
+        files={"file":("sticker.png",png(),"image/png")})
+    assert response.status_code==200,response.text[:300]
+    assert response.headers["x-enhance-vector-preset"]=="sticker"
+    assert "<svg" in response.text
+
+
 def test_vectors_create_actual_svg_and_preserve_transparent_negative_space():
     image=Image.open(io.BytesIO(png()))
     svg=generate_vector_svg(image)
@@ -83,6 +102,30 @@ def test_real_esrgan_runner_uses_bounded_command_and_validates_output(tmp_path,m
     assert seen["args"][0]==str(exe)
     assert seen["kwargs"]["timeout"]<=180
     assert seen["kwargs"].get("shell") is False
+
+
+def test_hq_gpu_contention_waits_before_fallback(tmp_path, monkeypatch):
+    import time
+    import pod_artwork_engine.enhance_engines as engines
+    root=tmp_path/"realesrgan"
+    (root/"models").mkdir(parents=True)
+    (root/"realesrgan-ncnn-vulkan.exe").write_bytes(b"fake")
+    (root/"models"/"realesrgan-x4plus.param").write_text("fake")
+    (root/"models"/"realesrgan-x4plus.bin").write_bytes(b"fake")
+    monkeypatch.setattr(engines.subprocess,"run",lambda *a,**k: pytest.fail("GPU still busy"))
+    assert engines._GPU_LOCK.acquire(blocking=False)
+    try:
+        started=time.monotonic()
+        result,meta=engines.enhance_with_realesrgan(
+            Image.new("RGBA",(48,48),"orange"),root,
+            wait_for_gpu_seconds=.035,
+        )
+        elapsed=time.monotonic()-started
+        assert elapsed>=.025
+        assert elapsed<.5
+        assert result is None and meta["engine"]=="fallback"
+    finally:
+        engines._GPU_LOCK.release()
 
 
 def test_gpu_busy_falls_back_without_spawning_another_model_process(tmp_path, monkeypatch):

@@ -91,6 +91,24 @@ def main():
             with Image.open(io.BytesIO(img)) as output:
                 assert output.size==(352,240),output.size
                 print("AI_UPSCALE",output.size,"ENGINE",headers.get("x-enhance-engine"),flush=True)
+            # Release must also support HQ profiles, transparent anime model,
+            # real GPU processing, and enhanced score headers (no mocks).
+            sticker = Image.new("RGBA", (176,120), (0,0,0,0))
+            ImageDraw.Draw(sticker).ellipse((20,12,156,108),
+                fill=(255,204,31,255),outline=(10,10,14,255),width=5)
+            body,ctype=multipart_image(sticker)
+            code,headers,png=send("/enhance/run?mode=sticker_clean&profile=max_quality&variant=detail",
+                                   body,ctype)
+            assert code==200 and headers.get("x-enhance-profile")=="max_quality",headers
+            assert headers.get("x-enhance-engine")=="real-esrgan-ncnn-vulkan",headers
+            with Image.open(io.BytesIO(png)) as output:
+                assert output.size==(352,240),output.size
+                assert output.getpixel((0,0))[3]==0
+            print("HQ_TRANSPARENT_AI_PASS",headers.get("x-enhance-technical-score"),flush=True)
+            code,headers,svg=send("/enhance/vector?mode=sticker_clean&profile=max_quality",body,ctype)
+            assert code==200 and b"<path" in svg
+            assert headers.get("x-enhance-vector-preset")=="sticker"
+            print("HQ_VECTOR_PASS",len(svg),flush=True)
             print("BUNDLED_SMOKE_PASS",flush=True)
         finally:
             if os.name == "nt":

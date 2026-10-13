@@ -25,11 +25,32 @@ type RuntimeReport = {
   realesrgan: { installed: boolean; model_names: string[] };
 };
 
+type QualityProfile = "fast" | "balanced" | "max_quality";
+type Candidate = {
+  id: string;
+  url: string;
+  engine: string;
+  score: number;
+  edgeGain: number;
+  alphaDrift: number;
+  fallbackReason?: string;
+};
+const PROFILE_VARIANTS: Record<QualityProfile, string[]> = {
+  fast: ["standard"], balanced: ["standard", "detail"],
+  max_quality: ["standard", "detail", "texture"],
+};
+const VARIANT_LABELS: Record<string, string> = {
+  standard: "Natural Clean", detail: "Sharp / AI Detail", texture: "Texture Preserve",
+  vector: "SVG Vector",
+};
+
 type Entry = {
   name: string;
   status: "analyzing" | "enhancing" | "ready" | "error";
   route?: Route;
   url?: string;
+  candidates?: Candidate[];
+  selectedVariant?: string;
   svgUrl?: string;
   engine?: string;
   fallbackReason?: string;
@@ -71,10 +92,12 @@ async function readFailure(response: Response): Promise<string> {
 /** Upload -> classify -> enhance. Previews live only in the current browser session. */
 export default function AutoEnhance({ files, engineOnline }: { files: File[]; engineOnline: boolean }) {
   const [override, setOverride] = useState("auto");
+  const [profile, setProfile] = useState<QualityProfile>("max_quality");
   const [retry, setRetry] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [runtime, setRuntime] = useState<RuntimeReport | null>(null);
-  const selected = files.slice(0, MAX_AUTOMATIC_IMAGES);
+  const batchLimit = profile === "max_quality" ? 2 : profile === "balanced" ? 3 : MAX_AUTOMATIC_IMAGES;
+  const selected = files.slice(0, batchLimit);
   const sourceUrls = useMemo(
     () => files.slice(0, MAX_AUTOMATIC_IMAGES).map((file) => URL.createObjectURL(file)),
     [files],
@@ -91,7 +114,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
     }
     const abort = new AbortController();
     const outputUrls: string[] = [];
-    const batch = files.slice(0, MAX_AUTOMATIC_IMAGES);
+    const batch = files.slice(0, batchLimit);
     setEntries(batch.map((file) => ({ name: file.name, status: "analyzing" })));
     const update = (index: number, patch: Partial<Entry>) => {
       if (!abort.signal.aborted) {
@@ -129,20 +152,43 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
           const route = await analyzed.json() as Route;
           update(i, { route, status: "enhancing" });
 
-          const upload = new FormData();
-          upload.append("file", file);
-          const processed = await fetch(
-            `${API}/enhance/run?mode=${encodeURIComponent(override)}`,
-            { method: "POST", body: upload, signal: abort.signal },
-          );
-          if (!processed.ok) throw new Error(await readFailure(processed));
-          const blob = await processed.blob();
-          if (abort.signal.aborted) return;
-          const url = URL.createObjectURL(blob);
-          outputUrls.push(url);
-          const actualMode = processed.headers.get("X-Enhance-Mode") || route.mode;
-          const actualEngine = processed.headers.get("X-Enhance-Engine") || "pillow-fallback";
-          const fallbackReason = processed.headers.get("X-Enhance-Fallback-Reason") || undefined;
+          let actualMode = route.mode;
+          let actualEngine = "pillow-fallback";
+          let fallbackReason: string | undefined;
+          const candidates: Candidate[] = [];
+          for (const variant of PROFILE_VARIANTS[profile]) {
+            if (abort.signal.aborted) return;
+            const upload = new FormData();
+            upload.append("file", file);
+            const processed = await fetch(
+              `${API}/enhance/run?mode=${encodeURIComponent(override)}&profile=${profile}&variant=${variant}`,
+              { method: "POST", body: upload, signal: abort.signal },
+            );
+            if (!processed.ok) throw new Error(await readFailure(processed));
+            const blob = await processed.blob();
+            if (abort.signal.aborted) return;
+            const url = URL.createObjectURL(blob);
+            outputUrls.push(url);
+            actualMode = processed.headers.get("X-Enhance-Mode") || route.mode;
+            actualEngine = processed.headers.get("X-Enhance-Engine") || "pillow-fallback";
+            fallbackReason = processed.headers.get("X-Enhance-Fallback-Reason") || undefined;
+            candidates.push({
+              id: variant, url, engine: actualEngine,
+              score: Number(processed.headers.get("X-Enhance-Technical-Score") || 0),
+              edgeGain: Number(processed.headers.get("X-Enhance-Edge-Gain") || 0),
+              alphaDrift: Number(processed.headers.get("X-Enhance-Alpha-Drift") || 0),
+              fallbackReason,
+            });
+            // A detail candidate is shown by default when available; technical
+            // heuristics alone must never silently approve a print candidate.
+            const prefer = candidates.find((item) => item.id === "detail") || candidates[0];
+            update(i, {
+              url: prefer.url, selectedVariant: prefer.id,
+              candidates: [...candidates], engine: prefer.engine, fallbackReason: prefer.fallbackReason,
+              route: { ...route, mode: actualMode }, status: "enhancing",
+            });
+          }
+          const selectedCandidate = candidates.find((item) => item.id === "detail") || candidates[0];
           let svgUrl: string | undefined;
           let vectorWarning: string | undefined;
           if (capabilities?.vtracer?.installed &&
@@ -151,7 +197,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
               const vectorData = new FormData();
               vectorData.append("file", file);
               const vector = await fetch(
-                `${API}/enhance/vector?mode=${encodeURIComponent(actualMode)}`,
+                `${API}/enhance/vector?mode=${encodeURIComponent(actualMode)}&profile=${profile}`,
                 { method: "POST", body: vectorData, signal: abort.signal },
               );
               if (!vector.ok) throw new Error(await readFailure(vector));
@@ -159,13 +205,19 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
               if (abort.signal.aborted) return;
               svgUrl = URL.createObjectURL(svgBlob);
               outputUrls.push(svgUrl);
+              candidates.push({
+                id: "vector", url: svgUrl, engine: "vtracer",
+                score: 0, edgeGain: 0, alphaDrift: 0,
+              });
             } catch (cause) {
               if (abort.signal.aborted) return;
               vectorWarning = cause instanceof Error ? cause.message : "SVG export unavailable";
             }
           }
           update(i, {
-            status: "ready", url, svgUrl, vectorWarning, engine: actualEngine, fallbackReason,
+            status: "ready", url: selectedCandidate.url, svgUrl, vectorWarning,
+            selectedVariant: selectedCandidate.id, candidates,
+            engine: selectedCandidate.engine, fallbackReason: selectedCandidate.fallbackReason,
             route: { ...route, mode: actualMode },
           });
         } catch (error) {
@@ -182,8 +234,14 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
       abort.abort();
       outputUrls.forEach(URL.revokeObjectURL);
     };
-  }, [files, engineOnline, override, retry]);
+  }, [files, engineOnline, override, profile, retry, batchLimit]);
 
+  const updateCandidate = (index: number, candidate: Candidate) => {
+    setEntries((previous) => previous.map((entry, i) => i !== index ? entry : ({
+      ...entry, url: candidate.url, selectedVariant: candidate.id, engine: candidate.engine,
+      fallbackReason: candidate.fallbackReason,
+    })));
+  };
   if (!files.length) return null;
   const completed = entries.filter((entry) => entry.status === "ready").length;
   const failed = entries.filter((entry) => entry.status === "error").length;
@@ -218,6 +276,25 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
         <span><ShieldCheck size={15}/> 3. Review result</span>
       </div>
 
+      <div className="enhance-profile-panel" role="group" aria-label="Chất lượng xử lý">
+        <div className="enhance-profile-title"><Sparkles size={15}/> Processing Quality
+          <span>Có thể xử lý lâu hơn để tạo nhiều phương án</span>
+        </div>
+        <div className="enhance-profile-options">
+          {([
+            ["fast", "Fast", "1 phương án · xem nhanh"],
+            ["balanced", "Balanced", "2 phương án · so sánh"],
+            ["max_quality", "Max Quality", "3 phương án · ưu tiên chất lượng"],
+          ] as const).map(([value, label, description]) => (
+            <button key={value} type="button" aria-pressed={profile === value}
+              className={profile === value ? "selected" : ""}
+              onClick={() => setProfile(value)}>
+              <strong>{label}</strong><small>{description}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="enhance-toolbar">
         <div className="enhance-toolbar-control">
           <label htmlFor="enhance-route">Chế độ xử lý</label>
@@ -241,9 +318,10 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
         </Button>
       </div>
 
-      {files.length > MAX_AUTOMATIC_IMAGES && (
+      {files.length > batchLimit && (
         <div className="enhance-batch-note" role="note">
-          Tự xử lý {MAX_AUTOMATIC_IMAGES} ảnh đầu tiên; các ảnh còn lại vẫn được giữ trong References.
+          Chế độ {profile === "max_quality" ? "Max Quality" : profile === "balanced" ? "Balanced" : "Fast"}
+          {" "}xử lý {batchLimit} ảnh đầu để giới hạn RAM/VRAM; ảnh còn lại vẫn nằm trong References.
         </div>
       )}
 
@@ -270,8 +348,33 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                 </span>
               </div>
 
-              {result?.url ? (
-                <EnhanceComparator before={sourceUrls[index]} after={result.url} name={file.name}/>
+              {result?.candidates?.length ? (
+                <>
+                  <div className="enhance-candidate-strip" aria-label="Các phương án xử lý">
+                    {result.candidates.map((candidate) => (
+                      <button type="button" key={candidate.id}
+                        aria-pressed={result.selectedVariant === candidate.id}
+                        className={result.selectedVariant === candidate.id ? "selected" : ""}
+                        onClick={() => updateCandidate(index, candidate)}>
+                        <img src={candidate.url} alt={`Preview ${VARIANT_LABELS[candidate.id]}`} loading="lazy"/>
+                        <span><strong>{VARIANT_LABELS[candidate.id]}</strong>
+                          <small>{candidate.engine === "vtracer" ? "True vector · không chấm điểm raster" :
+                            candidate.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Local raster"}
+                            {candidate.engine !== "vtracer" && ` · Score ${candidate.score.toFixed(1)}`}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <EnhanceComparator before={sourceUrls[index]} after={result.url || result.candidates[0].url} name={file.name}/>
+                  <div className="enhance-quality-note">
+                    {result.selectedVariant === "vector" ? (
+                      <strong>SVG Vector · đường nét phóng to không giới hạn</strong>
+                    ) : (
+                      <strong>Technical Score: {(result.candidates.find(c => c.id === result.selectedVariant) || result.candidates[0]).score.toFixed(1)}/100</strong>
+                    )}
+                    <span>Điểm kỹ thuật chỉ áp dụng raster; không chứng minh chữ đúng hay ảnh đạt chuẩn in.</span>
+                  </div>
+                </>
               ) : (
                 <div className="enhance-awaiting-comparison">
                   <ImageIcon size={27}/>
@@ -290,7 +393,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       </span>
                       <span>Confidence: <strong>{Math.round(result.route.confidence * 100)}%</strong></span>
                       <span>Pipeline: <strong>{MODE_LABELS[result.route.mode] || result.route.mode}</strong></span>
-                      <span>Engine: <strong>{result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Raster fallback"}</strong></span>
+                      <span>Engine: <strong>{result.engine === "vtracer" ? "VTracer Vector" : result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : result.engine === "pillow-hq" ? "HQ raster" : "Raster fallback"}</strong></span>
                       {result.svgUrl && <span>SVG: <strong>VTracer</strong></span>}
                       {result.svgUrl && (
                         <small>Với artwork phẳng, PNG có thể trông gần như ảnh gốc. Hãy dùng SVG để kiểm tra đường nét vector khi zoom lớn.</small>
@@ -307,7 +410,8 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                   </a>
                 )}
                 {result?.url && (
-                  <a className="enhance-download" href={result.url}
+                  <a className="enhance-download" href={result.candidates?.find(c => c.id === result.selectedVariant && c.id !== "vector")?.url ||
+                    result.candidates?.find(c => c.id !== "vector")?.url || result.url}
                     download={`enhanced_${file.name.replace(/\.[^.]+$/, "")}.png`}>
                     <Download size={15}/> Download draft PNG
                   </a>

@@ -75,7 +75,9 @@ async function run() {
           enhancedRequests++;
           await route.fulfill({ status: 200, contentType: "image/png",
             headers: { "X-Enhance-Mode": "sticker_clean", "X-Enhance-Draft": "true",
-              "X-Enhance-Engine": "pillow-fallback" },
+              "X-Enhance-Engine": "pillow-fallback",
+              "X-Enhance-Technical-Score": "78.5", "X-Enhance-Edge-Gain": "0.12",
+              "X-Enhance-Alpha-Drift": "0.0" },
             body: tinyPng });
         }
       });
@@ -112,6 +114,7 @@ async function run() {
               name: "qa-sticker.png", mimeType: "image/png", buffer: tinyPng,
             });
             await page.getByRole("heading", { name: "Auto Enhance Artwork" }).waitFor();
+            await page.getByRole("button", { name: /Max Quality/ }).waitFor();
             await page.getByText("50 MB / file", { exact: true }).waitFor();
             await page.getByRole("img", { name: "Original: qa-sticker.png" }).waitFor();
             await page.getByRole("region", { name: "Trình xem Before/After" }).waitFor();
@@ -144,7 +147,12 @@ async function run() {
             if (await dividerSlider.inputValue() !== "51") {
               throw new Error("Comparison divider slider not keyboard interactive");
             }
-            if (enhancedRequests !== 2) throw new Error("Compare mode unexpectedly reran image processing");
+            await page.getByRole("button", { name: /Sharp \/ AI Detail/ }).click();
+            await page.getByRole("button", { name: /Texture Preserve/ }).click();
+            await page.getByRole("button", { name: /SVG Vector/ }).click();
+            await page.getByText("SVG Vector · đường nét phóng to không giới hạn").waitFor();
+            await page.getByRole("button", { name: /Natural Clean/ }).click();
+            if (enhancedRequests !== 4) throw new Error("Selecting candidates unexpectedly reran image processing");
             await page.getByLabel("Chế độ xử lý").selectOption("sticker_clean");
             await page.getByRole("link", { name: "Download draft PNG" }).waitFor();
             const enhancedOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);

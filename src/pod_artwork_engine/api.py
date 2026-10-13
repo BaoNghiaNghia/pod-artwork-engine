@@ -56,6 +56,7 @@ from .system_monitor import log_summary, recent_safe_events
 from .safe_diagnostics import safe_diagnostic_report
 from .logging_config import log_event
 from .enhance_engines import VECTOR_MODES, generate_vector_svg, enhance_capabilities
+from .quality_enhance import QualityProfile, CandidateVariant, quality_candidate, PROFILE_VARIANTS
 from .auto_enhance import (
     MAX_UPLOAD_BYTES, EnhanceMode, load_artwork, analyze_artwork, enhance_artwork,
 )
@@ -120,7 +121,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft", "X-Enhance-Engine", "X-Enhance-Fallback-Reason"],
+        expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft", "X-Enhance-Engine", "X-Enhance-Fallback-Reason",
+                        "X-Enhance-Profile", "X-Enhance-Variant", "X-Enhance-Technical-Score",
+                        "X-Enhance-Edge-Gain", "X-Enhance-Alpha-Drift"],
     )
 
     @app.middleware("http")
@@ -494,6 +497,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def enhance_vector(
         file: UploadFile = File(...),
         mode: EnhanceMode = "auto",
+        profile: QualityProfile = "fast",
     ) -> Response:
         image = await _read_enhance_image(file)
         if mode == "auto":
@@ -505,7 +509,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422, detail="This vectorization mode is only suitable for vector artwork"
             )
         try:
-            svg = await asyncio.to_thread(generate_vector_svg, image)
+            preset = "text" if selected == "typography_clean" else "sticker" if selected == "sticker_clean" else "logo"
+            svg = await asyncio.to_thread(generate_vector_svg, image, profile=profile, preset=preset)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(
@@ -516,6 +521,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                      "X-Content-Type-Options": "nosniff",
                      "Content-Security-Policy": "default-src 'none'; sandbox",
                      "X-Enhance-Engine": "vtracer",
+                     "X-Enhance-Vector-Preset": preset,
                      "X-Enhance-Draft": "true"},
         )
 
@@ -531,11 +537,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def enhance_run(
         file: UploadFile = File(...),
         mode: EnhanceMode = "auto",
+        profile: QualityProfile = "fast",
+        variant: CandidateVariant = "standard",
     ) -> Response:
         image = await _read_enhance_image(file)
 
         def render() -> tuple[bytes, dict]:
-            output, report = enhance_artwork(image, mode=mode)
+            output, report = quality_candidate(image, mode=mode, profile=profile, variant=variant)
             buffer = BytesIO()
             output.save(buffer, format="PNG", dpi=(300, 300))
             return buffer.getvalue(), report
@@ -555,6 +563,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Enhance-Draft": "true",
                 "X-Enhance-Engine": report.get("engine", "pillow-fallback"),
                 "X-Enhance-Fallback-Reason": report.get("fallback_reason", ""),
+                "X-Enhance-Profile": report["profile"],
+                "X-Enhance-Variant": report["variant"],
+                "X-Enhance-Technical-Score": str(report["technical_score"]),
+                "X-Enhance-Edge-Gain": str(report["edge_gain"]),
+                "X-Enhance-Alpha-Drift": str(report["alpha_drift"]),
             },
         )
 

@@ -312,6 +312,33 @@ button:disabled { cursor: not-allowed; }
   .enhance-result-footer { align-items:stretch; } .enhance-download { width:100%; }
 }
 
+/* Quality-first profiles and per-candidate selection */
+.enhance-profile-panel { border:1px solid #dbe4f3; background:#f7f9ff; border-radius:12px; padding:13px; display:grid; gap:10px; min-width:0; }
+.enhance-profile-title { display:flex; gap:8px; align-items:center; color:#29436d; font-size:12px; font-weight:800; flex-wrap:wrap; }
+.enhance-profile-title>span { margin-left:auto; color:#7f8ba4; font-size:11px; font-weight:400; }
+.enhance-profile-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.enhance-profile-options button { min-width:0; min-height:65px; display:grid; align-content:center; text-align:left; gap:5px; border:1px solid #d8e0ee; border-radius:9px; padding:10px 12px; background:#fff; color:#52637c; cursor:pointer; }
+.enhance-profile-options button strong { font-size:12px; color:#263e66; }
+.enhance-profile-options button small { font-size:10px; color:#8090a5; line-height:1.4; }
+.enhance-profile-options button.selected { background:#e8efff; border-color:#6b86ce; box-shadow:0 0 0 1px #678ac8; }
+.enhance-profile-options button:focus-visible, .enhance-candidate-strip button:focus-visible { outline:2px solid #4778d6; outline-offset:2px; }
+.enhance-candidate-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.enhance-candidate-strip button { min-width:0; display:flex; align-items:center; gap:8px; border:1px solid #dae2ee; background:#f9fbff; border-radius:10px; padding:8px; cursor:pointer; text-align:left; }
+.enhance-candidate-strip button.selected { border-color:#6581bf; background:#ecf2ff; box-shadow:0 0 0 1px #7596d5; }
+.enhance-candidate-strip img { flex:none; display:block; width:46px; height:46px; object-fit:contain; background:repeating-conic-gradient(#e6e9f1 0 25%,#fff 0 50%) 50% / 12px 12px; border-radius:6px; }
+.enhance-candidate-strip span { display:grid; gap:4px; min-width:0; }
+.enhance-candidate-strip strong { font-size:11px; color:#2d426c; white-space:normal; }
+.enhance-candidate-strip small { font-size:10px; line-height:1.4; color:#657892; }
+.enhance-quality-note { display:flex; align-items:center; flex-wrap:wrap; gap:7px 12px; padding:9px 10px; border-radius:9px; background:#f1f5fd; color:#65758b; font-size:11px; }
+.enhance-quality-note strong { font-size:12px; color:#2b4873; }
+@media(max-width:700px) {
+ .enhance-profile-title>span { margin-left:0; width:100%; }
+ .enhance-candidate-strip { grid-template-columns:1fr; }
+ .enhance-candidate-strip img { width:42px; height:42px; }
+ .enhance-profile-options button { padding:8px; }
+ .enhance-profile-options button strong { font-size:11px; }
+}
+
 /* Chat reference file-size guidance */
 .chat-upload-limit { align-self:center; color:#748096; font-size:11px; white-space:nowrap; }
 
