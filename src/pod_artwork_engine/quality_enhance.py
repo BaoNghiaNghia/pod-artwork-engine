@@ -6,6 +6,7 @@ accuracy. The original file is never modified; the UI retains user choice.
 from __future__ import annotations
 
 import math
+import time
 from typing import Any, Literal
 
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageStat
@@ -13,7 +14,7 @@ from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageSta
 from .auto_enhance import (
     MAX_INPUT_PIXELS, MAX_OUTPUT_EDGE, SUPPORTED_MODES, analyze_artwork, enhance_artwork,
 )
-from .enhance_engines import enhance_with_realesrgan
+from .enhance_engines import OUTPUT_PIXEL_LIMIT, enhance_with_realesrgan
 
 QualityProfile = Literal["fast", "balanced", "max_quality"]
 CandidateVariant = Literal["standard", "detail", "texture"]
@@ -23,6 +24,62 @@ PROFILE_VARIANTS: dict[str, tuple[str, ...]] = {
     "max_quality": ("standard", "detail", "texture"),
 }
 MAX_HQ_OUTPUT_PIXELS = 30_000_000
+SINGLE_PASS_MAX_OUTPUT_PIXELS = OUTPUT_PIXEL_LIMIT
+SINGLE_PASS_MAX_EDGE = 4500
+MAX_TILED_GPU_PASSES = 16
+
+
+def refine_large_with_realesrgan(
+    image: Image.Image, *, model: str, tile_size: int = 1536, halo: int = 48,
+    time_budget_seconds: float = 420,
+) -> tuple[Image.Image | None, dict[str, Any]]:
+    """Refine a print-size raster via bounded 2x inference and 1x reconstruction.
+
+    Each source-resolution tile includes an overlap halo to limit visible seams.
+    This is AI detail refinement at the *original* size, not an upscale claim.
+    All-or-nothing: never serve a partly processed canvas if one tile fails.
+    """
+    if tile_size < 32 or halo < 0 or halo >= tile_size // 4:
+        raise ValueError("Unsupported tiled inference geometry")
+    columns = math.ceil(image.width / tile_size)
+    rows = math.ceil(image.height / tile_size)
+    total = columns * rows
+    if total > MAX_TILED_GPU_PASSES:
+        return None, {"reason": f"Artwork requires {total} GPU tiles; safety limit is {MAX_TILED_GPU_PASSES}"}
+    original = image.convert("RGBA")
+    canvas = original.copy()
+    start = time.monotonic()
+    processed = 0
+    for y in range(0, original.height, tile_size):
+        for x in range(0, original.width, tile_size):
+            if time.monotonic() - start > time_budget_seconds:
+                return None, {"reason": "Large artwork GPU tile processing exceeded time budget"}
+            x1 = min(x + tile_size, original.width)
+            y1 = min(y + tile_size, original.height)
+            core = original.crop((x, y, x1, y1))
+            if core.getchannel("A").getbbox() is None:
+                # Empty transparent areas require no inference.
+                continue
+            left = max(0, x - halo)
+            top = max(0, y - halo)
+            right = min(original.width, x1 + halo)
+            bottom = min(original.height, y1 + halo)
+            tile = original.crop((left, top, right, bottom))
+            inferred, info = enhance_with_realesrgan(
+                tile, model=model, allow_alpha=True, wait_for_gpu_seconds=90,
+            )
+            if inferred is None:
+                return None, {"reason": f"GPU tile {processed + 1}/{total}: {info.get('reason', 'inference failed')}"}
+            if inferred.size != (tile.width * 2, tile.height * 2):
+                return None, {"reason": "GPU tile returned invalid output dimensions"}
+            restored = inferred.resize(tile.size, Image.Resampling.LANCZOS)
+            center = restored.crop((x - left, y - top, x1 - left, y1 - top))
+            # Lock the source mask exactly. AI may refine foreground RGB, never
+            # enlarge/cut out the artwork or erase a thin transparent border.
+            center.putalpha(core.getchannel("A"))
+            canvas.paste(center, (x, y))
+            processed += 1
+    return canvas, {"tile_count": processed, "tiling": "overlap-halo-2x-to-source"}
 
 
 def upscale_alpha_safe(source: Image.Image, target: tuple[int, int], *, sharpen: float = 1.0) -> Image.Image:
@@ -109,16 +166,29 @@ def quality_candidate(
         use_model = (variant == "detail" and
                      selected in {"sticker_clean", "photo_cutout", "painterly_clean", "metal_preserve"})
         ai_output = None
+        tiled = False
         if use_model:
-            ai_output, meta = enhance_with_realesrgan(image, model=model,
-                                                     allow_alpha=profile == "max_quality",
-                                                     wait_for_gpu_seconds=90 if profile == "max_quality" else 0)
+            oversized = (image.width * image.height * 4 > SINGLE_PASS_MAX_OUTPUT_PIXELS
+                         or max(image.size) * 2 > SINGLE_PASS_MAX_EDGE)
+            if oversized and profile == "max_quality":
+                # AI inference on bounded overlapping tiles; keep the original
+                # print canvas size instead of allocating a 100 MP output.
+                ai_output, meta = refine_large_with_realesrgan(image, model=model)
+                tiled = ai_output is not None
+            else:
+                ai_output, meta = enhance_with_realesrgan(
+                    image, model=model, allow_alpha=profile == "max_quality",
+                    wait_for_gpu_seconds=90 if profile == "max_quality" else 0,
+                )
             if ai_output is None:
                 report["fallback_reason"] = meta.get("reason", "Vulkan inference unavailable")
         if ai_output is not None:
             output = ai_output
             report.update(engine="real-esrgan-ncnn-vulkan", model=model,
-                          operation="hq-model-super-resolution")
+                          operation="hq-tiled-ai-detail-refine" if tiled
+                          else "hq-model-super-resolution")
+            if tiled:
+                report["tile_count"] = meta["tile_count"]
         else:
             # Variant methods intentionally differ: no texture flattening on
             # photo/painterly; line art uses alpha contour + precise resizing.

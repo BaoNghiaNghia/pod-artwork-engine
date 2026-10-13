@@ -1,4 +1,4 @@
-# Auto Enhance — High Quality multi-candidate pipeline (v0.1.18)
+# Auto Enhance — High Quality multi-candidate pipeline (v0.1.19)
 
 ## Profiles
 - **Fast**: backwards-compatible, one `standard` raster candidate, existing
@@ -24,10 +24,17 @@ does *not* rerun the model. No candidate overwrites the original file.
   to the raster candidates. VTracer uses up to 3200px input trace edge in
   Max Quality (1600px Fast, 2300px Balanced) and more precise curve settings.
   This does not recover the original font, original design intent or hidden text.
-- Large print canvases (e.g. 4500 x 5400) are processed locally without
-  unnecessary reduction: capped at 30 million output pixels, with no unsafe
-  Vulkan 2x allocation. Quality improvement may be modest if the original
-  already has little recoverable detail.
+- Large print canvases (e.g. 4500 x 5400) retain their original
+  dimensions and are never directly allocated as unsafe ~100 MP Vulkan 2x
+  outputs. In Max Quality's **detail** candidate for AI-compatible artwork,
+  an oversized canvas is split into overlapping 1536px tiles with 48px halos.
+  Each visible tile receives genuine Real-ESRGAN 2x inference, is carefully
+  resampled back to its source size, and merged without changing the original
+  alpha mask. This is **AI detail refinement**, not a claim of new print
+  resolution or recovered missing text. At most 16 tiles are attempted with a
+  420-second cooperative budget. Any failed/timeout tile discards the entire
+  tiled candidate and explicitly falls back to Pillow HQ; no partly processed
+  image is served. Purely transparent tiles require no GPU work.
 - An active Vulkan model uses one GPU process at a time. **Max Quality waits
   up to 90 seconds for the GPU slot** rather than falling back immediately;
   Fast retains immediate fallback. If inference is unavailable, too large or

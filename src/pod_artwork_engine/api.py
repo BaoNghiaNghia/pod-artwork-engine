@@ -123,7 +123,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft", "X-Enhance-Engine", "X-Enhance-Fallback-Reason",
                         "X-Enhance-Profile", "X-Enhance-Variant", "X-Enhance-Technical-Score",
-                        "X-Enhance-Edge-Gain", "X-Enhance-Alpha-Drift"],
+                        "X-Enhance-Edge-Gain", "X-Enhance-Alpha-Drift",
+                        "X-Enhance-Operation", "X-Enhance-Tile-Count"],
     )
 
     @app.middleware("http")
@@ -568,6 +569,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Enhance-Technical-Score": str(report["technical_score"]),
                 "X-Enhance-Edge-Gain": str(report["edge_gain"]),
                 "X-Enhance-Alpha-Drift": str(report["alpha_drift"]),
+                "X-Enhance-Operation": report.get("operation", ""),
+                "X-Enhance-Tile-Count": str(report.get("tile_count", 0)),
             },
         )
 

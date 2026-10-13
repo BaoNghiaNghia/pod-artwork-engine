@@ -33,6 +33,8 @@ type Candidate = {
   score: number;
   edgeGain: number;
   alphaDrift: number;
+  operation?: string;
+  tileCount?: number;
   fallbackReason?: string;
 };
 const PROFILE_VARIANTS: Record<QualityProfile, string[]> = {
@@ -177,6 +179,8 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
               score: Number(processed.headers.get("X-Enhance-Technical-Score") || 0),
               edgeGain: Number(processed.headers.get("X-Enhance-Edge-Gain") || 0),
               alphaDrift: Number(processed.headers.get("X-Enhance-Alpha-Drift") || 0),
+              operation: processed.headers.get("X-Enhance-Operation") || undefined,
+              tileCount: Number(processed.headers.get("X-Enhance-Tile-Count") || 0),
               fallbackReason,
             });
             // A detail candidate is shown by default when available; technical
@@ -359,6 +363,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                         <img src={candidate.url} alt={`Preview ${VARIANT_LABELS[candidate.id]}`} loading="lazy"/>
                         <span><strong>{VARIANT_LABELS[candidate.id]}</strong>
                           <small>{candidate.engine === "vtracer" ? "True vector · không chấm điểm raster" :
+                            candidate.operation === "hq-tiled-ai-detail-refine" ? `Tiled AI · ${candidate.tileCount} tiles` :
                             candidate.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Local raster"}
                             {candidate.engine !== "vtracer" && ` · Score ${candidate.score.toFixed(1)}`}</small>
                         </span>
@@ -373,6 +378,9 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       <strong>Technical Score: {(result.candidates.find(c => c.id === result.selectedVariant) || result.candidates[0]).score.toFixed(1)}/100</strong>
                     )}
                     <span>Điểm kỹ thuật chỉ áp dụng raster; không chứng minh chữ đúng hay ảnh đạt chuẩn in.</span>
+                    {result.candidates.find(c => c.id === result.selectedVariant)?.operation === "hq-tiled-ai-detail-refine" && (
+                      <span>GPU đã tái tạo chi tiết theo từng tile và ghép về đúng kích thước canvas nguồn; đây không phải ảnh upscale 2×.</span>
+                    )}
                   </div>
                 </>
               ) : (

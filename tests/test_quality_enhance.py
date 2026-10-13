@@ -85,6 +85,8 @@ def test_quality_api_reports_engine_and_score(tmp_path):
     assert response.headers["x-enhance-profile"]=="max_quality"
     assert response.headers["x-enhance-variant"]=="detail"
     assert response.headers["x-enhance-draft"]=="true"
+    assert response.headers["x-enhance-operation"] == "hq-detail-alpha-safe"
+    assert response.headers["x-enhance-tile-count"] == "0"
     assert 0<=float(response.headers["x-enhance-technical-score"])<=100
     with Image.open(BytesIO(response.content)) as output:
         assert output.width>=320
@@ -116,3 +118,66 @@ def test_technical_score_does_not_assume_large_change_is_good():
     corrupt=Image.new("RGBA",original.size,(255,0,0,0))
     poor=technical_score(original,corrupt)
     assert poor["technical_score"] < identical["technical_score"]
+
+def test_tiled_max_quality_refines_full_canvas_without_upscaling_dimensions(monkeypatch):
+    """Large print artwork should get true bounded inference, not only Pillow sharpening."""
+    import pod_artwork_engine.quality_enhance as quality
+    source = Image.new("RGBA", (85, 73), (0, 0, 0, 0))
+    ImageDraw.Draw(source).rectangle((5, 4, 79, 68), fill=(210, 30, 100, 255))
+    calls = []
+
+    def fake_model(tile, *, model, allow_alpha=False, wait_for_gpu_seconds=0):
+        calls.append((tile.size, model, allow_alpha, wait_for_gpu_seconds))
+        return tile.resize((tile.width * 2, tile.height * 2), Image.Resampling.NEAREST), {}
+
+    monkeypatch.setattr(quality, "enhance_with_realesrgan", fake_model)
+    output, meta = quality.refine_large_with_realesrgan(
+        source, model="realesrgan-x4plus-anime", tile_size=32, halo=4,
+    )
+    assert output is not None and output.size == source.size
+    assert meta["tile_count"] == 9
+    assert len(calls) == 9
+    assert all(call[1:] == ("realesrgan-x4plus-anime", True, 90) for call in calls)
+    assert output.getpixel((0, 0))[3] == 0
+    assert output.getpixel((42, 36))[3] == 255
+    assert source.getpixel((42, 36)) == (210, 30, 100, 255)
+
+
+def test_tiled_max_quality_is_all_or_nothing_on_failed_gpu_tile(monkeypatch):
+    import pod_artwork_engine.quality_enhance as quality
+    calls = []
+
+    def unavailable(tile, *, model, allow_alpha=False, wait_for_gpu_seconds=0):
+        calls.append(tile.size)
+        if len(calls) == 2:
+            return None, {"reason": "GPU busy"}
+        return tile.resize((tile.width * 2, tile.height * 2)), {}
+
+    monkeypatch.setattr(quality, "enhance_with_realesrgan", unavailable)
+    source = Image.new("RGBA", (72, 56), (120, 70, 25, 255))
+    output, meta = quality.refine_large_with_realesrgan(source, model="realesrgan-x4plus",
+                                                       tile_size=32, halo=4)
+    assert output is None
+    assert "GPU busy" in meta["reason"]
+    assert len(calls) == 2
+
+
+def test_max_quality_large_artwork_routes_to_real_tiled_inference(monkeypatch):
+    import pod_artwork_engine.quality_enhance as quality
+    source = sample(flat=False)
+    calls = []
+
+    def fake_tiles(image, *, model, **kwargs):
+        calls.append(model)
+        return image.copy(), {"tile_count": 4}
+
+    monkeypatch.setattr(quality, "SINGLE_PASS_MAX_OUTPUT_PIXELS", 100)
+    monkeypatch.setattr(quality, "refine_large_with_realesrgan", fake_tiles)
+    output, report = quality.quality_candidate(source, mode="painterly_clean",
+                                              profile="max_quality", variant="detail")
+    assert calls == ["realesrgan-x4plus"]
+    assert output.size == source.size
+    assert report["engine"] == "real-esrgan-ncnn-vulkan"
+    assert report["operation"] == "hq-tiled-ai-detail-refine"
+    assert report["tile_count"] == 4
+    assert report["print_ready"] is False
