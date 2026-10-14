@@ -181,3 +181,66 @@ def test_max_quality_large_artwork_routes_to_real_tiled_inference(monkeypatch):
     assert report["operation"] == "hq-tiled-ai-detail-refine"
     assert report["tile_count"] == 4
     assert report["print_ready"] is False
+
+
+def test_manual_model_forces_real_ai_even_for_typography(monkeypatch):
+    import pod_artwork_engine.quality_enhance as quality
+    calls = []
+
+    def fake_model(image, *, model, allow_alpha=False, wait_for_gpu_seconds=0):
+        calls.append(model)
+        return image.resize((image.width * 2, image.height * 2)), {"engine": "real-esrgan-ncnn-vulkan"}
+
+    monkeypatch.setattr(quality, "available_realesrgan_model_names", lambda: ("realesrgan-x4plus", "realesrgan-x4plus-anime"))
+    monkeypatch.setattr(quality, "enhance_with_realesrgan", fake_model)
+    output, report = quality.quality_candidate(sample(), mode="typography_clean",
+        profile="max_quality", variant="detail", model="realesrgan-x4plus")
+    assert output.size == (640, 480)
+    assert calls == ["realesrgan-x4plus"]
+    assert report["model"] == "realesrgan-x4plus"
+
+
+def test_manual_model_never_silently_falls_back(monkeypatch):
+    import pod_artwork_engine.quality_enhance as quality
+    monkeypatch.setattr(quality, "available_realesrgan_model_names", lambda: ("realesrgan-x4plus",))
+    monkeypatch.setattr(quality, "enhance_with_realesrgan", lambda *args, **kwargs:
+        (None, {"reason": "Vulkan GPU unavailable"}))
+    with pytest.raises(ValueError, match="Vulkan GPU unavailable"):
+        quality.quality_candidate(sample(), mode="typography_clean", profile="max_quality",
+                                  variant="detail", model="realesrgan-x4plus")
+    with pytest.raises(ValueError, match="not installed"):
+        quality.quality_candidate(sample(), mode="sticker_clean", profile="max_quality",
+                                  variant="detail", model="fake-model")
+
+
+def test_strong_detail_sharpening_is_visible_and_alpha_safe():
+    from PIL import ImageFilter
+    from pod_artwork_engine.quality_enhance import apply_detail_strength
+    source = Image.new("RGBA", (160, 140), (0, 0, 0, 0))
+    ink = Image.new("RGBA", (100, 90), (90, 130, 180, 255))
+    ImageDraw.Draw(ink).ellipse((15, 10, 80, 75), fill=(180, 210, 230, 255))
+    source.paste(ink, (30, 25))
+    blurred = source.filter(ImageFilter.GaussianBlur(.8))
+    result = apply_detail_strength(blurred, "strong")
+    assert result.getchannel("A").tobytes() == blurred.getchannel("A").tobytes()
+    assert result.getpixel((0, 0))[3] == 0
+    from PIL import ImageChops
+    assert ImageChops.difference(result.convert("RGB"), blurred.convert("RGB")).getbbox() is not None
+
+
+def test_selectable_model_api_header_and_manual_failure(tmp_path, monkeypatch):
+    import pod_artwork_engine.quality_enhance as quality
+    monkeypatch.setattr(quality, "available_realesrgan_model_names", lambda: ("realesrgan-x4plus",))
+    monkeypatch.setattr(quality, "enhance_with_realesrgan", lambda image, **kw:
+        (image.resize((image.width * 2, image.height * 2)), {"model": kw["model"]}))
+    client = TestClient(create_app(Settings(data_root=tmp_path)))
+    buffer = BytesIO()
+    sample().save(buffer, format="PNG")
+    payload = {"file": ("art.png", buffer.getvalue(), "image/png")}
+    response = client.post("/enhance/run?mode=typography_clean&profile=max_quality&variant=detail"
+        "&model=realesrgan-x4plus&detail_strength=strong", files=payload)
+    assert response.status_code == 200, response.text[:250]
+    assert response.headers["x-enhance-model"] == "realesrgan-x4plus"
+    assert response.headers["x-enhance-detail-strength"] == "strong"
+    bad = client.post("/enhance/run?profile=max_quality&variant=detail&model=unavailable", files=payload)
+    assert bad.status_code == 422

@@ -18,6 +18,8 @@ from typing import Any
 from PIL import Image
 
 REAL_ESRGAN_MODELS = ("realesrgan-x4plus", "realesrgan-x4plus-anime")
+MODEL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$")
+CUSTOM_MODEL_MAX_BYTES = 150 * 1024 * 1024
 VECTOR_MODES = ("typography_clean", "vector_clean", "sticker_clean")
 GPU_TIMEOUT_SECONDS = 150
 VECTOR_MAX_EDGE = 1600
@@ -48,6 +50,38 @@ def find_realesrgan_runtime() -> Path | None:
     return None
 
 
+def custom_realesrgan_model_dir() -> Path:
+    """Optional NCNN .bin/.param pairs installed by the user, outside releases."""
+    base = os.environ.get("POD_REALESRGAN_CUSTOM_MODELS_DIR")
+    if base:
+        return Path(base)
+    return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "PODArtworkTool" / "models"
+
+
+def _custom_model_names() -> tuple[str, ...]:
+    folder = custom_realesrgan_model_dir()
+    if not folder.is_dir():
+        return ()
+    names = []
+    for param in folder.glob("*.param"):
+        name = param.stem
+        binary = folder / f"{name}.bin"
+        if (name not in REAL_ESRGAN_MODELS
+                and MODEL_NAME_PATTERN.fullmatch(name)
+                and param.is_file() and binary.is_file()
+                and not param.is_symlink() and not binary.is_symlink()
+                and 0 < param.stat().st_size < 2 * 1024 * 1024
+                and 0 < binary.stat().st_size <= CUSTOM_MODEL_MAX_BYTES):
+            names.append(name)
+    return tuple(sorted(set(names)))
+
+
+def available_realesrgan_model_names() -> tuple[str, ...]:
+    if find_realesrgan_runtime() is None:
+        return ()
+    return REAL_ESRGAN_MODELS + _custom_model_names()
+
+
 def enhance_capabilities() -> dict[str, Any]:
     try:
         import vtracer  # noqa: F401
@@ -55,11 +89,15 @@ def enhance_capabilities() -> dict[str, Any]:
     except ImportError:
         vector_installed = False
     root = find_realesrgan_runtime()
+    installed_models = available_realesrgan_model_names()
     return {
         "vtracer": {"installed": vector_installed, "version": "0.6.15",
                     "vector_modes": list(VECTOR_MODES), "format": "SVG"},
         "realesrgan": {"installed": root is not None,
-                       "model_names": list(REAL_ESRGAN_MODELS),
+                       "model_names": list(REAL_ESRGAN_MODELS) + list(_custom_model_names() if root else ()),
+                       "available_model_names": list(installed_models),
+                       "custom_model_names": list(_custom_model_names() if root else ()),
+                       "custom_models_folder": str(custom_realesrgan_model_dir()),
                        "runtime": "ncnn-vulkan", "requires_vulkan_gpu": True},
         "fallback": "pillow",
         "requires_review": True,
@@ -132,15 +170,16 @@ def enhance_with_realesrgan(
     wait_for_gpu_seconds: float = 0,
 ) -> tuple[Image.Image | None, dict[str, str]]:
     """Try genuine Vulkan inference; return (None, reason) for safe fallback."""
-    if model not in REAL_ESRGAN_MODELS:
-        raise ValueError("Unsupported Real-ESRGAN model")
+    if not MODEL_NAME_PATTERN.fullmatch(model):
+        raise ValueError("Unsupported Real-ESRGAN model name")
     root = runtime_root if runtime_root is not None else find_realesrgan_runtime()
     if root is None:
         return None, {"engine": "fallback", "reason": "Real-ESRGAN runtime unavailable"}
     exe = root / "realesrgan-ncnn-vulkan.exe"
-    models = root / "models"
-    if not exe.is_file() or not all((models / f"{model}.{ext}").is_file()
-                                    for ext in ("bin", "param")):
+    models = root / "models" if model in REAL_ESRGAN_MODELS else custom_realesrgan_model_dir()
+    if not exe.is_file() or model not in available_realesrgan_model_names():
+        return None, {"engine": "fallback", "reason": "Real-ESRGAN model unavailable"}
+    if not all((models / f"{model}.{ext}").is_file() for ext in ("bin", "param")):
         return None, {"engine": "fallback", "reason": "Real-ESRGAN model unavailable"}
     rgba = image.convert("RGBA")
     # The NCNN runner can introduce halos at alpha edges: preserve

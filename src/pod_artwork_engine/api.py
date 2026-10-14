@@ -56,7 +56,7 @@ from .system_monitor import log_summary, recent_safe_events
 from .safe_diagnostics import safe_diagnostic_report
 from .logging_config import log_event
 from .enhance_engines import VECTOR_MODES, generate_vector_svg, enhance_capabilities
-from .quality_enhance import QualityProfile, CandidateVariant, quality_candidate, PROFILE_VARIANTS
+from .quality_enhance import QualityProfile, CandidateVariant, DetailStrength, quality_candidate, PROFILE_VARIANTS
 from .auto_enhance import (
     MAX_UPLOAD_BYTES, EnhanceMode, load_artwork, analyze_artwork, enhance_artwork,
 )
@@ -124,7 +124,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Enhance-Category", "X-Enhance-Confidence", "X-Enhance-Mode", "X-Enhance-Draft", "X-Enhance-Engine", "X-Enhance-Fallback-Reason",
                         "X-Enhance-Profile", "X-Enhance-Variant", "X-Enhance-Technical-Score",
                         "X-Enhance-Edge-Gain", "X-Enhance-Alpha-Drift",
-                        "X-Enhance-Operation", "X-Enhance-Tile-Count"],
+                        "X-Enhance-Operation", "X-Enhance-Tile-Count",
+                        "X-Enhance-Model", "X-Enhance-Detail-Strength",
+                        "X-Enhance-Output-Size"],
     )
 
     @app.middleware("http")
@@ -540,11 +542,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mode: EnhanceMode = "auto",
         profile: QualityProfile = "fast",
         variant: CandidateVariant = "standard",
+        model: str = "auto",
+        detail_strength: DetailStrength = "natural",
     ) -> Response:
         image = await _read_enhance_image(file)
 
         def render() -> tuple[bytes, dict]:
-            output, report = quality_candidate(image, mode=mode, profile=profile, variant=variant)
+            output, report = quality_candidate(image, mode=mode, profile=profile, variant=variant,
+                                               model=model, detail_strength=detail_strength)
             buffer = BytesIO()
             output.save(buffer, format="PNG", dpi=(300, 300))
             return buffer.getvalue(), report
@@ -571,6 +576,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Enhance-Alpha-Drift": str(report["alpha_drift"]),
                 "X-Enhance-Operation": report.get("operation", ""),
                 "X-Enhance-Tile-Count": str(report.get("tile_count", 0)),
+                "X-Enhance-Model": report.get("model", ""),
+                "X-Enhance-Detail-Strength": report.get("detail_strength", "natural"),
+                "X-Enhance-Output-Size": f'{report["output_width"]}x{report["output_height"]}',
             },
         )
 

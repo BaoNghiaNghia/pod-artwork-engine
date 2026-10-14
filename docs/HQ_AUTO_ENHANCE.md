@@ -1,4 +1,4 @@
-# Auto Enhance — High Quality multi-candidate pipeline (v0.1.19)
+# Auto Enhance — Selectable NCNN models and visible-detail pipeline (v0.1.20)
 
 ## Profiles
 - **Fast**: backwards-compatible, one `standard` raster candidate, existing
@@ -13,6 +13,37 @@
 The user selects candidates independently from the shared Before/After viewer
 and downloads the selected PNG (or explicitly the SVG). Changing the selection
 does *not* rerun the model. No candidate overwrites the original file.
+
+## Manual AI model picker (v0.1.20)
+- **Auto** preserves existing classification: typography/flat art can remain
+  Pillow HQ with an independent SVG VTracer candidate. Auto does not guarantee
+  GPU inference.
+- **Real-ESRGAN General** (`realesrgan-x4plus`) targets photos and textured
+  artwork. **Real-ESRGAN Anime** (`realesrgan-x4plus-anime`) targets drawn,
+  cartoon/sticker-style artwork. These are the two pinned models in the installer.
+- Selecting a model explicitly on Balanced/Max Quality's **AI / Detail**
+  candidate forces the GPU route regardless of auto category. On failure
+  the API returns a clear error (422), **never an unlabeled Pillow fallback**.
+  Letterforms and logos can be distorted by SR; inspect the selected text carefully.
+- **Strength**: Natural = raw model output; Clear = light unsharp detail inside
+  opaque foreground; Strong = stronger detail sharpening. The alpha channel is
+  unchanged, and semitransparent contours are not oversharpened. Increasing
+  strength does *not* reconstruct missing semantic features.
+- **Custom models**: users may add compatible NCNN model pairs
+  `<name>.param` + `<name>.bin` to
+  `%LOCALAPPDATA%\\PODArtworkTool\\models`. The app scans only same-name,
+  bounded-size files with safe filenames. Compatible models appear automatically
+  in the selector; source files remain user-managed, outside the updater package.
+  Examples of **candidates to test**, not verified winners: UltraSharp,
+  Remacri, and Digital Art variants from the Upscayl ecosystem. Model formats,
+  architectures, licensing, and actual GPU support must be checked before use.
+  Runtime subprocess validation can reject incompatible models.
+- **Size**: small images can produce true 2x inference output. Large print
+  canvases still refine tiles and return 1x source dimensions to avoid 100+MP
+  memory spikes; detail improvement may be subtle even with AI.
+- UI shows the actual engine/model, fallback reason, output size, and a
+  source-vs-result heat map. Evaluate differences at 100/200% zoom, not only
+  Fit-to-Window. A high technical score alone is not proof of print fidelity.
 
 ## Quality routing
 - Sticker/cartoon illustration: Real-ESRGAN `realesrgan-x4plus-anime` for
@@ -45,7 +76,7 @@ does *not* rerun the model. No candidate overwrites the original file.
   in References. Work is done serially; no background processing or persistence.
 
 ## API
-`POST /enhance/run?mode=auto&profile=max_quality&variant=detail`
+`POST /enhance/run?mode=auto&profile=max_quality&variant=detail&model=realesrgan-x4plus&detail_strength=clear`
 
 Profile enum: `fast`, `balanced`, `max_quality`.
 Variant enum: `standard`, `detail`, `texture`. Unsupported combinations
@@ -54,7 +85,8 @@ return 422. Existing calls default to Fast+standard.
 Response: PNG with `X-Enhance-Engine`, `X-Enhance-Profile`,
 `X-Enhance-Variant`, `X-Enhance-Technical-Score`,
 `X-Enhance-Edge-Gain`, `X-Enhance-Alpha-Drift`,
-`X-Enhance-Draft: true`.
+`X-Enhance-Draft: true`, `X-Enhance-Model`,
+`X-Enhance-Detail-Strength`, and `X-Enhance-Output-Size`.
 
 `POST /enhance/vector?mode=vector_clean&profile=max_quality` returns SVG
 with `X-Enhance-Vector-Preset` and the existing safety restrictions.
@@ -76,6 +108,8 @@ manual visual review plus the existing print QC pipeline.**
 - Real hardware test was run against the local RTX 4070 Laptop GPU using the
   pinned Real-ESRGAN anime model. 176x120 transparent test artwork became
   352x240 with alpha intact; VTracer also returned valid SVG paths.
+- Model picker and strength are supported without extra downloads. Custom
+  models are optional and must be installed separately from trusted sources.
 - No new model downloads are required beyond the pinned Real-ESRGAN and
   VTracer components from v0.1.16. Existing 50 MB/file and 30 MP input caps
   remain. No external AI API charge.

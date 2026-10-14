@@ -1,7 +1,7 @@
 {
-  "version": "0.1.19",
+  "version": "0.1.20",
   "channel": "stable",
-  "package_url": "https://github.com/BaoNghiaNghia/pod-artwork-engine/releases/download/v0.1.19/PODArtworkTool-0.1.19.zip",
-  "sha256": "86d5ba9e7825b1d2d59485c3fba187e64da5fc804b8578d5722b9a4c1d8bc650",
+  "package_url": "https://github.com/BaoNghiaNghia/pod-artwork-engine/releases/download/v0.1.20/PODArtworkTool-0.1.20.zip",
+  "sha256": "3fc0fe6012aa60581de62427c884b933f843ed95aa1d6d5ec07af801dfcfa61a",
   "minimum_updater_version": "0.1.0"
 }

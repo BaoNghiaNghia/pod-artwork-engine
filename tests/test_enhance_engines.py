@@ -184,3 +184,23 @@ def test_capabilities_endpoint_and_ai_output_header(tmp_path):
         files={"file":("logo.png",png(),"image/png")})
     assert response.status_code==200
     assert response.headers["x-enhance-engine"] in {"pillow-fallback","real-esrgan-ncnn-vulkan"}
+
+
+def test_user_installed_ncnn_model_is_discovered_but_incomplete_pairs_are_ignored(tmp_path, monkeypatch):
+    import pod_artwork_engine.enhance_engines as engines
+    models = tmp_path / "user-models"
+    models.mkdir()
+    (models / "4x-UltraSharp.param").write_text("fake")
+    (models / "4x-UltraSharp.bin").write_bytes(b"fake")
+    (models / "incomplete.param").write_text("fake")
+    (models / "bad model.bin").write_bytes(b"fake")
+    (models / "bad model.param").write_text("fake")
+    monkeypatch.setenv("POD_REALESRGAN_CUSTOM_MODELS_DIR", str(models))
+    monkeypatch.setattr(engines, "find_realesrgan_runtime", lambda: tmp_path / "pinned-runtime")
+    names = engines.available_realesrgan_model_names()
+    assert "4x-UltraSharp" in names
+    assert "incomplete" not in names
+    assert "bad model" not in names
+    caps = engines.enhance_capabilities()
+    assert "4x-UltraSharp" in caps["realesrgan"]["custom_model_names"]
+    assert "4x-UltraSharp" in caps["realesrgan"]["model_names"]

@@ -14,10 +14,11 @@ from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageSta
 from .auto_enhance import (
     MAX_INPUT_PIXELS, MAX_OUTPUT_EDGE, SUPPORTED_MODES, analyze_artwork, enhance_artwork,
 )
-from .enhance_engines import OUTPUT_PIXEL_LIMIT, enhance_with_realesrgan
+from .enhance_engines import OUTPUT_PIXEL_LIMIT, enhance_with_realesrgan, available_realesrgan_model_names
 
 QualityProfile = Literal["fast", "balanced", "max_quality"]
 CandidateVariant = Literal["standard", "detail", "texture"]
+DetailStrength = Literal["natural", "clear", "strong"]
 PROFILE_VARIANTS: dict[str, tuple[str, ...]] = {
     "fast": ("standard",),
     "balanced": ("standard", "detail"),
@@ -143,9 +144,34 @@ def technical_score(source: Image.Image, candidate: Image.Image) -> dict[str, fl
     }
 
 
+def apply_detail_strength(image: Image.Image, strength: DetailStrength) -> Image.Image:
+    """Make genuine model refinement visible inside opaque artwork, not on alpha edges.
+
+    This does not recreate missing pixels. The alpha mask and thin semitransparent
+    contours are unchanged to avoid white/dark halos on transparent POD output.
+    """
+    if strength not in {"natural", "clear", "strong"}:
+        raise ValueError("Unsupported detail strength")
+    if strength == "natural":
+        return image
+    rgba = image.convert("RGBA")
+    alpha = rgba.getchannel("A")
+    rgb = rgba.convert("RGB")
+    sharpened = rgb.filter(ImageFilter.UnsharpMask(
+        radius=.85 if strength == "clear" else 1.05,
+        percent=95 if strength == "clear" else 180,
+        threshold=2,
+    ))
+    interior = alpha.point(lambda value: 255 if value >= 245 else 0)
+    result = Image.composite(sharpened, rgb, interior).convert("RGBA")
+    result.putalpha(alpha)
+    return result
+
+
 def quality_candidate(
     image: Image.Image, *, mode: str = "auto",
     profile: QualityProfile = "fast", variant: CandidateVariant = "standard",
+    model: str = "auto", detail_strength: DetailStrength = "natural",
 ) -> tuple[Image.Image, dict[str, Any]]:
     if profile not in PROFILE_VARIANTS or variant not in PROFILE_VARIANTS.get(profile, ()):
         raise ValueError("Unsupported quality profile / candidate variant")
@@ -153,6 +179,13 @@ def quality_candidate(
         raise ValueError("Unsupported enhancement mode")
     if image.width * image.height > MAX_INPUT_PIXELS:
         raise ValueError("Image exceeds the 30 megapixel safety limit")
+    if detail_strength not in {"natural", "clear", "strong"}:
+        raise ValueError("Unsupported detail strength")
+    if model != "auto":
+        if model not in available_realesrgan_model_names():
+            raise ValueError(f"Requested AI model '{model}' is not installed")
+        if variant != "detail" or profile == "fast":
+            raise ValueError("Manual AI selection requires Balanced or Max Quality detail candidate")
     if profile == "fast":
         output, report = enhance_artwork(image, mode=mode)
     else:
@@ -162,9 +195,12 @@ def quality_candidate(
         target = _safe_target(image, variant)
         # Two model families, only when the source is opaque and 2x fits bounded
         # output. Transparent/large artwork is carefully handled locally instead.
-        model = "realesrgan-x4plus-anime" if selected == "sticker_clean" else "realesrgan-x4plus"
+        model_name = model if model != "auto" else (
+            "realesrgan-x4plus-anime" if selected == "sticker_clean" else "realesrgan-x4plus"
+        )
         use_model = (variant == "detail" and
-                     selected in {"sticker_clean", "photo_cutout", "painterly_clean", "metal_preserve"})
+                     (model != "auto" or selected in {
+                         "sticker_clean", "photo_cutout", "painterly_clean", "metal_preserve"}))
         ai_output = None
         tiled = False
         if use_model:
@@ -173,18 +209,20 @@ def quality_candidate(
             if oversized and profile == "max_quality":
                 # AI inference on bounded overlapping tiles; keep the original
                 # print canvas size instead of allocating a 100 MP output.
-                ai_output, meta = refine_large_with_realesrgan(image, model=model)
+                ai_output, meta = refine_large_with_realesrgan(image, model=model_name)
                 tiled = ai_output is not None
             else:
                 ai_output, meta = enhance_with_realesrgan(
-                    image, model=model, allow_alpha=profile == "max_quality",
+                    image, model=model_name, allow_alpha=profile == "max_quality" or model != "auto",
                     wait_for_gpu_seconds=90 if profile == "max_quality" else 0,
                 )
             if ai_output is None:
                 report["fallback_reason"] = meta.get("reason", "Vulkan inference unavailable")
+                if model != "auto":
+                    raise ValueError("Selected AI model failed: " + report["fallback_reason"])
         if ai_output is not None:
-            output = ai_output
-            report.update(engine="real-esrgan-ncnn-vulkan", model=model,
+            output = apply_detail_strength(ai_output, detail_strength)
+            report.update(engine="real-esrgan-ncnn-vulkan", model=model_name,
                           operation="hq-tiled-ai-detail-refine" if tiled
                           else "hq-model-super-resolution")
             if tiled:
@@ -199,7 +237,8 @@ def quality_candidate(
                     output = ImageEnhance.Contrast(output).enhance(1.04)
                     output = output.filter(ImageFilter.UnsharpMask(radius=1.4, percent=65, threshold=5))
             report.update(engine="pillow-hq", operation=f"hq-{variant}-alpha-safe")
-        report.update(output_width=output.width, output_height=output.height,
+        report.update(detail_strength=detail_strength if ai_output is not None else "natural",
+                      output_width=output.width, output_height=output.height,
                       warning="Draft candidate: inspect color, outlines and lettering before printing.")
     report.update(profile=profile, variant=variant, print_ready=False, requires_review=True)
     report.update(technical_score(image, output))

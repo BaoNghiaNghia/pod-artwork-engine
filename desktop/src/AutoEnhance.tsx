@@ -22,10 +22,11 @@ type Route = {
 };
 type RuntimeReport = {
   vtracer: { installed: boolean };
-  realesrgan: { installed: boolean; model_names: string[] };
+  realesrgan: { installed: boolean; model_names: string[]; custom_model_names?: string[]; custom_models_folder?: string };
 };
 
 type QualityProfile = "fast" | "balanced" | "max_quality";
+type DetailStrength = "natural" | "clear" | "strong";
 type Candidate = {
   id: string;
   url: string;
@@ -35,6 +36,8 @@ type Candidate = {
   alphaDrift: number;
   operation?: string;
   tileCount?: number;
+  model?: string;
+  outputSize?: string;
   fallbackReason?: string;
 };
 const PROFILE_VARIANTS: Record<QualityProfile, string[]> = {
@@ -42,7 +45,7 @@ const PROFILE_VARIANTS: Record<QualityProfile, string[]> = {
   max_quality: ["standard", "detail", "texture"],
 };
 const VARIANT_LABELS: Record<string, string> = {
-  standard: "Natural Clean", detail: "Sharp / AI Detail", texture: "Texture Preserve",
+  standard: "Natural Clean (Local)", detail: "AI / Detail", texture: "Texture Preserve (Local)",
   vector: "SVG Vector",
 };
 
@@ -95,6 +98,8 @@ async function readFailure(response: Response): Promise<string> {
 export default function AutoEnhance({ files, engineOnline }: { files: File[]; engineOnline: boolean }) {
   const [override, setOverride] = useState("auto");
   const [profile, setProfile] = useState<QualityProfile>("max_quality");
+  const [model, setModel] = useState("auto");
+  const [detailStrength, setDetailStrength] = useState<DetailStrength>("clear");
   const [retry, setRetry] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [runtime, setRuntime] = useState<RuntimeReport | null>(null);
@@ -163,7 +168,9 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
             const upload = new FormData();
             upload.append("file", file);
             const processed = await fetch(
-              `${API}/enhance/run?mode=${encodeURIComponent(override)}&profile=${profile}&variant=${variant}`,
+              `${API}/enhance/run?mode=${encodeURIComponent(override)}&profile=${profile}&variant=${variant}` +
+                (variant === "detail" && profile !== "fast"
+                  ? `&model=${encodeURIComponent(model)}&detail_strength=${detailStrength}` : ""),
               { method: "POST", body: upload, signal: abort.signal },
             );
             if (!processed.ok) throw new Error(await readFailure(processed));
@@ -181,6 +188,8 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
               alphaDrift: Number(processed.headers.get("X-Enhance-Alpha-Drift") || 0),
               operation: processed.headers.get("X-Enhance-Operation") || undefined,
               tileCount: Number(processed.headers.get("X-Enhance-Tile-Count") || 0),
+              model: processed.headers.get("X-Enhance-Model") || undefined,
+              outputSize: processed.headers.get("X-Enhance-Output-Size") || undefined,
               fallbackReason,
             });
             // A detail candidate is shown by default when available; technical
@@ -238,7 +247,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
       abort.abort();
       outputUrls.forEach(URL.revokeObjectURL);
     };
-  }, [files, engineOnline, override, profile, retry, batchLimit]);
+  }, [files, engineOnline, override, profile, model, detailStrength, retry, batchLimit]);
 
   const updateCandidate = (index: number, candidate: Candidate) => {
     setEntries((previous) => previous.map((entry, i) => i !== index ? entry : ({
@@ -309,6 +318,29 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
             ))}
           </select>
         </div>
+        <div className="enhance-toolbar-control">
+          <label htmlFor="enhance-model">Model AI (Detail)</label>
+          <select id="enhance-model" value={model} disabled={profile === "fast" || !runtime?.realesrgan?.installed}
+            onChange={(event) => setModel(event.target.value)}>
+            <option value="auto">Auto · AI nếu tương thích</option>
+            {(runtime?.realesrgan?.model_names || []).map((name) => (
+              <option key={name} value={name}>{name === "realesrgan-x4plus"
+                ? "Real-ESRGAN General · Ảnh/photo"
+                : name === "realesrgan-x4plus-anime"
+                  ? "Real-ESRGAN Anime · Cartoon"
+                  : name + " · Custom NCNN"}</option>
+            ))}
+          </select>
+        </div>
+        <div className="enhance-toolbar-control">
+          <label htmlFor="enhance-strength">Độ nét sau AI</label>
+          <select id="enhance-strength" value={detailStrength} disabled={profile === "fast"}
+            onChange={(event) => setDetailStrength(event.target.value as DetailStrength)}>
+            <option value="natural">Natural · Không tăng</option>
+            <option value="clear">Clear · Rõ nét</option>
+            <option value="strong">Strong · Tăng mạnh</option>
+          </select>
+        </div>
         <span className="enhance-tally" role="status">
           {working ? <Clock3 size={15}/> : <CheckCircle2 size={15}/>}
           {engineOnline
@@ -322,6 +354,16 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
         </Button>
       </div>
 
+      <div className="enhance-batch-note" role="note">
+        {model === "auto"
+          ? "Auto không bắt buộc chạy AI: ảnh chữ/logo có thể chỉ được làm sạch bằng Pillow và VTracer."
+          : `Đã yêu cầu chạy model ${model} trên phương án AI / Detail, kể cả ảnh chữ/logo. Nếu GPU hoặc model lỗi, hệ thống báo lỗi thay vì âm thầm dùng Pillow. AI có thể làm biến dạng chữ.`}
+        {" "}Max Quality xử lý ảnh lớn bằng AI theo tile rồi thu về kích thước gốc; chọn 100% hoặc 200% trong Before/After để thấy khác biệt.
+        {runtime?.realesrgan?.custom_models_folder && (
+          <span> Model NCNN ngoài (file .bin + .param cùng tên): {runtime.realesrgan.custom_models_folder}.
+            Khởi động lại hoặc chạy lại để cập nhật danh sách model. Chỉ cài model từ nguồn tin cậy và tương thích NCNN.</span>
+        )}
+      </div>
       {files.length > batchLimit && (
         <div className="enhance-batch-note" role="note">
           Chế độ {profile === "max_quality" ? "Max Quality" : profile === "balanced" ? "Balanced" : "Fast"}
@@ -364,7 +406,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                         <span><strong>{VARIANT_LABELS[candidate.id]}</strong>
                           <small>{candidate.engine === "vtracer" ? "True vector · không chấm điểm raster" :
                             candidate.operation === "hq-tiled-ai-detail-refine" ? `Tiled AI · ${candidate.tileCount} tiles` :
-                            candidate.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : "Local raster"}
+                            candidate.engine === "real-esrgan-ncnn-vulkan" ? (candidate.model || "Real-ESRGAN AI") : "No AI · Local raster"}
                             {candidate.engine !== "vtracer" && ` · Score ${candidate.score.toFixed(1)}`}</small>
                         </span>
                       </button>
@@ -378,6 +420,15 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       <strong>Technical Score: {(result.candidates.find(c => c.id === result.selectedVariant) || result.candidates[0]).score.toFixed(1)}/100</strong>
                     )}
                     <span>Điểm kỹ thuật chỉ áp dụng raster; không chứng minh chữ đúng hay ảnh đạt chuẩn in.</span>
+                    {result.candidates.find(c => c.id === result.selectedVariant)?.outputSize && (
+                      <span>Độ phân giải đầu ra: <strong>{result.candidates.find(c => c.id === result.selectedVariant)?.outputSize} px</strong>.</span>
+                    )}
+                    {result.candidates.find(c => c.id === result.selectedVariant)?.fallbackReason && (
+                      <span role="alert">Không chạy AI: {result.candidates.find(c => c.id === result.selectedVariant)?.fallbackReason}</span>
+                    )}
+                    {result.candidates.find(c => c.id === result.selectedVariant)?.model && (
+                      <span>Model đã chạy: {result.candidates.find(c => c.id === result.selectedVariant)?.model} · độ nét {detailStrength}.</span>
+                    )}
                     {result.candidates.find(c => c.id === result.selectedVariant)?.operation === "hq-tiled-ai-detail-refine" && (
                       <span>GPU đã tái tạo chi tiết theo từng tile và ghép về đúng kích thước canvas nguồn; đây không phải ảnh upscale 2×.</span>
                     )}
@@ -401,7 +452,7 @@ export default function AutoEnhance({ files, engineOnline }: { files: File[]; en
                       </span>
                       <span>Confidence: <strong>{Math.round(result.route.confidence * 100)}%</strong></span>
                       <span>Pipeline: <strong>{MODE_LABELS[result.route.mode] || result.route.mode}</strong></span>
-                      <span>Engine: <strong>{result.engine === "vtracer" ? "VTracer Vector" : result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : result.engine === "pillow-hq" ? "HQ raster" : "Raster fallback"}</strong></span>
+                      <span>Engine: <strong>{result.engine === "vtracer" ? "VTracer Vector" : result.engine === "real-esrgan-ncnn-vulkan" ? "Real-ESRGAN AI" : result.engine === "pillow-hq" ? "HQ raster · No AI" : "Raster fallback · No AI"}</strong></span>
                       {result.svgUrl && <span>SVG: <strong>VTracer</strong></span>}
                       {result.svgUrl && (
                         <small>Với artwork phẳng, PNG có thể trông gần như ảnh gốc. Hãy dùng SVG để kiểm tra đường nét vector khi zoom lớn.</small>
